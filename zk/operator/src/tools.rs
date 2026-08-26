@@ -7,7 +7,7 @@
 //! toolchain, the entire source tree, and a warm `target/` into production for a daemon whose
 //! own binary is self-contained.
 //!
-//! So the seam stays and only the executable changes (GOAL D1). A tool is looked up in three
+//! So the seam stays and only the executable changes. A tool is looked up in three
 //! places, in order:
 //!
 //! 1. `[ops] tool_dir`, if configured. Configured and missing is an ERROR, never a silent
@@ -16,7 +16,7 @@
 //! 2. Next to the running executable. This is what makes the published image need no
 //!    configuration at all — `/usr/local/bin` holds `operator` and its tools together.
 //! 3. `cargo run`, with exactly today's arguments, from the repo root. This is the developer
-//!    loop (GOAL D2): `task demo` and `tests/e2e/` must keep working from a source checkout
+//!    loop: `task demo` and `tests/e2e/` must keep working from a source checkout
 //!    with nothing pre-built.
 
 use anyhow::{bail, Context, Result};
@@ -189,7 +189,7 @@ pub fn resolve(tool: Tool, tool_dir: Option<&str>) -> Result<ToolCommand> {
         leading: tool.cargo_args().iter().map(|s| (*s).to_string()).collect(),
         // `--manifest-path zk/prover/Cargo.toml` and `-p input-exporter` are both relative to the
         // repo root. Anchoring the CHILD here is what stops the daemon's own working directory
-        // from being load bearing (GOAL M1) without changing a single fallback argument.
+        // from being load bearing without changing a single fallback argument.
         cwd: Some(root),
         prebuilt: false,
     })

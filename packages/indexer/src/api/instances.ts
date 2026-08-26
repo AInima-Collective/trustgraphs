@@ -1,5 +1,5 @@
 /**
- * Trust-graph instance catalog (GOAL.md M2; research/INSTANCE_FACTORY.md §3).
+ * Trust-graph instance catalog (`research/INSTANCE_FACTORY.md` §3).
  *
  * Serves the `instance` table — one row per network created through `TrustgraphsFactory`, built from
  * the frozen `InstanceCreated` event (src/factory.ts). This is what REPLACES `config/networks.json`

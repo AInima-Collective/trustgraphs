@@ -38,6 +38,7 @@ export type PublicOperatorSettings = {
   proofTimeoutSeconds: number | null
   perInstanceUsdPerDay: number | null
   globalUsdPerDay: number | null
+  globalBudgetAlertPercent: number | null
   budgetWindowSeconds: number | null
   publishesScores: boolean | null
   verifiesScoreReadback: boolean | null

@@ -64,6 +64,25 @@ if [ -n "$pem" ]; then
   fail=1
 fi
 
+# 3. An ignored dotenv file may legitimately contain the active secret assignment, but never a
+# second copy in a comment. Besides multiplying the places that need rotation, commented copies
+# bypass tooling that redacts NAME=value lines. Report only file and line number here: printing the
+# matching line would repeat the leak this check is meant to catch.
+shopt -s nullglob
+local_env_files=(.env .env.* packages/*/.env packages/*/.env.*)
+for file in "${local_env_files[@]}"; do
+  [ -f "$file" ] || continue
+  while IFS= read -r line_number; do
+    [ -n "$line_number" ] || continue
+    echo "CREDENTIAL COPY IN DOTENV COMMENT: ${file}:${line_number}"
+    fail=1
+  done < <(
+    grep -nEi \
+      '^[[:space:]]*#[[:space:]]*(API Key|API Secret|JWT):[[:space:]]*[^<[:space:]]|^[[:space:]]*#[[:space:]]*(FORK_RPC_URL|RPC_URL|PONDER_RPC_URL_[0-9]+)=https?://[^[:space:]]*(alchemy|infura|quicknode)[^[:space:]]*/[A-Za-z0-9_-]{12,}' \
+      "$file" | cut -d: -f1 || true
+  )
+done
+
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Secret scan FAILED. If a hit is a well-known public dev key, add it to the allowlist"

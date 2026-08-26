@@ -281,7 +281,7 @@ fn legacy_float_fixture_records_intentional_m2_rotation() {
 
 // ---------------------------------------------------------------------------
 // Two-lane compute: a real envelope-0 fixture through the FULL pipeline, plus
-// the withholding path (GOAL M2 exit: anchored head, data withheld → rule Φ,
+// the withholding path (anchored head, data withheld → rule Φ,
 // skip recorded, root still lands).
 // ---------------------------------------------------------------------------
 

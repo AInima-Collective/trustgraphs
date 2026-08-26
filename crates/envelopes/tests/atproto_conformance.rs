@@ -1,4 +1,4 @@
-//! Envelope-1 CONFORMANCE suite (GOAL.md M3 exit).
+//! Envelope-1 conformance suite.
 //!
 //! Two halves:
 //!

@@ -5,7 +5,7 @@
 //! A container healthcheck cannot read it, an uptime check cannot read it, and the frontend's
 //! `OPERATOR_STATUS_URL` mode — already written, already sanitizing — had no server to point at.
 //!
-//! Three properties, all deliberate (GOAL D3):
+//! Three properties, all deliberate:
 //!
 //! - **Off by default.** No `[ops] listen`, no socket.
 //! - **Read-only.** Three routes, all GET. There is no way to trigger, halt, resolve or configure
@@ -57,6 +57,7 @@ const SETTINGS_KEYS: &[&str] = &[
     "proof_timeout_s",
     "per_instance_usd_per_day",
     "global_usd_per_day",
+    "global_budget_alert_percent",
     "budget_window_seconds",
     "publishes_scores",
     "verifies_score_readback",
@@ -481,6 +482,7 @@ mod tests {
                 proof_timeout_s: 3_600,
                 per_instance_usd_per_day: 25,
                 global_usd_per_day: 250,
+                global_budget_alert_percent: 80,
                 budget_window_seconds: 86_400,
                 publishes_scores: true,
                 verifies_score_readback: true,

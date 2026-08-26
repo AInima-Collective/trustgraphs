@@ -2,13 +2,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import dotenv from 'dotenv'
+import environmentLoader from '../../../scripts/load-env.cjs'
 import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
 const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(indexerDir))
+const { loadTargetEnvironment } = environmentLoader
 
-dotenv.config({ path: path.join(repoDir, '.env'), quiet: true })
+loadTargetEnvironment({
+  repositoryRoot: repoDir,
+  createBaseFrom: '.env.example',
+})
 
 const profile = resolveDeploymentProfile(process.env, repoDir)
 const environment =
@@ -17,7 +21,20 @@ const environment =
     : profile.target === 'sepolia'
       ? 'sepolia'
       : 'production'
-const source = path.join(repoDir, 'config', `networks.${environment}.json`)
+const generatedSource = path.join(
+  repoDir,
+  'config',
+  `networks.${environment}.json`
+)
+const allowDevelopmentTemplate = process.argv.includes(
+  '--allow-development-template'
+)
+const source =
+  profile.target === 'local' &&
+  allowDevelopmentTemplate &&
+  !fs.existsSync(generatedSource)
+    ? path.join(repoDir, 'config', 'networks.development.template.json')
+    : generatedSource
 const destination = path.join(indexerDir, 'networks.json')
 
 if (!fs.existsSync(source)) {
@@ -33,4 +50,4 @@ try {
 }
 
 fs.symlinkSync(path.relative(indexerDir, source), destination)
-console.log(`indexer: using config/networks.${environment}.json`)
+console.log(`indexer: using ${path.relative(repoDir, source)}`)

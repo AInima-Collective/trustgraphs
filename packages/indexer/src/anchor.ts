@@ -128,34 +128,6 @@ ponder.on(
 )
 
 /*///////////////////////////////////////////////////////////////
-    STUB — skippedNode ingestion (off-chain prover/witness pipeline)
-//////////////////////////////////////////////////////////////*/
-
-/**
- * NOT WIRED UP for M2 — intentionally stubbed.
- *
- * The guest commits only a 32-byte `skippedDigest` on-chain (a `MerkleSnapshot.submitProof` argument
- * bound into the journal — it is NOT emitted in any event, and its PREIMAGE is not on-chain at all).
- * The set of skipped nodes and their reasons therefore has to come from the OFF-CHAIN prover/witness
- * bundle that the prover archives (MULTI_PROGRAM_PLATFORM §7 — the indexer is the availability mirror).
- *
- * Wiring this up (a later milestone) means:
- *   1. Read the prover's witness bundle for a given `checkpointId` (skipped nodeIds + reason labels).
- *   2. Recover the on-chain `skippedDigest` for that checkpoint by decoding the `submitProof` calldata
- *      of the tx that emitted `MerkleProofSubmitted` / `MerkleRootUpdated` (the digest is a calldata
- *      argument, not an event field).
- *   3. Reconstruct the digest from the bundled skipped set using the frozen four-way-golden leaf/fold
- *      encoding and assert it equals the on-chain `skippedDigest` before trusting the rows.
- *   4. Upsert the validated rows into `offchain.skipped_node` with `validated = true`.
- *
- * Left as a documented no-op so the audit table exists and its provenance is unambiguous.
- */
-export async function ingestSkippedNodes(_checkpointId: bigint): Promise<void> {
-  // TODO(lane-2): implement off-chain bundle read + on-chain skippedDigest validation (see above).
-  return
-}
-
-/*///////////////////////////////////////////////////////////////
     Hypercerts score ingestion (off-chain prover/witness pipeline)
 //////////////////////////////////////////////////////////////*/
 

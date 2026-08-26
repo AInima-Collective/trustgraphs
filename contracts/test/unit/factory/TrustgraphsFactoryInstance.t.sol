@@ -198,7 +198,7 @@ contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
                  DOMAIN SEPARATION AT THE FACTORY LEVEL
     //////////////////////////////////////////////////////////////*/
 
-    /// GOAL criterion 4, factory half: two instances created from IDENTICAL `CreateArgs` params
+    /// Replay-separation invariant, factory half: two instances created from IDENTICAL `CreateArgs` params
     /// (differing only in salt) must not share a `paramsHash`. The params schema's v2 fields —
     /// accumulator and chainId — are what make clones distinguishable; without them these two
     /// structs would be byte-identical and their hashes equal.

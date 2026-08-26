@@ -23,13 +23,12 @@ import {Common} from "script/Common.s.sol";
 ///         (research/operations/hypercerts/runbook.md): EmptyLaneAccumulator → AnchorRegistry →
 ///         SP1JournalVerifier (hypercerts vkey, canonical gateway) → MerkleSnapshot
 ///         (journal v3) → setAnchorRegistry → setEpochLength → optional InstanceRegistry
-///         entry. Inputs via env so the OP Sepolia rehearsal and the Optimism pilot run
-///         the same script with different .env files.
+///         entry. Inputs via env so local rehearsals and the Sepolia release use the same script.
 ///
 /// Env: SP1_VERIFIER_GATEWAY (canonical per-chain gateway; MockSP1Gateway only on a dev
 ///      chain), HYPERCERTS_VKEY (derive on the PINNED toolchain — docs/concepts/networks-and-programs.md caveat),
 ///      HYPERCERTS_PARAMS_HASH (`prover hypercerts paramshash params.json`),
-///      HYPERCERTS_EPOCH_LENGTH (blocks; 302400 = 1 week @ 2s; 0 = unscheduled rehearsal),
+///      HYPERCERTS_EPOCH_LENGTH (blocks; 50400 = 1 week @ 12s; 0 = unscheduled rehearsal),
 ///      CONSTITUTIONAL_ADMIN / OPERATIONAL_ADMIN / REGISTRAR_ADMIN (default: deployer),
 ///      HYPERCERTS_MAX_TOTAL_INPUTS (combined-count anchor-ingress ceiling; default/max: 200000),
 ///      INSTANCE_REGISTRY (optional; register the instance if set).

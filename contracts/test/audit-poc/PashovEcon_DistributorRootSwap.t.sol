@@ -87,7 +87,9 @@ contract PashovEcon_DistributorRootSwap is Test {
         token.approve(address(dist), pot);
         // `expectedRoot = 0` is the documented "skip" value and the 3-arg overload's only option.
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, pot);
-        uint256 idx = dist.distribute(address(token), pot, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), pot, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
         vm.stopPrank();
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(idx);
@@ -123,7 +125,9 @@ contract PashovEcon_DistributorRootSwap is Test {
         vm.startPrank(funder);
         token.approve(address(dist), pot);
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, pot);
-        uint256 idx = dist.distribute(address(token), pot, _pins1.root, _pins1.totalValue, deadline, type(uint256).max, _pins1.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), pot, _pins1.root, _pins1.totalValue, deadline, type(uint256).max, _pins1.feeRecipient
+        );
         vm.stopPrank();
 
         // Owner pauses one day into the window.

@@ -6,7 +6,7 @@ import { CHAIN } from '@/lib/config'
  * here degrades to a wrong estimate, never a wrong on-chain action.
  */
 const BLOCK_TIME_SECONDS: Record<string, number> = {
-  optimism: 2,
+  sepolia: 12,
   local: 12, // Anvil demo cadence mirrors mainnet
 }
 

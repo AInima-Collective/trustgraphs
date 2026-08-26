@@ -125,7 +125,7 @@ fn hypercerts_seeded_repo_verifies_all_collections() {
     let records =
         atproto::verify(atproto::did_node_id(&did), head, 2_000_000_000, &collections, &w)
             .expect("hypercerts fixture verify");
-    // Alice's two-sided repo (GOAL M4): follow, badge.award, activity, TWO evaluations
+    // Alice's two-sided repo: follow, badge.award, activity, TWO evaluations
     // (cross-repo + self), link.evm. badge.response + acknowledgement now live in bob.car.
     assert_eq!(records.len(), 6, "alice's §2 records");
 }

@@ -1,4 +1,4 @@
-# Deploy to a public chain
+# Deploy to Sepolia
 
 A public Trustgraphs deployment combines contracts whose program identity must remain stable with
 indexing, proving, and publication services that must remain available. Treat it as a
@@ -6,16 +6,14 @@ security-sensitive release, not a copy of the local demo.
 
 ## Supported deployment profiles
 
-The repository currently exposes two production-stage targets with different contract sets:
+The repository exposes one supported public deployment target:
 
 | Target | Current profile |
 | --- | --- |
-| `sepolia` | Modern registry, standard `trust-graph` verifier and base factory, plus an optional proving vault. It does not deploy the governed wrapper, weighted prior, composition, contributions, or signer sync. |
-| `optimism` | Legacy configuration-driven deployment of named standard networks, signer verifier, Safes, and timelocks. It is not the modern self-service factory profile. |
+| `sepolia` | Modern registry; verifiers for trust-graph, signer-sync, weighted-prior, trust-compose, and contributions; base and governed factories for trust-graph, weighted, and composition; a contributions factory; canonical Safe integration; signer-sync module deployer; and proving vault. |
 
 The `mainnet` target is intentionally disabled because the repository has no authorized Ethereum
-mainnet deployment profile. Do not infer feature support on one target from code deployed by the
-other.
+mainnet deployment profile.
 
 ## Before deployment
 
@@ -32,16 +30,14 @@ Never deploy a verifier with a key derived from a different guest build.
 
 ## Deploy the contracts
 
-Choose an implemented target explicitly. For example:
+Choose an implemented target explicitly. The current Sepolia deployment is additive: run its
+read-only release preflight, continue from the tracked live manifest, then assert the on-chain end
+state:
 
 ```bash
-DEPLOY_STAGE=production DEPLOY_TARGET=sepolia pnpm deploy:contracts
-```
-
-or, for the legacy Optimism profile:
-
-```bash
-DEPLOY_STAGE=production DEPLOY_TARGET=optimism pnpm deploy:contracts
+pnpm deploy:sepolia:preflight
+pnpm deploy:sepolia:continue
+pnpm deploy:sepolia:postcheck
 ```
 
 The deployment code validates profile-specific environment variables before sending transactions.
@@ -65,6 +61,78 @@ Public service requirements include:
 
 Test restoration of the database, operator journal, weighted manifests if that program is present,
 and published output files before relying on the deployment.
+
+### Sepolia service package
+
+Railway is the selected host for the first public testnet. Its project definition and deployment
+runbook are in [Run the Sepolia services on Railway](./railway.md). The Compose package below
+remains the portable reference implementation and local recovery-drill path.
+
+`docker-compose.prod.yml` is the production package, not a developer convenience stack. The
+writer and serving API run from `packages/indexer/Dockerfile`; neither installs dependencies into
+or bind-mounts the checkout. Postgres and the operator state use explicitly named volumes. Only
+the small tracked `deployments/` directory is mounted read-only so the operator can consume the
+finalized manifest and policy.
+
+Set the variables required by the Compose file, then run:
+
+```bash
+docker compose -f docker-compose.prod.yml build ponder ponder-server
+docker compose -f docker-compose.prod.yml up -d
+```
+
+`OPERATOR_IMAGE` must be the release workflow's complete
+`ghcr.io/.../trustgraphs-operator@sha256:...` reference. On startup, the operator refuses unless
+its embedded trust-graph and signer ELF digests and vkeys match the tracked release manifest. The
+Sepolia candidate built from commit `22bbf4a` by
+[release run 32892667547](https://github.com/AInima-Collective/trustgraphs/actions/runs/32892667547)
+is:
+
+```text
+ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40
+```
+
+That run reproduced the guest ELFs twice, published a linux/amd64 + linux/arm64 OCI index,
+attested it, pulled it anonymously, and re-derived the embedded vkeys. The writer schema must be a
+new versioned name for each indexer release; the views schema stays stable. The
+primary Sepolia RPC and `PONDER_RPC_URLS_11155111` must name different providers so a single
+provider outage does not stop ingestion. The frontend host must receive `PONDER_URL`,
+`IPFS_GATEWAY_PUBLIC`, `RPC_URL_1` for ENS reads, and both `RPC_URL_11155111_0` and
+`RPC_URL_11155111_1`; the two browser RPC upstreams must also be independent. Public frontend
+config generation rejects missing, placeholder, non-HTTP, or duplicate endpoints.
+
+After the frontend is deployed, exercise its clean-browser, read-only launch surface before using
+a funded wallet:
+
+```bash
+SEPOLIA_FRONTEND_URL=https://testnet.example.org \
+  pnpm --filter trustgraphs-frontend smoke:sepolia
+```
+
+This checks the persistent testnet warning and the standard, weighted, and composition creation
+entries backed by the tracked factories. It does not submit a transaction; the clean-wallet
+creation remains a separate release check.
+
+On a preview deployment where transport 0 is deliberately pointed at an unreachable endpoint,
+the same smoke command can prove the browser actually continues through transport 1:
+
+```bash
+SEPOLIA_FRONTEND_URL=https://preview.testnet.example.org \
+SEPOLIA_EXPECT_RPC_FAILOVER=true \
+  pnpm --filter trustgraphs-frontend smoke:sepolia
+```
+
+The assertion requires a 5xx response from `id=0` followed by a 200 response from `id=1`; do not
+use it during an ordinary healthy smoke run.
+
+Use the database host's backup and restore facilities. Verify a backup by restoring it into an
+isolated database, then record the backup identifier, checksum, restored database, table count,
+and time in the deployment log.
+
+For the restart drill, record the writer's sync block, the operator journal checksum, and the
+latest backup checksum; stop both application services, recreate them from their exact image
+references, and confirm the sync block advances and the journal checksum is unchanged before new
+work is requested. The named volumes must remain attached throughout.
 
 ## Verify the release
 

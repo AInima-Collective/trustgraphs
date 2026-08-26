@@ -5,9 +5,10 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-import dotenv from 'dotenv'
 import pg from 'pg'
 
+import environmentLoader from '../../../scripts/load-env.cjs'
+import secretRedactor from '../../../scripts/redact-secrets.cjs'
 import {
   localSchemaName,
   parseRpcQuantity,
@@ -18,6 +19,8 @@ import {
 import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
 const { Client } = pg
+const { loadTargetEnvironment } = environmentLoader
+const { redactSecrets } = secretRedactor
 const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(indexerDir))
 const mode = process.argv[2]
@@ -28,9 +31,13 @@ if (!['dev', 'start', 'serve', 'preflight'].includes(mode)) {
   )
 }
 
-// Explicit process variables win, then indexer-local settings, then repository deployment values.
-dotenv.config({ path: path.join(indexerDir, '.env.local'), quiet: true })
-dotenv.config({ path: path.join(repoDir, '.env'), quiet: true })
+// Explicit process variables win. The public-target overlay comes next so a local indexer file
+// cannot leak local RPC/IPFS settings into Sepolia; `.env.local` then fills service-specific values
+// such as DATABASE_URL that are absent from the repository environment.
+loadTargetEnvironment({
+  repositoryRoot: repoDir,
+  higherPriorityFiles: [path.join(indexerDir, '.env.local')],
+})
 
 const deploymentProfile = resolveDeploymentProfile(process.env, repoDir)
 const production = deploymentProfile.production
@@ -45,19 +52,40 @@ const viewsSchema =
 const configuredProductionSchema =
   process.env.PONDER_DATABASE_SCHEMA ?? process.env.DATABASE_SCHEMA
 
-const rpcUrl = production
+const primaryRpcUrl = production
   ? process.env[deploymentProfile.rpcEnv]
   : (process.env.PONDER_RPC_URL_31337 ??
     process.env.PONDER_RPC_URL ??
     process.env.RPC_URL ??
     'http://127.0.0.1:8545')
 
-if (!rpcUrl) {
+if (!primaryRpcUrl) {
   throw new Error(
     production
       ? `${deploymentProfile.rpcEnv} is required for ${deploymentProfile.target}`
       : 'No local RPC URL is configured'
   )
+}
+
+const fallbackRpcEnv = `PONDER_RPC_URLS_${deploymentProfile.chainId}`
+const rpcUrls = [
+  primaryRpcUrl,
+  ...(production ? (process.env[fallbackRpcEnv] ?? '').split(/[\n,]/) : []),
+]
+  .map((value) => value?.trim())
+  .filter(Boolean)
+  .filter((value, index, values) => values.indexOf(value) === index)
+
+for (const value of rpcUrls) {
+  let protocol
+  try {
+    protocol = new URL(value).protocol
+  } catch {
+    throw new Error(`${fallbackRpcEnv} contains an invalid URL`)
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error(`${fallbackRpcEnv} only accepts HTTP(S) RPC URLs`)
+  }
 }
 
 const expectedChainId = deploymentProfile.chainId
@@ -110,29 +138,34 @@ function indexerAppFingerprint() {
 const appFingerprint = indexerAppFingerprint()
 
 async function rpc(method, params = []) {
-  let response
-  try {
-    response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-      signal: AbortSignal.timeout(10_000),
-    })
-  } catch (error) {
-    throw new Error(
-      `RPC preflight could not reach the configured endpoint: ${error.message}`
-    )
+  const failures = []
+  for (let index = 0; index < rpcUrls.length; index += 1) {
+    try {
+      const response = await fetch(rpcUrls[index], {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!response.ok) {
+        failures.push(`endpoint ${index + 1}: HTTP ${response.status}`)
+        continue
+      }
+      const body = await response.json()
+      if (body.error) {
+        failures.push(
+          `endpoint ${index + 1}: ${body.error.message ?? 'JSON-RPC error'}`
+        )
+        continue
+      }
+      return body.result
+    } catch (error) {
+      failures.push(`endpoint ${index + 1}: ${error.message}`)
+    }
   }
-
-  if (!response.ok) {
-    throw new Error(`RPC preflight received HTTP ${response.status}`)
-  }
-  const body = await response.json()
-  if (body.error) {
-    const detail = body.error.message ?? JSON.stringify(body.error)
-    throw new Error(`${method} failed during RPC preflight: ${detail}`)
-  }
-  return body.result
+  throw new Error(
+    `${method} failed on all ${rpcUrls.length} configured RPC endpoints (${failures.join('; ')})`
+  )
 }
 
 async function blockAt(blockNumber) {
@@ -172,6 +205,9 @@ function deploymentAddresses() {
   add(summary.provingVault)
   add(summary.factory?.factory)
   add(summary.factory?.instance_registry)
+  for (const address of deploymentProfile.requiredCodeAddresses ?? []) {
+    add(address)
+  }
   for (const network of summary.networks ?? []) {
     const contracts = network.contracts ?? {}
     for (const key of [
@@ -256,12 +292,39 @@ async function prepareDatabase({ chainId, head }) {
     )
   }
 
-  const client = new Client({ connectionString: databaseUrl })
+  // A hosted indexer reaches its database over a network it does not control. Bound the connect
+  // so an unreachable host fails with a message instead of hanging silently before anything logs.
+  const client = new Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: 15_000,
+  })
+  console.log('indexer: connecting to the database')
   await client.connect()
   try {
-    await client.query('SELECT pg_advisory_lock(hashtext($1))', [
-      'trustgraph-indexer-lifecycle',
-    ])
+    // `pg_advisory_lock` waits forever. A session that died without closing its connection - a
+    // killed container behind a TCP proxy is the usual way - keeps its lock until the backend is
+    // reaped, and every later start would then block here with no output at all. Poll a
+    // non-blocking acquire instead so the wait is visible and bounded.
+    const lockDeadline = Date.now() + 60_000
+    for (let attempt = 0; ; attempt += 1) {
+      const acquired = await client.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+        ['trustgraph-indexer-lifecycle']
+      )
+      if (acquired.rows[0]?.acquired) break
+      if (Date.now() >= lockDeadline) {
+        throw new Error(
+          'Timed out acquiring the indexer lifecycle lock. Another indexer holds it on this ' +
+            'database. Inspect pg_stat_activity and pg_locks, and terminate any orphaned backend.'
+        )
+      }
+      if (attempt === 0) {
+        console.warn(
+          'indexer: another indexer holds the lifecycle lock on this database; waiting'
+        )
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+    }
     await client.query('CREATE SCHEMA IF NOT EXISTS trustgraph_meta')
     await client.query(`
       CREATE TABLE IF NOT EXISTS trustgraph_meta.indexer_chain (
@@ -382,11 +445,30 @@ async function prepareDatabase({ chainId, head }) {
 }
 
 async function run(command, args, env) {
+  // Keep Ponder's interactive local development UI attached to its terminal. Hosted and
+  // non-interactive commands stay piped so upstream URLs can be scrubbed before forwarding.
+  const redactChildOutput = production || mode !== 'dev'
   const child = spawn(command, args, {
     cwd: indexerDir,
     env,
-    stdio: 'inherit',
+    stdio: redactChildOutput ? ['inherit', 'pipe', 'pipe'] : 'inherit',
   })
+  const forwardRedacted = (stream, destination) => {
+    let pending = ''
+    stream.on('data', (chunk) => {
+      pending += String(chunk)
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) destination.write(`${redactSecrets(line)}\n`)
+    })
+    stream.on('end', () => {
+      if (pending) destination.write(redactSecrets(pending))
+    })
+  }
+  if (redactChildOutput) {
+    forwardRedacted(child.stdout, process.stdout)
+    forwardRedacted(child.stderr, process.stderr)
+  }
   let forwardedSignal
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, () => {
@@ -416,8 +498,17 @@ async function main() {
     return
   }
 
+  console.log(
+    `indexer: starting ${deploymentProfile.stage}/${deploymentProfile.target} (chain ${deploymentProfile.chainId}, start block ${startBlock})`
+  )
   const chain = await rpcPreflight()
+  console.log(
+    `indexer: rpc ready across ${rpcUrls.length} endpoint(s) (head ${chain.head.number})`
+  )
   const indexSchema = await prepareDatabase(chain)
+  console.log(
+    `indexer: database ready (schema ${indexSchema}); running migrations`
+  )
   const childEnv = {
     ...process.env,
     DATABASE_SCHEMA: indexSchema,
@@ -435,7 +526,15 @@ async function main() {
   if (mode === 'start') {
     args.push('--schema', indexSchema, '--views-schema', viewsSchema)
   }
-  await run('pnpm', args, childEnv)
+  const ponderEnv = {
+    ...childEnv,
+    // Local-only escape hatch for a shared macOS/Linux checkout with incompatible native esbuild
+    // binaries. Production images install their own dependencies and must never override them.
+    ...(!production && process.env.PONDER_ESBUILD_BINARY_PATH
+      ? { ESBUILD_BINARY_PATH: process.env.PONDER_ESBUILD_BINARY_PATH }
+      : {}),
+  }
+  await run('pnpm', args, ponderEnv)
 }
 
 main().catch((error) => {

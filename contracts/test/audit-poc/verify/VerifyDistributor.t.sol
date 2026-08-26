@@ -92,7 +92,9 @@ contract VerifyDistributor is Test {
         // The funder does everything the production UI does: pins the proven root.
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, 100 ether);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), 100 ether, honestRoot, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), 100 ether, honestRoot, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(idx);
         assertEq(d.root, honestRoot, "the funder's root guard passed");
@@ -138,10 +140,14 @@ contract VerifyDistributor is Test {
 
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, 100 ether);
         vm.prank(funder);
-        uint256 r0 = dist.distribute(address(token), 100 ether, honestRoot, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        uint256 r0 = dist.distribute(
+            address(token), 100 ether, honestRoot, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient
+        );
         RoundPins.Pins memory _pins2 = RoundPins.read(dist, 700 ether);
         vm.prank(funderB);
-        uint256 r1 = dist.distribute(address(token), 700 ether, honestRoot, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient);
+        uint256 r1 = dist.distribute(
+            address(token), 700 ether, honestRoot, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient
+        );
 
         bytes32[] memory pA = new bytes32[](1);
         pA[0] = lBob;
@@ -177,7 +183,9 @@ contract VerifyDistributor is Test {
 
         RoundPins.Pins memory _pins3 = RoundPins.read(dist, amt);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), amt, _pins3.root, _pins3.totalValue, 0, type(uint256).max, _pins3.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), amt, _pins3.root, _pins3.totalValue, 0, type(uint256).max, _pins3.feeRecipient
+        );
 
         bytes32[] memory pa = new bytes32[](1);
         pa[0] = lb;
@@ -205,11 +213,21 @@ contract VerifyDistributor is Test {
         // fund a real round first so the balance is there to take
         RoundPins.Pins memory _pins4 = RoundPins.read(dist, 100 ether);
         vm.prank(funder);
-        dist.distribute(address(token), 100 ether, _pins4.root, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient);
+        dist.distribute(
+            address(token), 100 ether, _pins4.root, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient
+        );
 
         RoundPins.Pins memory _pins5 = RoundPins.read(dist, 1);
         vm.prank(funder);
-        uint256 bad = dist.distribute(address(token), 1, _pins5.root, _pins5.totalValue, uint64(block.timestamp + 1 days), type(uint256).max, _pins5.feeRecipient);
+        uint256 bad = dist.distribute(
+            address(token),
+            1,
+            _pins5.root,
+            _pins5.totalValue,
+            uint64(block.timestamp + 1 days),
+            type(uint256).max,
+            _pins5.feeRecipient
+        );
         bytes32[] memory none = new bytes32[](0);
         vm.expectRevert(
             abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 50 ether, uint256(1))

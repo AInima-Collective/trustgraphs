@@ -10,16 +10,6 @@ export const CHAIN_PROFILES: Record<ChainTarget, ChainProfile> = {
     wsEnv: 'PONDER_WS_URL_31337',
     startBlockEnv: 'PONDER_START_BLOCK',
   },
-  optimism: {
-    target: 'optimism',
-    name: 'Optimism (legacy)',
-    chainId: 10,
-    public: true,
-    rpcEnv: 'PONDER_RPC_URL_10',
-    wsEnv: 'PONDER_WS_URL_10',
-    startBlockEnv: 'PONDER_START_BLOCK_10',
-    explorer: 'https://optimistic.etherscan.io',
-  },
   sepolia: {
     target: 'sepolia',
     name: 'Ethereum Sepolia',

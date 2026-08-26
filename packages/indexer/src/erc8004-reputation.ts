@@ -16,10 +16,7 @@ import {
   targetAgentKey,
 } from './erc8004-reputation-shared'
 import { erc8004RegistryKey } from './erc8004-shared'
-import {
-  OPTIMISM_ERC8004_REPUTATION_REGISTRY,
-  erc8004ReputationRegistryAbi,
-} from '../abis/erc8004ReputationRegistry'
+import { erc8004ReputationRegistryAbi } from '../abis/erc8004ReputationRegistry'
 
 const registryIdFor = (chainId: number, address: Hex) =>
   erc8004RegistryKey(chainId, address)
@@ -36,11 +33,6 @@ const eventPosition = (event: {
   txHash: event.transaction.hash,
   blockHash: event.block.hash,
 })
-
-const isPinnedOptimismRegistry = (chainId: number, address: Hex) =>
-  chainId === OPTIMISM_ERC8004_REPUTATION_REGISTRY.chainId &&
-  address.toLowerCase() ===
-    OPTIMISM_ERC8004_REPUTATION_REGISTRY.proxy.toLowerCase()
 
 ponder.on('erc8004ReputationRegistry:Upgraded', async ({ event, context }) => {
   const proxy = event.log.address
@@ -66,45 +58,6 @@ ponder.on('erc8004ReputationRegistry:Upgraded', async ({ event, context }) => {
     })
   } catch {
     // The official v1 bootstrap implementation did not expose this getter. The v2 upgrade does.
-  }
-
-  if (isPinnedOptimismRegistry(context.chain.id, proxy)) {
-    const initial =
-      event.block.number ===
-      BigInt(OPTIMISM_ERC8004_REPUTATION_REGISTRY.sourceBlock)
-    const expectedImplementation = initial
-      ? OPTIMISM_ERC8004_REPUTATION_REGISTRY.initialImplementation
-      : OPTIMISM_ERC8004_REPUTATION_REGISTRY.currentImplementation
-    const expectedVersion = initial
-      ? OPTIMISM_ERC8004_REPUTATION_REGISTRY.initialVersion
-      : OPTIMISM_ERC8004_REPUTATION_REGISTRY.currentVersion
-    if (
-      event.args.implementation.toLowerCase() !==
-      expectedImplementation.toLowerCase()
-    ) {
-      throw new Error(
-        `erc8004 reputation: unreviewed Optimism implementation ${event.args.implementation} at block ${event.block.number}`
-      )
-    }
-    if (version !== expectedVersion) {
-      throw new Error(
-        `erc8004 reputation: expected Optimism version ${expectedVersion}, observed ${version} at block ${event.block.number}`
-      )
-    }
-    if (!initial && !identityRegistry) {
-      throw new Error(
-        `erc8004 reputation: Identity Registry binding unavailable at block ${event.block.number}`
-      )
-    }
-    if (
-      identityRegistry &&
-      identityRegistry.toLowerCase() !==
-        OPTIMISM_ERC8004_REPUTATION_REGISTRY.identityRegistry.toLowerCase()
-    ) {
-      throw new Error(
-        `erc8004 reputation: Optimism proxy is bound to unexpected Identity Registry ${identityRegistry}`
-      )
-    }
   }
 
   await context.db
@@ -148,18 +101,6 @@ ponder.on(
   'erc8004ReputationRegistry:OwnershipTransferred',
   async ({ event, context }) => {
     const registryId = registryIdFor(context.chain.id, event.log.address)
-    if (
-      isPinnedOptimismRegistry(context.chain.id, event.log.address) &&
-      event.args.newOwner.toLowerCase() !==
-        OPTIMISM_ERC8004_REPUTATION_REGISTRY.expectedOwner.toLowerCase()
-    ) {
-      // M0 hazard sweep: scream, do not wedge. An owner change is a valid chain event even when it
-      // is alarming; the Identity Registry handler (src/erc8004.ts) already treats the same drift
-      // as a loud log, and a throw here would crash-loop the indexer forever on one log.
-      console.error(
-        `erc8004 reputation: Optimism owner changed to ${event.args.newOwner} at block ${event.block.number}`
-      )
-    }
     // M0 hazard sweep: the registry row is born from `Upgraded`; if that predates the start block
     // the row is not reconstructible here (implementation/version are notNull and not in this
     // event) — log and skip the row update, but keep the append-only receipt.
@@ -206,16 +147,6 @@ ponder.on(
         `erc8004 reputation: missing Identity Registry binding for ${registryId}`
       )
     }
-    if (
-      isPinnedOptimismRegistry(context.chain.id, event.log.address) &&
-      registry.identityRegistry.toLowerCase() !==
-        OPTIMISM_ERC8004_REPUTATION_REGISTRY.identityRegistry.toLowerCase()
-    ) {
-      throw new Error(
-        'erc8004 reputation: refusing feedback from a drifted registry binding'
-      )
-    }
-
     const position = eventPosition(event)
     const relationRows = await context.db.sql
       .select()

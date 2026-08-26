@@ -2,13 +2,18 @@
 
 import { ArrowLeft, ArrowRight, LoaderCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Hex, zeroAddress } from 'viem'
-import { useAccount, useChainId, useReadContract, useSwitchChain } from 'wagmi'
+import { Hex, isAddress, zeroAddress } from 'viem'
+import { useAccount, useChainId, useReadContract } from 'wagmi'
 
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
+import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
 import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
+import {
+  TRUST_COMPOSE_CONFIG,
+  WEIGHTED_FACTORY,
+} from '@/lib/config'
 import { cn } from '@/lib/utils'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 
@@ -39,6 +44,17 @@ import { SuccessStep } from './steps/SuccessStep'
 import { TuningStep } from './steps/TuningStep'
 import { Note } from './ui'
 
+const publicFactoryAvailable = (value: string | undefined): boolean =>
+  Boolean(
+    value &&
+      value.toLowerCase() !== zeroAddress &&
+      isAddress(value, { strict: false })
+  )
+const WEIGHTED_PATH_AVAILABLE = publicFactoryAvailable(WEIGHTED_FACTORY)
+const COMPOSITION_PATH_AVAILABLE = publicFactoryAvailable(
+  TRUST_COMPOSE_CONFIG?.factory
+)
+
 /**
  * The three ways to create, offered BEFORE any wizard state exists. The first wizard screen's
  * Continue pins metadata to IPFS, so someone who actually wants weighted shares or a composition
@@ -49,8 +65,8 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
     <div className="space-y-2">
       <h1 className="text-2xl">Create a network</h1>
       <p className="text-sm text-muted-foreground max-w-2xl">
-        There are three kinds of network. Nothing is saved or sent while you
-        choose.
+        Choose from the network types available on this deployment. Nothing is
+        saved or sent while you choose.
       </p>
     </div>
 
@@ -81,41 +97,45 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
         )}
       </Card>
 
-      <Card type="accent" size="md" className="space-y-3">
-        <div className="space-y-1">
-          <h2 className="tg-label-strong">Weighted starting shares</h2>
-          <p className="text-sm text-muted-foreground">
-            Give each starting account its own size of head start; vouches still
-            decide the final scores.
-          </p>
-        </div>
-        <ButtonLink
-          href="/create/weighted"
-          variant="outline"
-          size="sm"
-          className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
-        >
-          Choose weighted shares
-        </ButtonLink>
-      </Card>
+      {WEIGHTED_PATH_AVAILABLE && (
+        <Card type="accent" size="md" className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="tg-label-strong">Weighted starting shares</h2>
+            <p className="text-sm text-muted-foreground">
+              Give each starting account its own size of head start; vouches
+              still decide the final scores.
+            </p>
+          </div>
+          <ButtonLink
+            href="/create/weighted"
+            variant="outline"
+            size="sm"
+            className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
+          >
+            Choose weighted shares
+          </ButtonLink>
+        </Card>
+      )}
 
-      <Card type="accent" size="md" className="space-y-3">
-        <div className="space-y-1">
-          <h2 className="tg-label-strong">Compose proved scoreboards</h2>
-          <p className="text-sm text-muted-foreground">
-            Blend the proven scoreboards of existing networks into one, at exact
-            percentages you choose.
-          </p>
-        </div>
-        <ButtonLink
-          href="/create/composition"
-          variant="outline"
-          size="sm"
-          className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
-        >
-          Open the composition workspace
-        </ButtonLink>
-      </Card>
+      {COMPOSITION_PATH_AVAILABLE && (
+        <Card type="accent" size="md" className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="tg-label-strong">Compose proved scoreboards</h2>
+            <p className="text-sm text-muted-foreground">
+              Blend the proven scoreboards of existing networks into one, at
+              exact percentages you choose.
+            </p>
+          </div>
+          <ButtonLink
+            href="/create/composition"
+            variant="outline"
+            size="sm"
+            className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
+          >
+            Open the composition workspace
+          </ButtonLink>
+        </Card>
+      )}
     </div>
   </div>
 )
@@ -123,7 +143,7 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
 export const CreateNetworkWizard = () => {
   const { isConnected } = useAccount()
   const chainId = useChainId()
-  const { switchChain, isPending: switching } = useSwitchChain()
+  const { switchToTarget, switchingTarget } = useWalletConnectionContext()
 
   const [path, setPath] = useState<'standard' | null>(null)
   const [step, setStep] = useState(0)
@@ -147,6 +167,15 @@ export const CreateNetworkWizard = () => {
     query: { enabled: isFactoryAvailable() },
   })
   const epochFloor = (epochFloorRead as bigint | undefined) ?? 0n
+  const { data: vaultRead } = useReadContract({
+    address: FACTORY_ADDRESS,
+    abi: trustgraphsFactoryAbi,
+    functionName: 'VAULT',
+    query: { enabled: isFactoryAvailable() },
+  })
+  const vaultAvailable =
+    typeof vaultRead === 'string' &&
+    vaultRead.toLowerCase() !== zeroAddress.toLowerCase()
 
   const onChange = (patch: Partial<WizardData>) => {
     setData((current) => ({ ...current, ...patch }))
@@ -188,7 +217,7 @@ export const CreateNetworkWizard = () => {
     if (id === 'extras') {
       return (
         fundTokenProblem(data) ||
-        prepayProblem(data) ||
+        (vaultAvailable ? prepayProblem(data) : null) ||
         offchainVouchesProblem(data) ||
         signerSyncProblem(data)
       )
@@ -316,8 +345,8 @@ export const CreateNetworkWizard = () => {
             type="button"
             variant="outline"
             size="sm"
-            disabled={switching}
-            onClick={() => switchChain({ chainId: getTargetChainId() })}
+            disabled={switchingTarget}
+            onClick={() => void switchToTarget()}
           >
             Switch to {getTargetChainConfig().name}
           </Button>
@@ -339,6 +368,7 @@ export const CreateNetworkWizard = () => {
           onChange={onChange}
           showErrors={showErrors}
           epochFloor={epochFloor}
+          vaultAvailable={vaultAvailable}
         />
       )}
       {stepId === 'review' && (

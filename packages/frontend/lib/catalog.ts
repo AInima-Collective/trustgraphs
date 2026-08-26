@@ -1,4 +1,4 @@
-//! The runtime trust-graph catalog (GOAL.md M3; research/INSTANCE_FACTORY.md §3).
+//! The runtime trust-graph catalog (`research/INSTANCE_FACTORY.md` §3).
 //!
 //! Trust-graph networks used to be a build-time list: `config/networks.<env>.json` → the
 //! `networks.json` symlink → a synchronous `import` in `lib/config.ts`. Adding a network meant

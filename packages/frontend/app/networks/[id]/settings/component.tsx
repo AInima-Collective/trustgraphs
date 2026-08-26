@@ -52,6 +52,7 @@ import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
 import type { InstanceRow } from '@/lib/catalog'
 import {
+  CONTRIBUTIONS_FACTORY,
   CONTRACT_CONFIG,
   GOVERNED_WEIGHTED_FACTORY,
   PROVING_VAULT,
@@ -355,7 +356,7 @@ const explainAttachFundError = (error: unknown): string => {
 }
 
 /**
- * The attach-a-fund action for a network created without one (GOAL M5): a permissionless
+ * The attach-a-fund action for a network created without one: a permissionless
  * `attachDistributor` call on the network's base factory. The owner must hold the instance's
  * constitutional role RIGHT NOW (the contract checks), so it defaults to the current authority.
  */
@@ -1868,9 +1869,8 @@ export const SettingsPage = ({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Launching a new contribution cycle will appear here once the
-                  parameter bundle can be published to the prover and indexer as
-                  one coordinated operation.
+                  Start a contribution round from the Features tab when this
+                  deployment and network type support it.
                 </p>
               </div>
             </section>
@@ -2072,6 +2072,12 @@ export const SettingsPage = ({
                     {operatorStatus?.available &&
                     operatorStatus.settings?.globalUsdPerDay !== null
                       ? `$${operatorStatus.settings?.globalUsdPerDay ?? '—'} / day`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Global budget alert">
+                    {operatorStatus?.available &&
+                    operatorStatus.settings?.globalBudgetAlertPercent !== null
+                      ? `${operatorStatus.settings?.globalBudgetAlertPercent ?? '—'}% of cap`
                       : '—'}
                   </SettingRow>
                   <SettingRow label="Budget window">
@@ -2799,7 +2805,12 @@ export const SettingsPage = ({
                       : 'Connect to check access'}
                   </SettingRow>
                   <div className="flex flex-wrap gap-3 pt-4">
-                    {weighted ? (
+                    {!realAddress(CONTRIBUTIONS_FACTORY) ? (
+                      <p className="text-xs text-muted-foreground">
+                        Contribution rounds are not available on this
+                        deployment.
+                      </p>
+                    ) : weighted ? (
                       <p className="text-xs text-muted-foreground">
                         The current ContributionsFactory accepts standard
                         trust-graph parents only. Weighted networks cannot start

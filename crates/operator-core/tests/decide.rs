@@ -1,6 +1,6 @@
 //! Every `Action` branch, against a fake chain.
 //!
-//! The GOAL's M1 exit list, one test each: quiet instance, epoch not elapsed, coalesce over three
+//! One test for each action branch: quiet instance, epoch not elapsed, coalesce over three
 //! unproven checkpoints, params mismatch skips one instance and leaves the rest running, verifier
 //! rotation pending, basefee spike, unfinalized checkpoint, loss budget exceeded, and
 //! crash-restart replay in all three journal states (the last in `tests/journal.rs`).

@@ -1,6 +1,6 @@
 import type { Connector, CreateConnectorFn } from '@wagmi/core'
 import { Chain } from 'viem'
-import { optimism, sepolia } from 'viem/chains'
+import { sepolia } from 'viem/chains'
 import { createConfig, fallback, http, mock, webSocket } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
 import { injected } from 'wagmi/connectors'
@@ -36,8 +36,8 @@ export const localChain: Chain = {
 
 // Environment-based network configuration
 export const getCurrentChainConfig = (): Chain => {
-  if (CHAIN === 'optimism' || CHAIN === 'sepolia') {
-    const publicChain = CHAIN === 'sepolia' ? sepolia : optimism
+  if (CHAIN === 'sepolia') {
+    const publicChain = sepolia
     const chainId = publicChain.id
     const webSocketUrl =
       process.env[`NEXT_PUBLIC_WEBSOCKET_URL_${publicChain.id}`]

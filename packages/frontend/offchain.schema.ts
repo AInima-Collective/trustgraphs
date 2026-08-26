@@ -301,7 +301,7 @@ export const compositionAttribution = offchainSchema.table(
 // These rows are therefore populated by the OFF-CHAIN prover/witness pipeline (the witness bundle the
 // prover archives) and then VALIDATED against the on-chain `skippedDigest` for the matching checkpoint.
 // This is an `offchain` (non-Ponder) table because its source is that pipeline, not a chain event.
-// Ingestion is stubbed for M2 — see `ingestSkippedNodes` in src/anchor.ts.
+// Reserved for a future authenticated skipped-node witness ingestion path.
 export const skippedNode = offchainSchema.table(
   'skipped_node',
   (t) => ({

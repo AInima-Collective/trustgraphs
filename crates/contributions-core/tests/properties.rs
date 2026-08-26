@@ -1,4 +1,4 @@
-//! The M1 property suite (GOAL.md M1): randomized scenarios driven by a deterministic LCG
+//! The contribution-scoring property suite: randomized scenarios driven by a deterministic LCG
 //! (no new deps, reproducible failures — print the round seed on assert). Each property
 //! is checked over many generated rounds.
 //!

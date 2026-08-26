@@ -83,7 +83,7 @@ assert.match(workspace, /Publisher\/controller family/)
 assert.match(workspace, /Pairwise support\/correlation\/disagreement/)
 assert.match(workspace, /Per-account exact attribution/)
 
-// Creation-time features (GOAL M4/M5): governance and the shared fund are explicit choices with
+// Governance and the shared fund are explicit creation-time choices with
 // plain-words copy, the voting profile is read live from the wrapper factory, the compounded
 // activation timelock is stated, and signer-sync is honestly not offered.
 assert.match(workspace, /Create with governance/)

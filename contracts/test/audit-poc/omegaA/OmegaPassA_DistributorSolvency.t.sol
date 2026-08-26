@@ -86,7 +86,9 @@ contract OmegaPassA_DistributorSolvency is Test {
         // 1. An unrelated funder funds a real round against the proven root.
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, 1_000_000);
         vm.prank(funder);
-        uint256 honestIndex = dist.distribute(address(token), 1_000_000, honestRoot, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 honestIndex = dist.distribute(
+            address(token), 1_000_000, honestRoot, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
         assertEq(token.balanceOf(address(dist)), 1_000_000);
 
         // 2. The owner re-points the snapshot. No delay, no notice, no event consumers can act on.
@@ -96,7 +98,8 @@ contract OmegaPassA_DistributorSolvency is Test {
         //    round against the crafted (root, totalValue=1) pair.
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, 1);
         vm.prank(attacker);
-        uint256 evilIndex = dist.distribute(address(token), 1, evilRoot, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        uint256 evilIndex =
+            dist.distribute(address(token), 1, evilRoot, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
 
         // 4. One leaf whose `value` exceeds `totalMerkleValue` is rejected at the round boundary.
         bytes32[] memory noProof = new bytes32[](0);
@@ -113,11 +116,21 @@ contract OmegaPassA_DistributorSolvency is Test {
     function test_H3_RejectedOverclaimLeavesRoundSweepable() public {
         RoundPins.Pins memory _pins2 = RoundPins.read(dist, 1_000_000);
         vm.prank(funder);
-        dist.distribute(address(token), 1_000_000, honestRoot, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient);
+        dist.distribute(
+            address(token), 1_000_000, honestRoot, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient
+        );
         dist.setMerkleSnapshot(address(evil));
         RoundPins.Pins memory _pins3 = RoundPins.read(dist, 1);
         vm.prank(attacker);
-        uint256 evilIndex = dist.distribute(address(token), 1, evilRoot, _pins3.totalValue, uint64(block.timestamp + 1 days), type(uint256).max, _pins3.feeRecipient);
+        uint256 evilIndex = dist.distribute(
+            address(token),
+            1,
+            evilRoot,
+            _pins3.totalValue,
+            uint64(block.timestamp + 1 days),
+            type(uint256).max,
+            _pins3.feeRecipient
+        );
 
         bytes32[] memory noProof = new bytes32[](0);
         vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 1_000_000, 1));

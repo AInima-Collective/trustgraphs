@@ -31,7 +31,7 @@ import { WalletConnectionProvider } from './WalletConnectionProvider'
 function useClarity() {
   React.useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return
-    if (window.location.hostname !== 'trustgraph.network') return
+    if (window.location.hostname !== 'trustgraphs.xyz') return
     let cancelled = false
     import('@microsoft/clarity').then((mod) => {
       if (!cancelled) mod.default.init('tjxevwhvhb')
@@ -69,11 +69,7 @@ export function Providers({
   const [wagmiConfig] = React.useState(makeWagmiConfig)
 
   return (
-    <PlausibleProvider
-      domain="trustgraph.network"
-      taggedEvents
-      trackOutboundLinks
-    >
+    <PlausibleProvider domain="trustgraphs.xyz" taggedEvents trackOutboundLinks>
       {/* Dark is the default, not a preference we infer: the trustgraphs ramp is
        * designed against the near-black canvas and the graph is tuned for it.
        * enableSystem would hand first-time visitors the light theme roughly

@@ -1,7 +1,7 @@
 //! The operator's configuration file, exactly as `docs/build/run-a-prover.md` §2 documents it.
 //!
 //! Every key has a default except `rpc` and `registry`. That is deliberate: a missing key should
-//! be a recorded decision, not a stall (GOAL ground rule 12). What is NOT configurable is also
+//! be a recorded decision, not a stall. What is NOT configurable is also
 //! deliberate — anything absent from here, the operator does not do.
 
 use alloy_primitives::{keccak256, Address, B256};
@@ -11,7 +11,7 @@ use operator_core::policy::{LossBudget, Policy};
 use operator_core::types::Program;
 use operator_core::work::{CapabilityProfile, OPERATOR_CYCLE_LIMIT};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +21,10 @@ pub struct Config {
     /// identity and deployed contract coordinates come from the tracked JSON release record.
     #[serde(default)]
     pub release_manifest: Option<PathBuf>,
+    /// Guest identities copied from the sanitized release manifest. They are checked against the
+    /// ELFs embedded in the operator binary before any chain work or proving can begin.
+    #[serde(skip)]
+    release_programs: BTreeMap<Program, ReleaseProgramIdentity>,
     #[serde(default)]
     pub registry: Address,
     /// Checked against `eth_chainId` at startup, never trusted over it.
@@ -82,7 +86,8 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ipfs {
-    /// Independent kubo/pinning targets. Every target is verified through its reader gateway.
+    /// Independent kubo or managed-pinning targets. Every target is verified through its reader
+    /// gateway before it counts toward the publication minimum.
     #[serde(default)]
     pub targets: Vec<PinTarget>,
     /// How many independent targets must accept and serve the exact CID before a proof may submit.
@@ -123,11 +128,28 @@ pub struct WeightedManifests {
     pub retry_seconds: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PinTargetKind {
+    /// A Kubo-compatible `/api/v0/add` endpoint. This remains the default for old configs.
+    #[default]
+    Kubo,
+    /// Pinata's typed v3 file upload API.
+    Pinata,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PinTarget {
     pub name: String,
+    #[serde(default)]
+    pub kind: PinTargetKind,
     pub api: String,
     pub gateway: String,
+    /// Name of the environment variable holding the managed service's bearer token. The name is
+    /// safe to persist in the publication policy; the token itself never enters config or logs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_env: Option<String>,
 }
 
 /// The free tier, and the whole of it. There is no unconditional one: a permissionless factory
@@ -136,6 +158,11 @@ pub struct PinTarget {
 pub struct Curated {
     #[serde(default)]
     pub instances: Vec<B256>,
+    /// Populate the curated subsidy set from the sanitized release manifest. A deployment profile
+    /// may use this only when the manifest names exactly one deliberately recorded test network;
+    /// an empty or broad catalog fails closed instead of silently changing who the operator funds.
+    #[serde(default)]
+    pub single_release_instance: bool,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -224,6 +251,11 @@ pub struct Budget {
     /// pre-audit behavior — moved it to never.
     #[serde(default = "d_eth_usd")]
     pub eth_usd: u64,
+    /// Page before the rolling global loss ceiling becomes a hard halt. This is deliberately a
+    /// percentage of the configured cap so changing the deployment budget cannot leave a stale
+    /// absolute alert threshold behind.
+    #[serde(default = "d_budget_alert_percent")]
+    pub global_alert_percent: u8,
 }
 
 #[derive(Debug, Deserialize)]
@@ -370,6 +402,9 @@ fn d_budget_window() -> u64 {
 fn d_eth_usd() -> u64 {
     5_000
 }
+fn d_budget_alert_percent() -> u8 {
+    80
+}
 fn d_publication_retry() -> u64 {
     300
 }
@@ -442,6 +477,7 @@ impl Default for Budget {
             cents_per_billion_cycles: d_cents_per_gcycle(),
             window_seconds: d_budget_window(),
             eth_usd: d_eth_usd(),
+            global_alert_percent: d_budget_alert_percent(),
         }
     }
 }
@@ -527,6 +563,7 @@ impl Config {
             .with_context(|| format!("read operator config {}", path.display()))?;
         let mut cfg: Config = toml::from_str(&text)
             .with_context(|| format!("parse operator config {}", path.display()))?;
+        cfg.resolve_environment_references()?;
         // Every relative path in this file is relative to the FILE, never to whatever directory
         // the daemon happened to be started from. `release_manifest` has always worked this way;
         // now the journal, the heartbeat, both caches, the tool directory and every manifest
@@ -540,6 +577,29 @@ impl Config {
         cfg.validate()?;
         cfg.ensure_state_dir()?;
         Ok(cfg)
+    }
+
+    pub fn release_program_identities(&self) -> &BTreeMap<Program, ReleaseProgramIdentity> {
+        &self.release_programs
+    }
+
+    /// Resolve secret endpoint references only after reading the tracked profile. This keeps RPC,
+    /// gateway and alert credentials out of git without templating a TOML file in a shell. The
+    /// resolved values stay in memory and never enter the public status projection.
+    fn resolve_environment_references(&mut self) -> Result<()> {
+        self.rpc = resolve_env_reference(&self.rpc, "rpc")?;
+        if let Some(webhook) = self.ops.alert_webhook.as_mut() {
+            *webhook = resolve_env_reference(webhook, "ops.alert_webhook")?;
+        }
+        for target in &mut self.ipfs.targets {
+            target.api =
+                resolve_env_reference(&target.api, &format!("ipfs target {:?} api", target.name))?;
+            target.gateway = resolve_env_reference(
+                &target.gateway,
+                &format!("ipfs target {:?} gateway", target.name),
+            )?;
+        }
+        Ok(())
     }
 
     /// Rewrite every relative path in the parsed config as an absolute one under `base`.
@@ -729,14 +789,30 @@ impl Config {
             manifest.first_deployment_block.is_some(),
             "release manifest firstDeploymentBlock is missing"
         );
-        anyhow::ensure!(
-            is_hex(&manifest.programs.trust_graph.elf_sha256, 64, true),
-            "release manifest trust-graph ELF digest is missing or invalid"
-        );
-        anyhow::ensure!(
-            is_hex(&manifest.programs.trust_graph.vkey, 64, true),
-            "release manifest trust-graph vkey is missing or invalid"
-        );
+        self.release_programs.clear();
+        for (program, label, identity) in [
+            (Program::Trustgraphs, "trust-graph", manifest.programs.trust_graph),
+            (Program::Signer, "signer", manifest.programs.signer),
+        ] {
+            anyhow::ensure!(
+                is_hex(&identity.elf_sha256, 64, true),
+                "release manifest {label} ELF digest is missing or invalid"
+            );
+            anyhow::ensure!(
+                is_hex(&identity.vkey, 64, true),
+                "release manifest {label} vkey is missing or invalid"
+            );
+            self.release_programs.insert(
+                program,
+                ReleaseProgramIdentity {
+                    elf_sha256: identity.elf_sha256.trim_start_matches("0x").to_ascii_lowercase(),
+                    vkey: identity
+                        .vkey
+                        .parse()
+                        .with_context(|| format!("parse release manifest {label} vkey"))?,
+                },
+            );
+        }
 
         match self.chain_id {
             Some(configured) => anyhow::ensure!(
@@ -775,6 +851,18 @@ impl Config {
                 None => self.paid.vault = Some(vault),
             }
         }
+        if self.curated.single_release_instance {
+            anyhow::ensure!(
+                self.curated.instances.is_empty(),
+                "[curated] cannot combine explicit instances with single_release_instance"
+            );
+            anyhow::ensure!(
+                manifest.instances.len() == 1,
+                "[curated] single_release_instance requires exactly one tracked release instance, found {}. Complete the browser creation milestone and record only that instance before starting the subsidized operator",
+                manifest.instances.len()
+            );
+            self.curated.instances = vec![manifest.instances[0].instance_id];
+        }
         Ok(())
     }
 
@@ -802,6 +890,10 @@ impl Config {
             self.registry != Address::ZERO,
             "`registry` is the zero address: there is no instance directory to enumerate, so \
              every tick would find nothing and report success"
+        );
+        anyhow::ensure!(
+            !self.curated.single_release_instance || self.release_manifest.is_some(),
+            "[curated] single_release_instance requires release_manifest"
         );
 
         if self.paid.enabled {
@@ -850,6 +942,10 @@ impl Config {
              permanently, with no tick, no alert and no recovery."
         );
         anyhow::ensure!(self.prover.cycle_limit > 0, "prover.cycle_limit must be at least 1");
+        anyhow::ensure!(
+            (1..100).contains(&self.budget.global_alert_percent),
+            "budget.global_alert_percent must be between 1 and 99"
+        );
         for (name, limit) in [
             ("max_raw_records", self.prover.capability_profile.max_raw_records),
             ("max_live_edges", self.prover.capability_profile.max_live_edges),
@@ -959,12 +1055,21 @@ struct OperatorReleaseManifest {
     first_deployment_block: Option<u64>,
     contracts: OperatorReleaseContracts,
     programs: OperatorReleasePrograms,
+    #[serde(default)]
+    instances: Vec<OperatorReleaseInstance>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OperatorReleaseInstance {
+    #[serde(rename = "instanceId")]
+    instance_id: B256,
 }
 
 #[derive(Debug, Deserialize)]
 struct OperatorReleasePrograms {
     #[serde(rename = "trustGraph")]
     trust_graph: OperatorReleaseProgram,
+    signer: OperatorReleaseProgram,
 }
 
 #[derive(Debug, Deserialize)]
@@ -972,6 +1077,12 @@ struct OperatorReleaseProgram {
     #[serde(rename = "elfSha256")]
     elf_sha256: String,
     vkey: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseProgramIdentity {
+    pub elf_sha256: String,
+    pub vkey: B256,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1010,6 +1121,28 @@ fn is_hex(value: &str, digits: usize, prefixed: bool) -> bool {
     value.len() == digits
         && value.bytes().all(|byte| byte.is_ascii_hexdigit())
         && value.bytes().any(|byte| byte != b'0')
+}
+
+fn resolve_env_reference(value: &str, field: &str) -> Result<String> {
+    let Some(name) = value.strip_prefix("env:") else {
+        return Ok(value.to_string());
+    };
+    anyhow::ensure!(
+        valid_env_name(name),
+        "{field} has invalid environment reference {value:?}; use env:UPPER_SNAKE_CASE"
+    );
+    let resolved = std::env::var(name)
+        .with_context(|| format!("{field} references missing environment variable {name}"))?;
+    anyhow::ensure!(!resolved.trim().is_empty(), "{field} environment variable {name} is empty");
+    Ok(resolved)
+}
+
+fn valid_env_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte == b'_' || byte.is_ascii_uppercase() || byte.is_ascii_digit())
+        && !name.as_bytes()[0].is_ascii_digit()
 }
 
 impl WeightedManifests {
@@ -1106,6 +1239,33 @@ impl Ipfs {
                     target.name
                 );
             }
+            anyhow::ensure!(
+                target.gateway.ends_with("/ipfs/"),
+                "[ipfs] target {:?} gateway must end in /ipfs/ because readers append the CID verbatim",
+                target.name
+            );
+            match target.kind {
+                PinTargetKind::Kubo => anyhow::ensure!(
+                    target.token_env.is_none(),
+                    "[ipfs] kubo target {:?} cannot set token_env; use kind = \"pinata\" for bearer-authenticated uploads",
+                    target.name
+                ),
+                PinTargetKind::Pinata => {
+                    anyhow::ensure!(
+                        target.api.starts_with("https://"),
+                        "[ipfs] Pinata target {:?} API must use HTTPS",
+                        target.name
+                    );
+                    anyhow::ensure!(
+                        target
+                            .token_env
+                            .as_deref()
+                            .is_some_and(valid_env_name),
+                        "[ipfs] Pinata target {:?} must set token_env to an UPPER_SNAKE_CASE environment variable name (normally IPFS_PIN_API_KEY)",
+                        target.name
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -1113,7 +1273,10 @@ impl Ipfs {
 
 #[cfg(test)]
 mod validate_tests {
-    use super::{CapabilityProfile, Config, LogFormat, OPERATOR_CYCLE_LIMIT};
+    use super::{
+        resolve_env_reference, CapabilityProfile, Config, LogFormat, ReleaseProgramIdentity,
+        OPERATOR_CYCLE_LIMIT,
+    };
     use alloy_primitives::{Address, B256};
     use operator_core::types::Program;
     use std::collections::BTreeSet;
@@ -1136,6 +1299,18 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         assert_eq!(cfg.prover.cycle_limit, OPERATOR_CYCLE_LIMIT);
         assert_eq!(cfg.prover.capability_profile, CapabilityProfile::default());
         assert_eq!(cfg.ops.log_format, LogFormat::Text);
+        assert_eq!(cfg.budget.global_alert_percent, 80);
+    }
+
+    #[test]
+    fn endpoint_environment_references_resolve_without_templating_secrets_into_toml() {
+        assert_eq!(
+            resolve_env_reference("https://rpc.invalid", "rpc").unwrap(),
+            "https://rpc.invalid"
+        );
+        assert!(!resolve_env_reference("env:PATH", "rpc").unwrap().is_empty());
+        let error = resolve_env_reference("env:not-valid", "rpc").unwrap_err().to_string();
+        assert!(error.contains("UPPER_SNAKE_CASE"), "{error}");
     }
 
     #[test]
@@ -1175,15 +1350,23 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
                 "trustGraph": {
                   "elfSha256": "0x3333333333333333333333333333333333333333333333333333333333333333",
                   "vkey": "0x4444444444444444444444444444444444444444444444444444444444444444"
+                },
+                "signer": {
+                  "elfSha256": "0x6666666666666666666666666666666666666666666666666666666666666666",
+                  "vkey": "0x7777777777777777777777777777777777777777777777777777777777777777"
                 }
-              }
+              },
+              "instances": [{
+                "instanceId": "0x5555555555555555555555555555555555555555555555555555555555555555"
+              }]
             }"#,
         )
         .unwrap();
         let config_path: PathBuf = directory.join("operator.toml");
         std::fs::write(
             &config_path,
-            "rpc = \"https://rpc.invalid\"\nrelease_manifest = \"sepolia.json\"\n",
+            "rpc = \"https://rpc.invalid\"\nrelease_manifest = \"sepolia.json\"\n\
+             [curated]\nsingle_release_instance = true\n",
         )
         .unwrap();
 
@@ -1195,7 +1378,38 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         );
         assert_eq!(cfg.registry_from_block, 123);
         assert_eq!(cfg.rpc, "https://rpc.invalid");
+        assert_eq!(cfg.curated.instances, vec![B256::from([0x55; 32])]);
+        assert_eq!(
+            cfg.release_program_identities()[&Program::Trustgraphs],
+            ReleaseProgramIdentity { elf_sha256: "33".repeat(32), vkey: B256::from([0x44; 32]) }
+        );
+        assert_eq!(
+            cfg.release_program_identities()[&Program::Signer],
+            ReleaseProgramIdentity { elf_sha256: "66".repeat(32), vkey: B256::from([0x77; 32]) }
+        );
 
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn tracked_sepolia_profile_refuses_to_subsidize_until_one_instance_is_recorded() {
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let directory = std::env::temp_dir()
+            .join(format!("trustgraphs-operator-sepolia-profile-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::copy(repository.join("deployments/sepolia.json"), directory.join("sepolia.json"))
+            .unwrap();
+        let profile = std::fs::read_to_string(repository.join("deployments/operator.sepolia.toml"))
+            .unwrap()
+            .replace("env:RPC_URL", "https://rpc.invalid")
+            .replace("env:IPFS_PIN_API", "https://uploads.pinata.cloud/v3/files")
+            .replace("env:IPFS_GATEWAY", "https://gateway.invalid/ipfs/")
+            .replace("env:OPERATOR_ALERT_WEBHOOK", "https://alerts.invalid");
+        let config_path = directory.join("operator.sepolia.toml");
+        std::fs::write(&config_path, profile).unwrap();
+
+        let error = Config::load(&config_path).unwrap_err().to_string();
+        assert!(error.contains("exactly one tracked release instance, found 0"), "{error}");
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -1245,6 +1459,14 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         assert_eq!(scores.confirmations, 12);
         assert_eq!(scores.loss_budget.per_instance_cents_per_day, 2_500);
         assert_eq!(scores.loss_budget.global_cents_per_day, 25_000);
+    }
+
+    #[test]
+    fn the_global_budget_warning_threshold_is_configurable_but_precedes_the_halt() {
+        let cfg = parse(&format!("{GOOD}\n[budget]\nglobal_alert_percent = 75\n")).unwrap();
+        assert_eq!(cfg.budget.global_alert_percent, 75);
+        let error = parse(&format!("{GOOD}\n[budget]\nglobal_alert_percent = 100\n")).unwrap_err();
+        assert!(error.contains("between 1 and 99"), "{error}");
     }
 
     #[test]
@@ -1316,6 +1538,52 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         let cfg = parse(&src).unwrap();
         assert_eq!(cfg.ipfs.resolved_targets().len(), 2);
         assert_eq!(cfg.ipfs.required_successes(), 2);
+    }
+
+    #[test]
+    fn a_typed_pinata_target_names_but_never_contains_its_secret() {
+        let src = format!(
+            "{GOOD}\n[ipfs]\nmin_success = 1\n\
+             [[ipfs.targets]]\nname = \"pinata\"\nkind = \"pinata\"\n\
+             api = \"https://uploads.pinata.cloud/v3/files\"\n\
+             gateway = \"https://gateway.pinata.cloud/ipfs/\"\n\
+             token_env = \"IPFS_PIN_API_KEY\"\n"
+        );
+        let cfg = parse(&src).unwrap();
+        let policy = format!("{:#x}", cfg.ipfs.policy_hash());
+        assert_eq!(cfg.ipfs.resolved_targets()[0].token_env.as_deref(), Some("IPFS_PIN_API_KEY"));
+        assert!(!policy.contains("secret"));
+    }
+
+    #[test]
+    fn pinata_requires_https_and_a_named_bearer_token_variable() {
+        let missing = format!(
+            "{GOOD}\n[ipfs]\n[[ipfs.targets]]\nname = \"pinata\"\nkind = \"pinata\"\n\
+             api = \"https://uploads.pinata.cloud/v3/files\"\n\
+             gateway = \"https://gateway.pinata.cloud/ipfs/\"\n"
+        );
+        let error = parse(&missing).unwrap_err();
+        assert!(error.contains("token_env"), "{error}");
+
+        let plaintext = missing
+            .replace("https://uploads.pinata.cloud", "http://uploads.pinata.cloud")
+            + "token_env = \"IPFS_PIN_API_KEY\"\n";
+        let error = parse(&plaintext).unwrap_err();
+        assert!(error.contains("must use HTTPS"), "{error}");
+
+        let invalid_name = missing + "token_env = \"not-valid\"\n";
+        let error = parse(&invalid_name).unwrap_err();
+        assert!(error.contains("UPPER_SNAKE_CASE"), "{error}");
+    }
+
+    #[test]
+    fn publication_gateways_must_have_the_raw_cid_suffix() {
+        let src = format!(
+            "{GOOD}\n[ipfs]\n[[ipfs.targets]]\nname = \"bad-reader\"\n\
+             api = \"http://one:5001\"\ngateway = \"http://one:8080\"\n"
+        );
+        let error = parse(&src).unwrap_err();
+        assert!(error.contains("end in /ipfs/"), "{error}");
     }
 
     #[test]

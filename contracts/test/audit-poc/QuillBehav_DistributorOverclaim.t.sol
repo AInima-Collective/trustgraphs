@@ -74,7 +74,9 @@ contract QuillBehav_DistributorOverclaim is Test {
         vm.startPrank(alice);
         token.approve(address(dist), 1_000e18);
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, 1_000e18);
-        uint256 aliceRound = dist.distribute(address(token), 1_000e18, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 aliceRound = dist.distribute(
+            address(token), 1_000e18, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
         vm.stopPrank();
         assertEq(token.balanceOf(address(dist)), 1_000e18, "round funded");
 
@@ -89,7 +91,9 @@ contract QuillBehav_DistributorOverclaim is Test {
         vm.startPrank(admin);
         token.approve(address(dist), 1);
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, 1);
-        uint256 rogueRound = dist.distribute(address(token), 1, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        uint256 rogueRound = dist.distribute(
+            address(token), 1, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient
+        );
         vm.stopPrank();
 
         // 4. The formula proposes 1000e18, but the round has only one wei of budget.

@@ -1,7 +1,6 @@
 import fs from 'fs'
 import path from 'path'
 
-import dotenv from 'dotenv'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
@@ -14,14 +13,8 @@ import {
 import { contributionsFactoryAbi } from './abis/contributionsFactory'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
 import { easOffchainAnchorRegistryAbi } from './abis/easOffchainAnchorRegistry'
-import {
-  OPTIMISM_ERC8004_IDENTITY_REGISTRY,
-  erc8004IdentityRegistryAbi,
-} from './abis/erc8004IdentityRegistry'
-import {
-  OPTIMISM_ERC8004_REPUTATION_REGISTRY,
-  erc8004ReputationRegistryAbi,
-} from './abis/erc8004ReputationRegistry'
+import { erc8004IdentityRegistryAbi } from './abis/erc8004IdentityRegistry'
+import { erc8004ReputationRegistryAbi } from './abis/erc8004ReputationRegistry'
 import { graphLineageRegistryAbi } from './abis/graphLineage'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
@@ -38,6 +31,7 @@ import {
   loadReleaseManifest,
   releaseManifestToDeploymentSummary,
 } from '../../contracts/deploy/release-manifest'
+import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
 import {
   contributionResolverAbi,
   easIndexerResolverAbi,
@@ -94,10 +88,9 @@ type DeploymentSummary = {
   graphLineage?: { registry?: string }
 }
 
-const dotenvFile = path.join(__dirname, '../../.env')
-dotenv.config({
-  path: dotenvFile,
-  quiet: true,
+loadTargetEnvironment({
+  repositoryRoot: path.join(__dirname, '../..'),
+  higherPriorityFiles: [path.join(__dirname, '.env.local')],
 })
 
 const deploymentStage =
@@ -107,8 +100,8 @@ const deploymentTarget =
 if (!['development', 'production'].includes(deploymentStage)) {
   throw new Error('DEPLOY_STAGE must be development or production')
 }
-if (!['local', 'optimism', 'sepolia'].includes(deploymentTarget)) {
-  throw new Error('DEPLOY_TARGET must be local, optimism, or sepolia')
+if (!['local', 'sepolia'].includes(deploymentTarget)) {
+  throw new Error('DEPLOY_TARGET must be local or sepolia')
 }
 if ((deploymentStage === 'development') !== (deploymentTarget === 'local')) {
   throw new Error(
@@ -117,9 +110,9 @@ if ((deploymentStage === 'development') !== (deploymentTarget === 'local')) {
 }
 
 export const IS_PRODUCTION = deploymentStage === 'production'
-const IS_OPTIMISM = deploymentTarget === 'optimism'
 const IS_SEPOLIA = deploymentTarget === 'sepolia'
-const CORE_CHAIN = IS_SEPOLIA ? 'sepolia' : IS_OPTIMISM ? 'optimism' : 'local'
+const IS_LOCAL = deploymentTarget === 'local'
+const CORE_CHAIN = IS_SEPOLIA ? 'sepolia' : 'local'
 const releaseManifest = IS_SEPOLIA
   ? loadReleaseManifest(
       path.join(__dirname, '../../deployments/sepolia.json'),
@@ -155,6 +148,44 @@ const blockNumberEnv = (name: string, fallback: number): number => {
   return value
 }
 
+const positiveIntegerEnv = (name: string, fallback: number): number => {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive safe integer, got "${raw}"`)
+  }
+  return value
+}
+
+const rpcUrlsEnv = (
+  primaryName: string,
+  fallbacksName: string
+): string | string[] => {
+  const primary = requiredEnv(primaryName)
+  const urls = [
+    primary,
+    ...(process.env[fallbacksName] ?? '')
+      .split(/[\n,]/)
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ].filter((value, index, values) => values.indexOf(value) === index)
+
+  for (const value of urls) {
+    let protocol: string
+    try {
+      protocol = new URL(value).protocol
+    } catch {
+      throw new Error(`${fallbacksName} contains an invalid URL`)
+    }
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      throw new Error(`${fallbacksName} only accepts HTTP(S) RPC URLs`)
+    }
+  }
+
+  return urls.length === 1 ? primary : urls
+}
+
 const LOCAL_RPC_URL =
   process.env.PONDER_RPC_URL_31337 ??
   process.env.PONDER_RPC_URL ??
@@ -175,37 +206,24 @@ const LOCAL_WS_URL =
 // indexer starts (gov/safe) use 'latest' and need no start block.
 const DEV_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK', 1)
 
-// Earliest production deployment in the current Optimism catalog. Every source without a more
-// precise known block starts here, never at genesis. Operators can move the common floor forward
-// when deploying a fresh catalog, but it must remain at or before every configured contract.
-const PROD_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK_10', 142_786_328)
 const SEPOLIA_START_BLOCK = blockNumberEnv(
   'PONDER_START_BLOCK_11155111',
   releaseManifest?.firstDeploymentBlock ?? 0
 )
-const CORE_START_BLOCK = IS_SEPOLIA
-  ? SEPOLIA_START_BLOCK
-  : IS_OPTIMISM
-    ? PROD_START_BLOCK
-    : DEV_START_BLOCK
+const CORE_START_BLOCK = IS_SEPOLIA ? SEPOLIA_START_BLOCK : DEV_START_BLOCK
 
 /**
- * ERC-8004 is deliberately allowlisted: production always follows the official Optimism
- * singleton, while development accepts only an explicit local-fixture address. An arbitrary
- * production address cannot be smuggled in through configuration.
+ * ERC-8004 is a local research fixture. Public deployment profiles do not accept an arbitrary
+ * registry address through configuration.
  */
-const ERC8004_IDENTITY_REGISTRY = IS_OPTIMISM
-  ? (OPTIMISM_ERC8004_IDENTITY_REGISTRY.proxy as Hex)
-  : (process.env.ERC8004_IDENTITY_REGISTRY_ADDRESS_31337 as Hex | undefined)
-const ERC8004_START_BLOCK = IS_OPTIMISM
-  ? OPTIMISM_ERC8004_IDENTITY_REGISTRY.sourceBlock
-  : DEV_START_BLOCK
-const ERC8004_REPUTATION_REGISTRY = IS_OPTIMISM
-  ? (OPTIMISM_ERC8004_REPUTATION_REGISTRY.proxy as Hex)
-  : (process.env.ERC8004_REPUTATION_REGISTRY_ADDRESS_31337 as Hex | undefined)
-const ERC8004_REPUTATION_START_BLOCK = IS_OPTIMISM
-  ? OPTIMISM_ERC8004_REPUTATION_REGISTRY.sourceBlock
-  : DEV_START_BLOCK
+const ERC8004_IDENTITY_REGISTRY = IS_LOCAL
+  ? (process.env.ERC8004_IDENTITY_REGISTRY_ADDRESS_31337 as Hex | undefined)
+  : undefined
+const ERC8004_START_BLOCK = DEV_START_BLOCK
+const ERC8004_REPUTATION_REGISTRY = IS_LOCAL
+  ? (process.env.ERC8004_REPUTATION_REGISTRY_ADDRESS_31337 as Hex | undefined)
+  : undefined
+const ERC8004_REPUTATION_START_BLOCK = DEV_START_BLOCK
 if (ERC8004_REPUTATION_REGISTRY && !ERC8004_IDENTITY_REGISTRY) {
   throw new Error(
     'ERC8004_IDENTITY_REGISTRY_ADDRESS_31337 is required when the local Reputation Registry is enabled'
@@ -253,29 +271,30 @@ const GOVERNED_WRAPPERS = [
 ].filter((address): address is Hex => address !== undefined)
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
+const CHAIN_ID = IS_SEPOLIA ? 11155111 : 31337
 const WEIGHTED_FACTORY =
-  (process.env[
-    `WEIGHTED_FACTORY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
-  ]?.trim() as Hex | undefined) ??
+  (process.env[`WEIGHTED_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
+    | Hex
+    | undefined) ??
   (deploymentSummary.weightedFactory?.weighted_factory as Hex | undefined)
 const COMPOSITION_FACTORY =
-  (process.env[
-    `TRUST_COMPOSE_FACTORY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
-  ]?.trim() as Hex | undefined) ??
+  (process.env[`TRUST_COMPOSE_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
+    | Hex
+    | undefined) ??
   (deploymentSummary.trustComposeFactory?.trust_compose_factory as
     | Hex
     | undefined)
 const CONTRIBUTIONS_FACTORY =
-  (process.env[
-    `CONTRIBUTIONS_FACTORY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
-  ]?.trim() as Hex | undefined) ??
+  (process.env[`CONTRIBUTIONS_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
+    | Hex
+    | undefined) ??
   (deploymentSummary.contributionsFactory?.contributions_factory as
     | Hex
     | undefined)
 const GRAPH_LINEAGE_REGISTRY =
-  (process.env[
-    `GRAPH_LINEAGE_REGISTRY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
-  ]?.trim() as Hex | undefined) ??
+  (process.env[`GRAPH_LINEAGE_REGISTRY_ADDRESS_${CHAIN_ID}`]?.trim() as
+    | Hex
+    | undefined) ??
   (deploymentSummary.graphLineage?.registry as Hex | undefined)
 
 /**
@@ -498,25 +517,29 @@ export default createConfig({
             ws: LOCAL_WS_URL,
           },
         }
-      : IS_OPTIMISM
-        ? {
-            optimism: {
-              id: 10,
-              rpc: requiredEnv('PONDER_RPC_URL_10'),
-              ...(process.env.PONDER_WS_URL_10
-                ? { ws: process.env.PONDER_WS_URL_10 }
-                : {}),
-            },
-          }
-        : {
-            sepolia: {
-              id: 11155111,
-              rpc: requiredEnv('PONDER_RPC_URL_11155111'),
-              ...(process.env.PONDER_WS_URL_11155111
-                ? { ws: process.env.PONDER_WS_URL_11155111 }
-                : {}),
-            },
-          }),
+      : {
+          sepolia: {
+            id: 11155111,
+            // Ponder treats an RPC array as an ordered, health-aware backend pool. Operators
+            // keep the private primary separate from a comma/newline-delimited failover list.
+            rpc: rpcUrlsEnv(
+              'PONDER_RPC_URL_11155111',
+              'PONDER_RPC_URLS_11155111'
+            ),
+            // Provider limits vary dramatically: the current free primary accepts only ten
+            // blocks, while the verified public fallback accepts the full deployment range.
+            // Keep the restrictive default safe and make production tuning explicit. Ponder
+            // discovers request-rate limits dynamically; its old maxRequestsPerSecond option is
+            // deprecated and ignored, so do not imply it offers a hard throttle.
+            ethGetLogsBlockRange: positiveIntegerEnv(
+              'PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111',
+              10
+            ),
+            ...(process.env.PONDER_WS_URL_11155111
+              ? { ws: process.env.PONDER_WS_URL_11155111 }
+              : {}),
+          },
+        }),
   },
   // Missing score bytes are an availability problem, not a chain-indexing failure. This bounded
   // heartbeat drains the durable off-chain queue without coupling retries to another root event.
@@ -682,7 +705,7 @@ export default createConfig({
     },
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
-      startBlock: IS_OPTIMISM ? 142786483 : CORE_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
           address: FACTORY_DISCOVERY
@@ -693,7 +716,7 @@ export default createConfig({
     },
     merkleSnapshot: {
       abi: merkleSnapshotAbi,
-      startBlock: IS_OPTIMISM ? 142786328 : CORE_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
           address: FACTORY_DISCOVERY
@@ -860,7 +883,7 @@ export default createConfig({
     },
     merkleGovModule: {
       abi: merkleGovModuleAbi,
-      startBlock: IS_OPTIMISM ? PROD_START_BLOCK : 'latest',
+      startBlock: 'latest',
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.merkleGovModule
       )
@@ -898,7 +921,7 @@ export default createConfig({
     },
     gnosisSafe: {
       abi: gnosisSafeAbi,
-      startBlock: IS_OPTIMISM ? 146706138 : 'latest',
+      startBlock: 'latest',
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.safe?.proxy
       )

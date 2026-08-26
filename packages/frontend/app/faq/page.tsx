@@ -194,7 +194,7 @@ const GROUPS: Group[] = [
         id: 'is-this-ready-for-production',
         question: 'Is this ready for production?',
         answer:
-          'No. The proof loop is built and runs end to end on a test chain, though the on-chain proof check is still a stand-in and no real proof has been produced yet. The pieces around it are not finished. A network created through the app is governed by one wallet: the timelock that should hold those powers exists but is not wired up yet. More attestation sources are in progress.',
+          'Trustgraphs is still pre-production. Review the contracts, program semantics, deployment configuration, source availability, and governance assumptions before using an output for a decision with material consequences.',
       },
       {
         id: 'has-it-been-audited',

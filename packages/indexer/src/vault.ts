@@ -25,7 +25,7 @@ const ZERO = '0x0000000000000000000000000000000000000000' as const
 const ZERO_PROGRAM = `0x${'00'.repeat(32)}` as `0x${string}`
 
 /**
- * M0 hazard-sweep note (GOAL clarification 2): every account/credit mutation in this file is an
+ * Hazard-sweep invariant: every account/credit mutation in this file is an
  * upsert, never a bare `.update()`. The vault ABI the indexer carries is events-only — there is no
  * account getter to read a missing row back from — so a row that first enters our universe
  * mid-life (a start block after its `AccountBound`, a rebound account, a replayed range) is

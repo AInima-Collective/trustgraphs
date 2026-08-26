@@ -1,4 +1,4 @@
-//! The 6-persona worked example (GOAL.md M1): an independent straight-line recompute of the
+//! The 6-persona worked example: an independent straight-line recompute of the
 //! stage-2 arithmetic from the fixture's literal structure, asserted equal — to the wei —
 //! against the full `compute()` pipeline. This fixture is the cross-lane oracle: the golden
 //! vectors, the guest (M2), the indexer (M3), the TS port (M4) and the seeded round (M5) all

@@ -10,6 +10,7 @@ import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { Providers } from '@/components/providers'
 import { getCatalog } from '@/lib/catalog.server'
+import { CHAIN } from '@/lib/config'
 
 // Two families ship, and that is the whole type system. PaperMono carries
 // every label, control, and number; Instrument Serif carries the display voice
@@ -44,7 +45,7 @@ const DESCRIPTION =
 // app/opengraph-image.png and app/twitter-image.png are wired automatically.
 // Regenerate every one of them with `pnpm run brand:assets`.
 export const metadata: Metadata = {
-  metadataBase: new URL('https://trustgraph.network'),
+  metadataBase: new URL('https://trustgraphs.xyz'),
   title: {
     default: 'Trustgraphs',
     template: '%s | trustgraphs',
@@ -53,7 +54,7 @@ export const metadata: Metadata = {
   applicationName: 'Trustgraphs',
   openGraph: {
     type: 'website',
-    url: 'https://trustgraph.network',
+    url: 'https://trustgraphs.xyz',
     siteName: 'Trustgraphs',
     title: 'Trustgraphs',
     description: DESCRIPTION,
@@ -82,7 +83,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode
 }>) {
-  // The trust-graph directory is a RUNTIME read now (GOAL.md M3): networks are created by
+  // The trust-graph directory is a RUNTIME read: networks are created by
   // `TrustgraphsFactory` at any moment, so the app asks the indexer which ones exist rather than
   // shipping a list. Reading it once here means every screen — client and server — shares one
   // fetch per request and renders the same set. `getCatalog` never throws; on an indexer failure
@@ -116,6 +117,14 @@ export default async function RootLayout({
       <body className="font-mono text-foreground">
         <div className="min-h-screen root flex flex-col p-safe-or-2 sm:p-safe-or-4 md:p-safe-or-6 max-w-7xl mx-auto">
           <Providers catalog={clientCatalog}>
+            {CHAIN === 'sepolia' && (
+              <div
+                role="note"
+                className="sticky top-0 z-50 mb-3 border border-amber-500 bg-amber-100 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-amber-950 shadow-sm dark:bg-amber-950 dark:text-amber-100"
+              >
+                Ethereum Sepolia · Testnet assets have no value
+              </div>
+            )}
             {/* Account for the footer, but make sure to push it down below the initial page */}
             <div className="flex flex-col min-h-[calc(100vh-2rem)]">
               <Nav />

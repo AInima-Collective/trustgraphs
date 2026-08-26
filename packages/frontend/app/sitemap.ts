@@ -16,7 +16,7 @@ import { DOCS_ORDER, DOCS_SECTIONS } from '@/lib/docs/manifest'
  * answering — the docs routes come from the manifest, which is compiled-in
  * data, not a filesystem or indexer read.
  */
-const SITE = 'https://trustgraph.network'
+const SITE = 'https://trustgraphs.xyz'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

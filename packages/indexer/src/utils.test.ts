@@ -10,7 +10,7 @@ test('revalidation targets the local app outside production', () => {
 test('revalidation targets the hosted app in production', () => {
   assert.equal(
     frontendOrigin({ DEPLOY_STAGE: 'production' }),
-    'https://trustgraph.network'
+    'https://trustgraphs.xyz'
   )
 })
 

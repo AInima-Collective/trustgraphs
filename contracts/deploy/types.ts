@@ -13,7 +13,7 @@ export type ContractDeployment = {
 
 export type EnvName = 'dev' | 'prod'
 export type DeploymentStage = 'development' | 'production'
-export type ChainTarget = 'local' | 'optimism' | 'sepolia' | 'mainnet'
+export type ChainTarget = 'local' | 'sepolia' | 'mainnet'
 
 export type ChainProfile = {
   target: ChainTarget
@@ -45,7 +45,7 @@ export type IEnv = {
   validateDeployment?: () => void | Promise<void>
   uploadToIpfs: (file: string, apiKey?: string) => Promise<string>
   generateDeploymentSummary: () => object
-  generateReleaseManifest?: () => object
+  generateReleaseManifest?: (ctx?: ProgramContext) => object
 }
 
 export type EnvOverrides = {

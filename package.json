@@ -9,9 +9,13 @@
     "indexer": "pnpm --filter trustgraphs-indexer",
     "deploy:full": "pnpm deploy:create-deployer && pnpm deploy:contracts",
     "deploy:contracts": "tsx contracts/deploy/deploy-contracts.ts",
+    "deploy:sepolia:preflight": "bash scripts/sepolia-preflight.sh",
+    "deploy:sepolia:continue": "tsx contracts/deploy/deploy-contracts.ts --stage production --chain sepolia --continue-existing",
+    "deploy:sepolia:postcheck": "bash scripts/sepolia-postdeploy-check.sh",
     "test:deploy": "node --import tsx --test contracts/deploy/*.test.ts",
     "deploy:create-deployer": "tsx contracts/deploy/create-deployer.ts",
     "verify:contracts": "tsx contracts/deploy/verify-contracts.ts",
+    "railway:check": "node scripts/railway-preflight.mjs",
     "docker:log": "docker compose -f docker-compose.prod.yml logs -f -n 100",
     "docker:indexer:restart": "docker compose -f docker-compose.prod.yml up -d --force-recreate ponder ponder-server"
   },
@@ -47,7 +51,15 @@
     "eslint-plugin-unused-imports": "^3.0.0",
     "napa": "^3.0.0",
     "prettier": "^3.6.2",
+    "railway": "3.11.0",
     "typescript": "5.5.4"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "10.18.3+sha512.bbd16e6d7286fd7e01f6b3c0b3c932cda2965c06a908328f74663f10a9aea51f1129eea615134bf992831b009eabe167ecb7008b597f40ff9bc75946aadfb08d",
+      "onFail": "error"
+    }
   },
   "packageManager": "pnpm@10.18.3+sha512.bbd16e6d7286fd7e01f6b3c0b3c932cda2965c06a908328f74663f10a9aea51f1129eea615134bf992831b009eabe167ecb7008b597f40ff9bc75946aadfb08d"
 }

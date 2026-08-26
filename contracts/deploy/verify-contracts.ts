@@ -42,7 +42,7 @@ const program = new Command('verify-contracts')
   )
   .option(
     '--chain <target>',
-    'Chain target: local, optimism, or sepolia (default: $DEPLOY_TARGET)'
+    'Chain target: local or sepolia (default: $DEPLOY_TARGET)'
   )
   .option(
     '-r, --rpc-url <rpcUrl>',
@@ -56,7 +56,10 @@ const program = new Command('verify-contracts')
     '--all',
     'Verify every contract in broadcast/ for this chain, not only the deployment plan'
   )
-  .option('--dry-run', 'Print what would be verified without calling the explorer')
+  .option(
+    '--dry-run',
+    'Print what would be verified without calling the explorer'
+  )
 
 type BroadcastTransaction = {
   transactionType?: string
@@ -126,7 +129,9 @@ const readCreations = (
     const address = tx.contractAddress
     const input = tx.transaction?.input
     if (!name || !address || !input) {
-      problems.push(`${scriptLabel}: a CREATE record is missing name, address or input`)
+      problems.push(
+        `${scriptLabel}: a CREATE record is missing name, address or input`
+      )
       continue
     }
     const artifact = resolveArtifact(outDir, name)
@@ -185,8 +190,8 @@ const main = async () => {
 
   // Verify what the deployment plan deploys, so this pass and the deploy cannot drift apart.
   // `--all` is the escape hatch for a chain that also carries older or hand-run deployments.
-  const planned = env.deployContracts.map(
-    (contract) => path.basename(contract.script.split(':')[0])
+  const planned = env.deployContracts.map((contract) =>
+    path.basename(contract.script.split(':')[0])
   )
   const scripts = all
     ? fs
@@ -198,7 +203,12 @@ const main = async () => {
   const records: CreationRecord[] = []
   const problems: string[] = []
   for (const script of scripts) {
-    const file = path.join('broadcast', script, String(chainId), 'run-latest.json')
+    const file = path.join(
+      'broadcast',
+      script,
+      String(chainId),
+      'run-latest.json'
+    )
     if (!fs.existsSync(file)) {
       if (!all) problems.push(`${script}: no broadcast for chain ${chainId}`)
       continue
@@ -228,7 +238,9 @@ const main = async () => {
 
   if (dryRun) {
     console.log(chalk.greenBright('Dry run: no explorer calls were made.'))
-    problems.forEach((problem) => console.log(chalk.yellowBright(`  ${problem}`)))
+    problems.forEach((problem) =>
+      console.log(chalk.yellowBright(`  ${problem}`))
+    )
     return
   }
 
@@ -265,7 +277,8 @@ const main = async () => {
   }
 
   console.log()
-  for (const problem of problems) console.log(chalk.yellowBright(`⚠️  ${problem}`))
+  for (const problem of problems)
+    console.log(chalk.yellowBright(`⚠️  ${problem}`))
   for (const failure of failures) console.log(chalk.redBright(`❌ ${failure}`))
   const verified = records.length - failures.length
   console.log(

@@ -23,7 +23,7 @@ use crate::chain::{
     read_signer_view, read_snapshot, verifier_vkey, weighted_pending_entry, RegistryScan, Rpc,
     RpcCatalog,
 };
-use crate::config::Config;
+use crate::config::{Config, ReleaseProgramIdentity};
 use crate::handlers;
 use crate::health::{self, Health, Phase};
 use crate::ops::{
@@ -42,6 +42,11 @@ fn estimated_cost_cents(cfg: &Config, work: operator_core::WorkProfile) -> u64 {
     let cycles = work.estimate().total;
     // Round UP: a per-proof estimate that rounds to zero would make small instances free forever.
     cycles.saturating_mul(cfg.budget.cents_per_billion_cycles).div_ceil(1_000_000_000).max(1)
+}
+
+fn global_budget_approaching(spent_cents: u64, cap_cents: u64, alert_percent: u8) -> bool {
+    spent_cents < cap_cents
+        && spent_cents.saturating_mul(100) >= cap_cents.saturating_mul(u64::from(alert_percent))
 }
 
 /// Programs this binary carries a guest for. Anything else is skipped rather than attempted.
@@ -112,6 +117,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // tick, as the loop used to, burns most of a core continuously on a 60-second cadence and
     // makes every tick long enough to look like a wedge from outside.
     let guests = guest_vkeys()?;
+    verify_release_guest_identities(cfg.release_program_identities(), &guests)?;
     logger.event(
         "vkeys",
         json!(guests
@@ -167,7 +173,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // already been said so a healthy tick is one line, not one line per instance per lane.
     let mut narration = Narration::default();
 
-    // Off unless asked for (GOAL D3). Bound HERE, before the first tick, so a bad address or an
+    // Off unless asked for. Bound HERE, before the first tick, so a bad address or an
     // occupied port is a startup failure rather than something discovered when a probe first
     // fails hours later.
     let health = Health::new(cfg.health_budgets());
@@ -430,6 +436,7 @@ fn tick(
 
     let mut statuses = Vec::new();
     let mut alerts_raised = Vec::new();
+    let mut budget_alerted = BTreeSet::new();
     let mut in_flight_now = 0usize;
     let programs = supported()
         .into_iter()
@@ -689,6 +696,32 @@ fn tick(
                     Some(&root_instance_ids),
                 )
             };
+            let global_cap = policy.loss_budget.global_cents_per_day;
+            if global_budget_approaching(
+                spend.global_cents_today,
+                global_cap,
+                cfg.budget.global_alert_percent,
+            ) && budget_alerted.insert(*program)
+            {
+                let text = format!(
+                    "{} prover spend is ${:.2} of the ${:.2} rolling global cap ({}% alert threshold); the operator will halt this workload at the cap",
+                    program.name(),
+                    spend.global_cents_today as f64 / 100.0,
+                    global_cap as f64 / 100.0,
+                    cfg.budget.global_alert_percent
+                );
+                logger.event(
+                    "operator_budget_approaching",
+                    json!({
+                        "program": program.name(),
+                        "spent_cents": spend.global_cents_today,
+                        "cap_cents": global_cap,
+                        "alert_percent": cfg.budget.global_alert_percent,
+                    }),
+                );
+                alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                alerts_raised.push(text);
+            }
             let mut action = plan(&state, &policy, spend);
             let mut prepared_input = None;
             let mut envelope0_preflight = None;
@@ -899,6 +932,7 @@ fn tick(
             proof_timeout_s: cfg.prover.timeout_s,
             per_instance_usd_per_day: cfg.budget.per_instance_usd_per_day,
             global_usd_per_day: cfg.budget.global_usd_per_day,
+            global_budget_alert_percent: cfg.budget.global_alert_percent,
             budget_window_seconds: cfg.budget.window_seconds,
             publishes_scores: !cfg.ipfs.resolved_targets().is_empty(),
             verifies_score_readback: !cfg.ipfs.resolved_targets().is_empty(),
@@ -1870,6 +1904,35 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         assert!(error.to_string().contains("targetless operation"), "{error:#}");
     }
 
+    #[test]
+    fn global_budget_pages_at_eighty_percent_before_the_hard_halt() {
+        assert!(!global_budget_approaching(1_199, 1_500, 80));
+        assert!(global_budget_approaching(1_200, 1_500, 80));
+        assert!(global_budget_approaching(1_499, 1_500, 80));
+        assert!(!global_budget_approaching(1_500, 1_500, 80));
+    }
+
+    #[test]
+    fn release_guest_identity_requires_both_the_vkey_and_exact_elf() {
+        let expected = BTreeMap::from([(
+            Program::Trustgraphs,
+            ReleaseProgramIdentity { vkey: B256::from([0x11; 32]), elf_sha256: "22".repeat(32) },
+        )]);
+        let exact =
+            BTreeMap::from([(Program::Trustgraphs, (B256::from([0x11; 32]), "22".repeat(32)))]);
+        verify_release_guest_identities(&expected, &exact).unwrap();
+
+        let wrong_vkey =
+            BTreeMap::from([(Program::Trustgraphs, (B256::from([0x33; 32]), "22".repeat(32)))]);
+        let error = verify_release_guest_identities(&expected, &wrong_vkey).unwrap_err();
+        assert!(error.to_string().contains("vkey"), "{error:#}");
+
+        let wrong_elf =
+            BTreeMap::from([(Program::Trustgraphs, (B256::from([0x11; 32]), "44".repeat(32)))]);
+        let error = verify_release_guest_identities(&expected, &wrong_elf).unwrap_err();
+        assert!(error.to_string().contains("ELF sha256"), "{error:#}");
+    }
+
     /// M-6 regression: an underpaying vault is REJECTED, not accepted. The pre-fix `.min(1)`
     /// turned a $500 quote into a `minPayoutUsd` of 1.
     #[test]
@@ -1945,4 +2008,32 @@ fn guest_vkeys() -> Result<BTreeMap<Program, (B256, String)>> {
         out.insert(program, (B256::from_slice(&b), elf_sha256));
     }
     Ok(out)
+}
+
+fn verify_release_guest_identities(
+    expected: &BTreeMap<Program, ReleaseProgramIdentity>,
+    embedded: &BTreeMap<Program, (B256, String)>,
+) -> Result<()> {
+    for (program, expected) in expected {
+        let (vkey, elf_sha256) = embedded.get(program).with_context(|| {
+            format!(
+                "release manifest requires the {} guest, but this operator does not embed it",
+                program.name()
+            )
+        })?;
+        anyhow::ensure!(
+            vkey == &expected.vkey,
+            "embedded {} guest vkey {vkey:#x} does not match release manifest {:#x}",
+            program.name(),
+            expected.vkey
+        );
+        anyhow::ensure!(
+            elf_sha256.trim_start_matches("0x").eq_ignore_ascii_case(&expected.elf_sha256),
+            "embedded {} guest ELF sha256 {} does not match release manifest {}",
+            program.name(),
+            elf_sha256,
+            expected.elf_sha256
+        );
+    }
+    Ok(())
 }

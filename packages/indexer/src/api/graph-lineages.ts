@@ -142,13 +142,18 @@ const loadIndexState = async () => {
   }
 }
 
-const rpcUrlFor = (chainId: string) =>
-  chainId === '10'
-    ? process.env.PONDER_RPC_URL_10
-    : (process.env.PONDER_RPC_URL_31337 ??
+const rpcUrlFor = (chainId: string) => {
+  if (chainId === '11155111') return process.env.PONDER_RPC_URL_11155111
+  if (chainId === '31337') {
+    return (
+      process.env.PONDER_RPC_URL_31337 ??
       process.env.PONDER_RPC_URL ??
       process.env.RPC_URL ??
-      'http://127.0.0.1:8545')
+      'http://127.0.0.1:8545'
+    )
+  }
+  return undefined
+}
 const clients = new Map<string, ReturnType<typeof createPublicClient>>()
 const clientFor = (chainId: string) => {
   const url = rpcUrlFor(chainId)

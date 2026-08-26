@@ -361,7 +361,9 @@ contract DepthExternal_Poc is Test {
         vm.deal(address(this), 10 ether);
         RoundPins.Pins memory _pins0 = RoundPins.read(d, 1 ether);
         vm.expectRevert();
-        d.distribute{value: 1 ether}(address(0), 1 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        d.distribute{value: 1 ether}(
+            address(0), 1 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
 
         // ERC20 rounds are equally blocked (SafeERC20 bubbles the callee revert), but the
         // decisive point is that ONE owner-set address halts every native funding round for

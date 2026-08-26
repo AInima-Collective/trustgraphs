@@ -4,10 +4,12 @@ import path from 'path'
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import chalk, { ChalkInstance } from 'chalk'
-import dotenv, { DotenvParseOutput } from 'dotenv'
+import { DotenvParseOutput } from 'dotenv'
 import { get } from 'lodash'
 import { isAddress } from 'viem'
 
+import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
+import { redactSecrets } from '../../scripts/redact-secrets.cjs'
 import { Network } from './types'
 
 // Deployment helpers moved from `<repo>/deploy` to `<repo>/contracts/deploy`.
@@ -21,28 +23,12 @@ const REPOSITORY_ROOT = path.resolve(__dirname, '../..')
  *
  * @returns The environment variables
  */
-export const loadDotenv = (): DotenvParseOutput => {
-  const envFile = path.join(REPOSITORY_ROOT, '.env')
-  if (!fs.existsSync(envFile)) {
-    const exampleEnvFile = path.join(REPOSITORY_ROOT, '.env.example')
-    if (!fs.existsSync(exampleEnvFile)) {
-      throw new Error(
-        `Example environment file ${exampleEnvFile} does not exist.`
-      )
-    }
-    fs.copyFileSync(exampleEnvFile, envFile)
-  }
-
-  const { error, parsed } = dotenv.config({ path: envFile, quiet: true })
-  if (error) {
-    throw new Error(`Error loading .env file: ${error.message}`)
-  }
-  if (!parsed) {
-    throw new Error('No environment variables loaded from .env file')
-  }
-
-  return parsed
-}
+export const loadDotenv = (target?: string): DotenvParseOutput =>
+  loadTargetEnvironment({
+    repositoryRoot: REPOSITORY_ROOT,
+    target,
+    createBaseFrom: '.env.example',
+  }).parsed
 
 /**
  * Reads a file and returns the contents as a string.
@@ -111,6 +97,18 @@ export const readJsonKeyIfFileExists = <T = any>(
 }
 
 /**
+ * Strip credentials out of a command line before it is printed.
+ *
+ * Private keys are already safe here by construction: they are passed as the literal string
+ * `"$FUNDED_KEY"` for the shell to expand, so what gets echoed is the variable name. Endpoint
+ * URLs are not, because they are interpolated, and a provider URL usually carries an API key in
+ * its path. That put a working credential into every deploy log, transcript and screenshot,
+ * which is a slow leak rather than a loud one. Keep the host so the line still says which
+ * provider and which network, and drop everything after it.
+ */
+export { redactSecrets }
+
+/**
  * Executes a command and returns a promise that resolves when the command
  * completes (with the stdout) or rejects with the status code if the command
  * fails. Stdout and stderr are both logged to the console if log is true.
@@ -141,7 +139,7 @@ export const execFull = ({
     const args = cmd.slice(1)
 
     if (log === 'cmd' || log === 'all') {
-      console.log(chalk.gray(`$ ${cmd.join(' ')}`))
+      console.log(chalk.gray(`$ ${redactSecrets(cmd.join(' '))}`))
     }
 
     const childProcess = spawn(command, args, {

@@ -390,8 +390,7 @@ FINAL=$(applied)
 check "roots landed across three epochs with zero manual steps (lastApplied=$FINAL)" \
       "$([ "$FINAL" -ge 2 ] && echo 0 || echo 1)"
 
-# ...and the loop PAID for them. This is the half GOAL.md calls "the same loop pays whoever
-# produces the root": a credit the prover can pull, priced by the fee the community set.
+# ...and the loop PAID for them: a credit the prover can pull, priced by the fee the community set.
 EARNED=$(credit "$DEPLOYER")
 check "the tank paid the prover (credit = $EARNED wei)" \
       "$([ "$EARNED" != "0" ] && echo 0 || echo 1)"

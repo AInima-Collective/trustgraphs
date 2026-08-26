@@ -182,7 +182,7 @@ contract TrustgraphsGoldenVectorsTest is Test {
     /// Domain separation (INSTANCE_FACTORY §6.1, params-schema v2): two instances that are
     /// byte-identical apart from their accumulator address — or their chain id — MUST hash to
     /// different `paramsHash`es, so a proof produced for one cannot be replayed onto the other.
-    /// The unit-level half of the GOAL's replay-separation criterion; the real-stack half lives in
+    /// The unit-level half of the replay-separation invariant; the real-stack half lives in
     /// `test/integration/FactoryReplaySeparation.t.sol`.
     function test_ParamsHashDomainSeparatesInstances() public view {
         ParamsCodec.Params memory a = _goldenParams();

@@ -6,7 +6,7 @@
 //! node and is committed in `skippedDigest`, never silently dropped.
 //!
 //! One crate, one module per substrate (envelope 0 = EAS-offchain chained log; envelope 1 =
-//! atproto repo commit, lands at GOAL M3). Dispatch is a plain match on `envelope_kind` —
+//! atproto repo commit). Dispatch is a plain match on `envelope_kind` —
 //! no dyn traits; the guest must be deterministic and auditable.
 //!
 //! Rules identical to the other guest crates: NO floats, NO non-deterministic iteration,

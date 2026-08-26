@@ -66,7 +66,7 @@ export const AccountProfilePage = ({
 }) => {
   const router = useRouter()
 
-  // The runtime trust-graph catalog (GOAL.md M3): this page attributes scores and attestations to
+  // The runtime trust-graph catalog: this page attributes scores and attestations to
   // networks, and both lookups have to know about instances created since the last deploy.
   const networks = useNetworks()
   const schemaToNetwork = useMemo(() => {
@@ -403,10 +403,7 @@ export const AccountProfilePage = ({
                     {erc8004AgentLabel(agent)}
                   </span>
                   <span className="mt-0.5 block text-[10px] text-text-subtle">
-                    {agent.chainId === '10'
-                      ? 'Optimism'
-                      : `Chain ${agent.chainId}`}{' '}
-                    · ERC-8004 #{agent.agentId}
+                    Chain {agent.chainId} · ERC-8004 #{agent.agentId}
                   </span>
                   <span className="mt-1 block text-[9px] uppercase tracking-wider text-success">
                     {agent.roles

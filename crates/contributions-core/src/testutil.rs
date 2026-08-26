@@ -46,9 +46,8 @@ pub fn valuation_data(claim_uid: B256, score: u8) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// The 6-persona worked example (GOAL.md M1) — the cross-lane oracle fixture,
-// reused by the golden vectors (M1), guest execute parity (M2), the indexer
-// (M3), the TS port (M4), and the seeded e2e round (M5).
+// The 6-persona worked example — the cross-lane oracle fixture reused by the golden vectors,
+// guest execute parity, the indexer, the TypeScript port, and the seeded end-to-end round.
 //
 // Personas: SEED (trusted seed; rates), ALICE (solo contributor; nominator),
 // BOB (co-contributor + rater), CAROL (co-contributor + rater — the BOB/CAROL

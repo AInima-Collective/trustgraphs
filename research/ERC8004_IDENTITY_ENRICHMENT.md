@@ -1,12 +1,16 @@
 # ERC-8004 identity enrichment runbook
 
+> **Historical chain-10 experiment.** Optimism is not a supported Trustgraphs target, and the
+> Sepolia production indexer does not configure an ERC-8004 registry. The generic handlers and
+> local fixture remain available for research; the observation below is retained as evidence only.
+
 This is a presentation-only vertical slice. ERC-8004 owner, verified-wallet, URI, document, and
 endpoint data never enter the vouch fold, PageRank inputs, Merkle tree, proof, or journal.
 
 The raw Reputation Registry follow-up has its own provenance, API, descriptor, and recovery
 runbook: [`ERC8004_REPUTATION_EXPLORER.md`](./ERC8004_REPUTATION_EXPLORER.md).
 
-## Pinned Optimism provenance
+## Pinned historical provenance
 
 - Official source: `erc-8004/erc-8004-contracts` commit
   `68fc6765761a10fb26f0692df21c8a6f9d12b1be`.
@@ -23,9 +27,8 @@ runbook: [`ERC8004_REPUTATION_EXPLORER.md`](./ERC8004_REPUTATION_EXPLORER.md).
 - Observed/expected proxy owner:
   `0x547289319C3e6aedB179C0b8e8aF0B5ACd062603`.
 
-Ponder backfills `Upgraded` and `OwnershipTransferred`, stores their ordered history, and logs a
-high-severity message if a later Optimism implementation or owner differs from this reviewed
-snapshot. A change remains visible instead of silently inheriting the pinned trust assumption.
+The completed experiment used this reviewed snapshot. It is not an allowlist for the supported
+Sepolia deployment.
 
 ## Local lifecycle fixture
 
@@ -38,7 +41,7 @@ shape in canonical `(blockNumber, transactionIndex, logIndex)` order.
 
 ## Metadata worker
 
-Run `pnpm --dir packages/indexer metadata:erc8004:watch` (the production Compose file runs this service).
+For a local experiment, run `pnpm --dir packages/indexer metadata:erc8004:watch` explicitly.
 The event handler only records URI versions. The separate bounded worker permits HTTPS, IPFS, and
 base64 JSON data URIs; pins each HTTPS connection to a validated public DNS answer; revalidates
 redirect destinations; applies time, redirect, byte, and JSON content-type limits; validates the

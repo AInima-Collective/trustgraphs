@@ -1,0 +1,40 @@
+{
+  "chain": "local",
+  "apis": {
+    "ponder": "http://127.0.0.1:65421",
+    "ipfsGateway": "http://127.0.0.1:8080/ipfs/"
+  },
+  "signerSync": {
+    "verifier": "",
+    "programVKey": ""
+  },
+  "weightedFactory": "",
+  "governedWeightedFactory": "",
+  "trustCompose": {
+    "factory": "",
+    "governedFactory": ""
+  },
+  "contributionsFactory": "",
+  "graphLineage": {
+    "registry": ""
+  },
+  "contracts": {
+    "EAS": "0xC2679fBD37d54388Ce493F1DB75320D236e1815e",
+    "SchemaRegistrar": "",
+    "SchemaRegistry": "",
+    "GnosisSafe": "",
+    "EASIndexerResolver": "",
+    "MerkleSnapshot": "",
+    "MerkleGovModule": "",
+    "SignerSyncZkModule": "",
+    "SignerSyncModuleDeployer": "",
+    "MerkleFundDistributor": "",
+    "AnchorRegistry": "",
+    "ContributionResolver": "",
+    "TrustAccumulatorMirror": "",
+    "TestUSDC": "",
+    "ProvingVault": "",
+    "TrustgraphsFactory": "",
+    "GovernedTrustgraphsFactory": ""
+  }
+}

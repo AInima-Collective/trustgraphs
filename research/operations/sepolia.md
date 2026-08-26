@@ -2,8 +2,12 @@
 
 > Internal deployment record. This page is not part of the public product documentation.
 
-Status: pre-testnet deploy path implemented, 2026-08-23. No trustgraphs contracts are deployed on
-Sepolia or any other public chain yet; the tracked manifest remains explicitly `planned`.
+> **Historical pre-deployment plan, superseded 2026-08-25.** Sepolia contracts are live and the
+> tracked manifest is finalized. Do not use the checklist below operationally; use
+> [`docs/build/production.md`](../../docs/build/production.md),
+> [`docs/build/railway.md`](../../docs/build/railway.md), and
+> [`deployments/sepolia.json`](../../deployments/sepolia.json). The remainder is retained only as
+> design and decision history.
 
 ## Outcome
 

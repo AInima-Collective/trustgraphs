@@ -232,7 +232,7 @@ export const WeightedPriorWorkspace = ({
   const [transform, setTransform] = useState('')
   const [epochLength, setEpochLength] = useState('0')
   const [salt] = useState<Hex>(randomSalt)
-  // Creation-time features (GOAL M4/M5). The fund and governance are structural: they can only
+  // The fund and governance are structural creation-time features: they can only
   // be chosen here, so both are explicit switches rather than hidden defaults.
   const [withFund, setWithFund] = useState(false)
   const [fundToken, setFundToken] = useState<'eth' | 'other'>('eth')

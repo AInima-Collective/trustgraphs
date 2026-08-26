@@ -30,11 +30,13 @@ export const AddOnsStep = ({
   onChange,
   showErrors,
   epochFloor,
+  vaultAvailable,
 }: {
   data: WizardData
   onChange: (patch: Partial<WizardData>) => void
   showErrors: boolean
   epochFloor: bigint
+  vaultAvailable: boolean
 }) => {
   const tokenAddress = data.fundTokenAddress.trim()
   const tokenLooksValid = isAddress(tokenAddress, { strict: false })
@@ -64,7 +66,7 @@ export const AddOnsStep = ({
     tokenLooksValid && tokenInfo && tokenInfo[0]?.status === 'failure'
 
   const tokenError = showErrors ? fundTokenProblem(data) : null
-  const prepayError = showErrors ? prepayProblem(data) : null
+  const prepayError = showErrors && vaultAvailable ? prepayProblem(data) : null
   const signerSyncError = showErrors ? signerSyncProblem(data) : null
   const offchainError = showErrors ? offchainVouchesProblem(data) : null
   const signerSyncAvailable = isSignerSyncAvailable()
@@ -293,8 +295,9 @@ export const AddOnsStep = ({
             <p className="text-xs text-muted-foreground sm:col-span-3">
               Missing activity never removes anyone. Rotation starts only after
               two distinct fresh witnesses; after the first rotation, both must
-              be current owners. This lets two live owners replace three inactive
-              owners without letting one account activate removals alone.
+              be current owners. This lets two live owners replace three
+              inactive owners without letting one account activate removals
+              alone.
             </p>
           </div>
         )}
@@ -303,69 +306,72 @@ export const AddOnsStep = ({
       {/* The proving tank. Deliberately its own card rather than a sub-option of the fund: the
           two are unrelated, and burying it would leave creators discovering the funding step
           after their first month of scores went stale. */}
-      <Card type="detail" size="md">
-        <Field
-          label="Pay for score refreshes up front?"
-          hint="Scores only refresh if somebody does the work, and that costs gas and proving time. Put ETH in during creation to fund the first refreshes; you can top up later in network settings. Withdrawing unused ETH is not available in this app; a constitutional administrator must request and execute it directly through ProvingVault, separated by the vault's withdrawal notice period."
-          error={prepayError}
-        >
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <input
-                className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
-                inputMode="decimal"
-                placeholder="0.5"
-                value={data.prepayEth}
-                onChange={(e) => onChange({ prepayEth: e.target.value })}
-              />
-              <span className="text-sm opacity-60">ETH (optional)</span>
-            </div>
-
-            {data.prepayEth.trim() && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">
-                    Maximum per refresh
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm opacity-60">$</span>
-                    <input
-                      className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
-                      inputMode="decimal"
-                      value={data.maxPerRootUsd}
-                      onChange={(e) =>
-                        onChange({ maxPerRootUsd: e.target.value })
-                      }
-                    />
-                    <span className="text-sm opacity-60">USD</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Covers the proving fee and gas together; creation is capped
-                    at $10,000.
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">
-                    Paid no more often than
-                  </div>
-                  <div className="text-sm">{describeBlocks(paidCadence)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    This starts equal to the score schedule. Your DAO Safe can
-                    change it later.
-                  </p>
-                </div>
+      {vaultAvailable && (
+        <Card type="detail" size="md">
+          <Field
+            label="Pay for score refreshes up front?"
+            hint="Scores only refresh if somebody does the work, and that costs gas and proving time. Put ETH in during creation to fund the first refreshes; you can top up later in network settings. Withdrawing unused ETH is not available in this app; a constitutional administrator must request and execute it directly through ProvingVault, separated by the vault's withdrawal notice period."
+            error={prepayError}
+          >
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                  inputMode="decimal"
+                  placeholder="0.5"
+                  value={data.prepayEth}
+                  onChange={(e) => onChange({ prepayEth: e.target.value })}
+                />
+                <span className="text-sm opacity-60">ETH (optional)</span>
               </div>
-            )}
-          </div>
-        </Field>
-        {data.prepayEth.trim() && (
-          <Note>
-            Before signing, the app checks that this chain has priced its
-            initial proving band and that your cap covers that fee. Creation is
-            atomic: the ETH and payable policy either both land or neither does.
-          </Note>
-        )}
-      </Card>
+
+              {data.prepayEth.trim() && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">
+                      Maximum per refresh
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm opacity-60">$</span>
+                      <input
+                        className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                        inputMode="decimal"
+                        value={data.maxPerRootUsd}
+                        onChange={(e) =>
+                          onChange({ maxPerRootUsd: e.target.value })
+                        }
+                      />
+                      <span className="text-sm opacity-60">USD</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Covers the proving fee and gas together; creation is
+                      capped at $10,000.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      Paid no more often than
+                    </div>
+                    <div className="text-sm">{describeBlocks(paidCadence)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      This starts equal to the score schedule. Your DAO Safe can
+                      change it later.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Field>
+          {data.prepayEth.trim() && (
+            <Note>
+              Before signing, the app checks that this chain has priced its
+              initial proving band and that your cap covers that fee. Creation
+              is atomic: the ETH and payable policy either both land or neither
+              does.
+            </Note>
+          )}
+        </Card>
+      )}
 
       {data.withFund && (
         <div className="space-y-6 border-l border-border pl-4 sm:pl-6">

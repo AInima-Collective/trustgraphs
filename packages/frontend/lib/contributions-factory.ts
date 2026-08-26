@@ -1,4 +1,4 @@
-//! The contributions ROUND factory's client seam (network-creation GOAL M7).
+//! The contributions ROUND factory's client seam.
 //!
 //! Hand-audited ABI, the weighted-workspace pattern (`lib/weighted-prior/contracts.ts`): the
 //! round-creation flow is additive and must not depend on the generated binary contract map, so

@@ -16,6 +16,43 @@ const nonzeroAddress = (value, label) => {
   return value
 }
 
+export function manifestContractAddresses(manifest) {
+  const addresses = Object.entries(manifest.contracts ?? {}).flatMap(
+    ([name, record]) =>
+      record?.address ? [nonzeroAddress(record.address, `Sepolia ${name}`)] : []
+  )
+  for (const instance of manifest.instances ?? []) {
+    const contracts = instance.contracts ?? {}
+    for (const key of [
+      'merkleSnapshot',
+      'easIndexerResolver',
+      'merkleFundDistributor',
+      'merkleGovModule',
+      'anchorRegistry',
+      'contributionResolver',
+      'poolToken',
+    ]) {
+      if (contracts[key]) {
+        addresses.push(
+          nonzeroAddress(
+            contracts[key],
+            `Sepolia instance ${instance.instanceId ?? '<unknown>'} ${key}`
+          )
+        )
+      }
+    }
+    if (contracts.safe?.proxy) {
+      addresses.push(
+        nonzeroAddress(
+          contracts.safe.proxy,
+          `Sepolia instance ${instance.instanceId ?? '<unknown>'} safe proxy`
+        )
+      )
+    }
+  }
+  return addresses
+}
+
 export function loadFinalizedSepoliaManifest(repoDir) {
   const file = path.join(repoDir, 'deployments', 'sepolia.json')
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -44,16 +81,26 @@ export function loadFinalizedSepoliaManifest(repoDir) {
   ) {
     throw new Error('Sepolia manifest deploymentCommit is missing or invalid')
   }
-  for (const [label, value] of [
-    ['trust-graph ELF digest', manifest.programs?.trustGraph?.elfSha256],
-    ['trust-graph vkey', manifest.programs?.trustGraph?.vkey],
+  for (const [key, label] of [
+    ['trustGraph', 'trust-graph'],
+    ['weighted', 'trust-graph-weighted'],
+    ['composition', 'trust-compose'],
+    ['signer', 'signer-sync'],
+    ['contributions', 'contributions'],
+    ['hypercerts', 'hypercerts'],
+    ['nostrWorkspace', 'nostr-workspace'],
   ]) {
-    if (
-      typeof value !== 'string' ||
-      !BYTES32.test(value) ||
-      /^0x0{64}$/i.test(value)
-    ) {
-      throw new Error(`Sepolia ${label} is missing or invalid`)
+    for (const [field, value] of [
+      ['ELF digest', manifest.programs?.[key]?.elfSha256],
+      ['vkey', manifest.programs?.[key]?.vkey],
+    ]) {
+      if (
+        typeof value !== 'string' ||
+        !BYTES32.test(value) ||
+        /^0x0{64}$/i.test(value)
+      ) {
+        throw new Error(`Sepolia ${label} ${field} is missing or invalid`)
+      }
     }
   }
   nonzeroAddress(manifest.external?.sp1Gateway, 'Sepolia SP1 gateway')
@@ -69,23 +116,44 @@ export function loadFinalizedSepoliaManifest(repoDir) {
       throw new Error(`Sepolia ${name} deployment block is missing or invalid`)
     }
   }
-  return { file, manifest }
-}
-
-export function manifestDeploymentSummary(manifest) {
-  return {
-    eas: {
-      eas: manifest.external.eas,
-      schema_registry: manifest.external.schemaRegistry,
-      schema_registrar: manifest.contracts.schemaRegistrar.address,
-    },
-    factory: {
-      factory: manifest.contracts.trustgraphsFactory.address,
-      instance_registry: manifest.contracts.instanceRegistry.address,
-    },
-    provingVault: manifest.contracts.provingVault.address,
-    networks: manifest.instances ?? [],
+  for (const [family, names] of [
+    [
+      'weighted',
+      [
+        'weightedVerifier',
+        'weightedTrustgraphsFactory',
+        'governedWeightedTrustgraphsFactory',
+      ],
+    ],
+    [
+      'composition',
+      [
+        'compositionVerifier',
+        'trustComposeFactory',
+        'governedTrustComposeFactory',
+      ],
+    ],
+    ['contributions', ['contributionsVerifier', 'contributionsFactory']],
+  ]) {
+    const records = names.map((name) => manifest.contracts?.[name])
+    const deployed = records.filter((record) => record?.address).length
+    if (deployed !== 0 && deployed !== records.length) {
+      throw new Error(`Sepolia ${family} deployment is incomplete`)
+    }
+    if (deployed === records.length) {
+      for (let index = 0; index < records.length; index += 1) {
+        const record = records[index]
+        const name = names[index]
+        nonzeroAddress(record.address, `Sepolia ${name}`)
+        if (!Number.isSafeInteger(record.block) || record.block < 0) {
+          throw new Error(
+            `Sepolia ${name} deployment block is missing or invalid`
+          )
+        }
+      }
+    }
   }
+  return { file, manifest }
 }
 
 export function resolveDeploymentProfile(environment, repoDir) {
@@ -104,8 +172,8 @@ export function resolveDeploymentProfile(environment, repoDir) {
   if (!['development', 'production'].includes(stage)) {
     throw new Error('DEPLOY_STAGE must be development or production')
   }
-  if (!['local', 'optimism', 'sepolia'].includes(target)) {
-    throw new Error('DEPLOY_TARGET must be local, optimism, or sepolia')
+  if (!['local', 'sepolia'].includes(target)) {
+    throw new Error('DEPLOY_TARGET must be local or sepolia')
   }
   if ((stage === 'development') !== (target === 'local')) {
     throw new Error(`Invalid deployment profile ${stage}/${target}`)
@@ -122,20 +190,18 @@ export function resolveDeploymentProfile(environment, repoDir) {
       startBlockEnv: 'PONDER_START_BLOCK_11155111',
       defaultStartBlock: manifest.firstDeploymentBlock,
       deploymentFile: file,
-      deploymentSummary: manifestDeploymentSummary(manifest),
+      requiredCodeAddresses: manifestContractAddresses(manifest),
     }
   }
 
   return {
     stage,
     target,
-    production: stage === 'production',
-    chainId: target === 'optimism' ? 10 : 31337,
-    rpcEnv:
-      target === 'optimism' ? 'PONDER_RPC_URL_10' : 'PONDER_RPC_URL_31337',
-    startBlockEnv:
-      target === 'optimism' ? 'PONDER_START_BLOCK_10' : 'PONDER_START_BLOCK',
-    defaultStartBlock: target === 'optimism' ? 142_786_328 : 1,
+    production: false,
+    chainId: 31337,
+    rpcEnv: 'PONDER_RPC_URL_31337',
+    startBlockEnv: 'PONDER_START_BLOCK',
+    defaultStartBlock: 1,
     deploymentFile: path.join(repoDir, '.docker', 'deployment_summary.json'),
   }
 }

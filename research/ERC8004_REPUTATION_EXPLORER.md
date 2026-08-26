@@ -1,13 +1,17 @@
 # ERC-8004 raw Reputation Registry explorer runbook
 
+> **Historical chain-10 experiment.** Optimism is not a supported Trustgraphs target, and the
+> Sepolia production indexer does not configure an ERC-8004 registry. The generic handlers and
+> local fixture remain available for research; the observation below is retained as evidence only.
+
 This integration is a provenance-preserving event explorer. It does not average feedback, select
 reviewers, produce a global reputation score, validate responses, or feed any TrustGraph root,
 proof, score, or edge. The official `tag1` and `tag2` strings are exposed as `tag` and `unit` for
 filtering, while the API also returns the original field aliases. Both remain exact strings.
 
-## Pinned production source
+## Pinned historical source
 
-Production indexes only the official Optimism singleton; there is no production address override.
+The completed experiment indexed the official Optimism singleton without an address override.
 
 | Field | Pinned observation |
 | --- | --- |
@@ -23,11 +27,9 @@ Production indexes only the official Optimism singleton; there is no production 
 | Official source commit | `68fc6765761a10fb26f0692df21c8a6f9d12b1be` |
 | Full ABI SHA-256 | `867b7975a5f2f9fee38c4a148a84471b141f4de91409ccc0c6bebe3df4f04001` |
 
-The reviewed subset and constants live in
-`packages/indexer/abis/erc8004ReputationRegistry.ts`. Indexing stops on an unreviewed Optimism
-implementation, owner, or Identity Registry binding. Do not “recover” by adding an arbitrary
-address or relaxing those checks. Audit the new implementation and ABI, update the pin and this
-table, then replay from the original source block.
+The reviewed ABI remains in `packages/indexer/abis/erc8004ReputationRegistry.ts`; the observation
+and experiment inputs remain under `research/erc8004-reputation/`. They are not production
+configuration.
 
 ## State and attribution rules
 

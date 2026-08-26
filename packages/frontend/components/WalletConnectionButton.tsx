@@ -175,9 +175,7 @@ export const WalletConnectionButton = ({
         {isConnected && address ? (
           <div className="flex flex-col gap-3 text-sm">
             <div className="flex flex-col gap-2 bg-secondary p-3 rounded-md -m-1">
-              {/* The chain this app is configured for, not a hardcoded name.
-               * It read "Optimism Balances" on every deployment including the
-               * local one, where it was simply false. */}
+              {/* Always name the chain this deployment is configured for. */}
               <p className="text-xs text-muted-foreground font-medium mb-1">
                 {getCurrentChainConfig().name} balance
               </p>

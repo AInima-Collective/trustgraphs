@@ -391,7 +391,7 @@ the proof and root, so a consumer verifies it against the chain and can ignore t
   tree, and only upserts rows once the rebuilt root reproduces the on-chain `outputRoot`. With no
   ingested rows the routes 404. The proof-construction logic is also verified independently by
   `packages/indexer/src/api/hypercerts-tree.test.ts` (`node --test`). (`skipped_node` ingestion remains a
-  documented stub — see `ingestSkippedNodes` in the same file.)
+  reserved schema; there is no authenticated skipped-node witness ingestion path yet.)
 
 ---
 

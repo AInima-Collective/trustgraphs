@@ -236,8 +236,8 @@ case "$url" in
   */relay-a/healthz|*/relay-b/healthz) printf '{"status":"ok"}\n' ;;
   */relay-a/metrics) cat "$FAKE_STATE_DIR/relay-a-metrics.json" ;;
   */relay-b/metrics) cat "$FAKE_STATE_DIR/relay-b-metrics.json" ;;
-  */packages/indexer/eas-offchain/*/config) cat "$FAKE_STATE_DIR/indexer-config.json" ;;
-  */packages/indexer/eas-offchain/*/utilization) cat "$FAKE_STATE_DIR/indexer-utilization.json" ;;
+  */eas-offchain/*/config) cat "$FAKE_STATE_DIR/indexer-config.json" ;;
+  */eas-offchain/*/utilization) cat "$FAKE_STATE_DIR/indexer-utilization.json" ;;
   */operator/status.json) cat "$FAKE_STATE_DIR/operator-status.json" ;;
   *) printf 'unexpected curl URL: %s\n' "$url" >&2; exit 2 ;;
 esac

@@ -1,12 +1,12 @@
 {
   "$schema": "./schema.json",
   "version": 1,
-  "status": "planned",
+  "status": "deployed",
   "stage": "production",
   "chain": "sepolia",
   "chainId": 11155111,
-  "deploymentCommit": null,
-  "firstDeploymentBlock": null,
+  "deploymentCommit": "f64a4c7c9b5e552e2392894a2e0d6f6c40973549",
+  "firstDeploymentBlock": 11565413,
   "external": {
     "eas": "0xC2679fBD37d54388Ce493F1DB75320D236e1815e",
     "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
@@ -16,36 +16,131 @@
   },
   "contracts": {
     "schemaRegistrar": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x4f74b6C19e84639421692df9abD5c587e0d20fb9",
+      "block": 11565413,
+      "txHash": "0xfaf518159264a3e15da27b42f83655c4ab507344fd7c3e6a8a78cad8059388ba"
     },
     "rootVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xFF850b9c0198Fa9fF9e28e9DFEdB39b1cb7E0bd4",
+      "block": 11565414,
+      "txHash": "0xe8be4cb88345629cc1925e3724314a4ae71151a848bf0c9265b0570db1fab10c"
     },
     "instanceRegistry": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x4369ad64D4E378BEc45eE1081394cCD8A0052904",
+      "block": 11565416,
+      "txHash": "0x3e50addadf182b27e3a4586450af1ed007eee873105be994a7b23f4ba1cba8d4"
     },
     "provingVault": {
-      "address": null,
+      "address": "0x940e4D678a1581560b5C59701aF283beD9F9BFFc",
+      "block": 11565424,
+      "txHash": "0x90065f52e7306fd6b1acfde352172c98fd319d21c899f1972693499ffb7c937d"
+    },
+    "trustgraphsFactory": {
+      "address": "0xd14aF10B0546A247d68E01AE5ef3b73C6e116E35",
+      "block": 11565430,
+      "txHash": "0x607feb7f84c4eafe1b7146f516ed1adeb62e3c5681e0876d3edd84a1d62e159e"
+    },
+    "signerVerifier": {
+      "address": "0xF99e2c06018f2Aa8078859854ecb1fC3C7368b63",
+      "block": 11565969,
+      "txHash": "0x0199e3376ebb3dbbd72b59e84df07a792e6543d7cad5a69ae289efb70da37ad5"
+    },
+    "governedTrustgraphsFactory": {
+      "address": "0xFd0ee86105bF67C5c74653b8268c74120C485b6b",
+      "block": 11565975,
+      "txHash": "0xa7b7795853b9e060812ea38db575efd6f49616bf81d0d13268f07921eb40dccb"
+    },
+    "signerSyncModuleDeployer": {
+      "address": "0x71CaAe36fF68b329422283bD14Eb88c1D90952c9",
+      "block": 11565972,
+      "txHash": "0x4fdc4c194bb05af25a76a349bae3d8e8b03645930079d87dfee51daf3bacf447"
+    },
+    "safeSingleton": {
+      "address": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
       "block": null,
       "txHash": null
     },
-    "trustgraphsFactory": {
-      "address": null,
+    "safeProxyFactory": {
+      "address": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
       "block": null,
       "txHash": null
+    },
+    "weightedVerifier": {
+      "address": "0xf19507cCcfA09fE18A15Abc2aee595413A576ee2",
+      "block": 11567209,
+      "txHash": "0x4f939665c826b76c145daa06c8911f0e147b8be235f60b1cdb239b9237de9d81"
+    },
+    "weightedTrustgraphsFactory": {
+      "address": "0x59a513e2a0b88CCA9f642BE1d67348A8bFF87133",
+      "block": 11567214,
+      "txHash": "0x4cc80032f17f977bfe82a3110c9f524134d3e42b9da2dae79244b43f4bb8300b"
+    },
+    "governedWeightedTrustgraphsFactory": {
+      "address": "0x182CE62522DB88d20794eC2d32b9fF723c9e732D",
+      "block": 11567216,
+      "txHash": "0x397e41c6d3b6c1a47efd042f1bda19144bfae51aca7dbca7086f8b3a2548d8d9"
+    },
+    "compositionVerifier": {
+      "address": "0xd6d94310025EFe103284D195F1E7D1F215E13707",
+      "block": 11567217,
+      "txHash": "0x97fef90869e795d0219bfa40d20ea10512d02844ca19e0a3a2b6a6f6d5a95c22"
+    },
+    "trustComposeFactory": {
+      "address": "0x2f5Ef810326AdE3d2F5e48Ce7727BE1b8952c696",
+      "block": 11567226,
+      "txHash": "0x3ad2b76ce79880e76c177c996d128b02bfee7354298cca9412456dd7b648c5da"
+    },
+    "governedTrustComposeFactory": {
+      "address": "0x5654ed69EC94bCB312d867dc9408F029038F0337",
+      "block": 11567227,
+      "txHash": "0x87c1a2c6a37a80ff24cdefa989add3537ee26b0cd06d59257b720ed86052b587"
+    },
+    "contributionsVerifier": {
+      "address": "0x099Fb1c2C2d41A426b459f7f516CB070e7bC9e12",
+      "block": 11567228,
+      "txHash": "0xc77ddedd4a717c7a2f3f2099708c2742199dc267c33dc3210b5e9dd1a98771ff"
+    },
+    "contributionsFactory": {
+      "address": "0xa93F50d42b7491b4A01Be7449e8c9CCf1591933e",
+      "block": 11567231,
+      "txHash": "0x3d4143f4f30516d1b8238fa92f343ec2beae94460d56c1a9b14da404775c194f"
     }
   },
   "programs": {
     "trustGraph": {
       "sp1Version": "6.3.1",
-      "elfSha256": null,
-      "vkey": null
+      "elfSha256": "0x1ad727e35139b7db669430052a376b6850352c2fc5792a0f6815c7da21b7059d",
+      "vkey": "0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e"
+    },
+    "weighted": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0x9c8d1d52b503bbbdf50f778521ab6391114a2107b293040403b98c814286eab8",
+      "vkey": "0x0027625a41e9d165ab50ca4ff9afbc134385b99688a5fd69cdf03d5056f5abb2"
+    },
+    "composition": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0xd3947c0640498acc42ae4a292d8e65abccc833d9ff2f6791e749e3fc57fc8879",
+      "vkey": "0x00e2847cc257d916a6422283094e8764296045e5f9ed8805b7aaa9b3dd6f7aed"
+    },
+    "signer": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0x9e4c6757fdfbf6e4f2ace056e902379f7fb362d3f0de6a79dcacc0827f40c715",
+      "vkey": "0x00d1b981df6bee1682be2b212151d2ac74c30108215d8e949a84a604ae4baadb"
+    },
+    "contributions": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0x1d6f6ce22e97c1be65a6a142dc238449c57f0eebef6e303217276d1d78d3fdd0",
+      "vkey": "0x0083cb62532a5c855c0c1b61a1eb7b7d5d6d924784342ea661c80baf79cfa243"
+    },
+    "hypercerts": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0xb70743d700464b31df81f87b73b653e38e58c0a1a0c600038eb98015dd0e491e",
+      "vkey": "0x009890d8fed8be4836e060c25ad267049efbe79ce929b0e63c1e086007008d40"
+    },
+    "nostrWorkspace": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0x1dbe149fe811693397aac371e90a75552f8bb5d778074c838a1aa9e0daca2d42",
+      "vkey": "0x003a7984610aa854a8daa012d2d78846ba663781c8fe3aa74fed99be047b6566"
     }
   },
   "instances": []

@@ -1,4 +1,4 @@
-//! Server-side access to the runtime trust-graph catalog (GOAL.md M3).
+//! Server-side access to the runtime trust-graph catalog.
 //!
 //! Import this from server components and route handlers only — client components get the same
 //! data from `useNetworks()` (`contexts/CatalogContext.tsx`), which is seeded by whatever the

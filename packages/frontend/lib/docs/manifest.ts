@@ -83,7 +83,8 @@ export const DOCS_SECTIONS: DocSection[] = [
         items: [
           { slug: 'build/run-a-prover', label: 'Run a prover' },
           { slug: 'build/run-an-agent', label: 'Run an agent' },
-          { slug: 'build/production', label: 'Deploy to a public chain' },
+          { slug: 'build/railway', label: 'Deploy the Sepolia testnet' },
+          { slug: 'build/production', label: 'Deploy to Sepolia' },
           { slug: 'build/add-a-program', label: 'Add a program' },
         ],
       },
