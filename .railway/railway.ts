@@ -142,7 +142,11 @@ export default defineRailway((input) => {
       // declared non-root UID otherwise cannot write their attached volume.
       RAILWAY_RUN_UID: '0',
       PORT: '8080',
-      RPC_URL: ctx.shared.RPC_URL_11155111_0,
+      // NOT the shared Alchemy RPC: its free tier caps eth_getLogs at a 10-block range, and the
+      // operator's registry scan (hardcoded 10k-block chunks in zk/operator/src/chain.rs) can
+      // never fit. The indexer survives that cap only because Ponder chunks to 10 blocks.
+      // Publicnode answers the full-range scan; swap in a paid endpoint here when one exists.
+      RPC_URL: 'https://ethereum-sepolia-rpc.publicnode.com',
       SUBMITTER_PRIVATE_KEY: ctx.shared.SUBMITTER_PRIVATE_KEY,
       NETWORK_PRIVATE_KEY: ctx.shared.NETWORK_PRIVATE_KEY,
       IPFS_PIN_API: 'https://uploads.pinata.cloud/v3/files',
