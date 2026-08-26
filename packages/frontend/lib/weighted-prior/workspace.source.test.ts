@@ -120,6 +120,14 @@ assert.match(source, /Vouches and ordinary score updates do not require/)
 assert.match(source, /Pay for score refreshes up front\?/)
 assert.match(source, /DISABLED_SIGNER_SYNC/)
 
+// Weighted creation offers the same plain-language scoring cadence as standard creation, starts
+// at the factory floor, and submits the derived block count rather than asking for a raw number.
+assert.match(source, /useState<Cadence>\('fastest'\)/)
+assert.match(source, /How often scores can be recalculated/)
+assert.match(source, /CADENCE_OPTIONS\.map/)
+assert.match(source, /epochLength: requestedEpoch/)
+assert.doesNotMatch(source, /Scoring round length \(blocks\)/)
+
 // Weighted creation exposes the standard public network profile, pins it only when populated,
 // and puts that exact metadata URI into the simulated create payload.
 assert.match(source, /<NetworkProfileFields/)

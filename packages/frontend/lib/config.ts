@@ -1,8 +1,28 @@
+import hiddenNetworkIds from '../../../config/hidden-network-ids.json'
 import CONFIG from '../config.json'
 import networks from '../networks.json'
 import { AnyNetwork, HypercertsNetwork, Network } from './types'
 
 const ALL_NETWORKS = networks as AnyNetwork[]
+
+/**
+ * Presentation-only suppressions for the `/networks` directory.
+ *
+ * Factory instances cannot be deleted from the chain, and their detail routes remain useful for
+ * old links and debugging. Keeping this separate from the full network config makes hiding one a
+ * one-line change and prevents directory presentation from changing route resolution.
+ */
+const HIDDEN_DIRECTORY_NETWORK_IDS = new Set(
+  (hiddenNetworkIds as unknown[]).map((id) => {
+    if (typeof id !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(id)) {
+      throw new Error(`Invalid hidden network id: ${String(id)}`)
+    }
+    return id.toLowerCase()
+  })
+)
+
+export const isNetworkHiddenFromDirectory = (id: string): boolean =>
+  HIDDEN_DIRECTORY_NETWORK_IDS.has(id.toLowerCase())
 
 // The address-keyed EAS vouching networks (everything the existing pipeline consumes).
 // Filter by the program tag: any program-tagged instance (hypercerts, contributions) has its own

@@ -135,43 +135,15 @@ const toView = (sections: DirectorySection[]): DirectorySectionView => {
   }
 }
 
-/**
- * Where a directory of other people's networks sends someone who wants their own.
- *
- * The spacing is `pt-5` + `gap-6 sm:gap-8` because that is what the identical construct uses on the
- * landing page (`app/page.tsx`, `Section`): same hairline, same serif h2, same words, same button.
- * It was `pt-8` + `space-y-5` here, which put 12px more air above the heading and 12px less below
- * it than the same block gets one route away. Two spacing scales for one construct is what
- * "assembled" looks like.
- */
-const CreateCta = () => (
-  // `items-start` matters: a flex column stretches its children, and the button is the one child
-  // here that must keep its own width rather than run the frame.
-  <section className="flex flex-col items-start gap-6 border-t border-border pt-5 sm:gap-8">
-    <h2>Bring your own community.</h2>
-    <ButtonLink href="/create" prefetch={false} size="lg">
-      Create a network
-    </ButtonLink>
-  </section>
-)
-
-/** No rows at all. No table chrome, no empty column header, and the same one button. */
+/** No rows at all. No table chrome and no empty column header. */
 const EmptyDirectory = () => (
   // The cap is on the paragraph, not the section: capping the section clamped its `border-t` to
-  // half the frame, so the empty state drew a different rule from the identical CTA in every
-  // other state.
+  // half the frame, so the empty state's rule stopped short of the directory frame.
   <section className="flex flex-col items-start gap-6 border-t border-border pt-5 sm:gap-8">
-    <h2>No networks yet. Create the first one.</h2>
-    {/* The sentence belongs to the button, not to the heading, so the two sit together at a
-     * tighter step than the section's own. */}
-    <div className="flex flex-col items-start gap-5">
-      <p className="max-w-prose text-text-muted">
-        Creating one takes a single transaction, and nobody has to approve it.
-      </p>
-      <ButtonLink href="/create" prefetch={false} size="lg">
-        Create a network
-      </ButtonLink>
-    </div>
+    <h2>No networks yet.</h2>
+    <p className="max-w-prose text-text-muted">
+      Creating one takes a single transaction, and nobody has to approve it.
+    </p>
   </section>
 )
 
@@ -184,8 +156,11 @@ export default async function NetworksPage() {
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      <header>
+      <header className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageTitle>Networks</PageTitle>
+        <ButtonLink href="/create" prefetch={false} size="lg">
+          Create a network
+        </ButtonLink>
       </header>
 
       {directory.catalogError && (
@@ -194,15 +169,10 @@ export default async function NetworksPage() {
 
       {isEmpty ? (
         <EmptyDirectory />
+      ) : directory.total >= SEARCH_THRESHOLD ? (
+        <DirectorySearch sections={[table]} />
       ) : (
-        <>
-          {directory.total >= SEARCH_THRESHOLD ? (
-            <DirectorySearch sections={[table]} />
-          ) : (
-            <DirectorySectionBlock section={table} />
-          )}
-          <CreateCta />
-        </>
+        <DirectorySectionBlock section={table} />
       )}
     </div>
   )

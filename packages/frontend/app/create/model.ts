@@ -170,7 +170,7 @@ export const DEFAULT_TUNING: Tuning = {
   headStartPct: FULL_SEED_TRUST_SHARE_PCT,
   headStartKeptPct: 80,
   totalPoints: 1_000_000,
-  cadence: IS_LOCAL_CHAIN ? 'fastest' : 'monthly',
+  cadence: 'fastest',
 }
 
 export type FundToken = 'eth' | 'other'

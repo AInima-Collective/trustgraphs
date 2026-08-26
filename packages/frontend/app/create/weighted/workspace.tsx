@@ -37,6 +37,13 @@ import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/Select'
 import { Switch } from '@/components/Switch'
 import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
@@ -107,10 +114,14 @@ import type {
 import { BINARY_REDEPLOYMENT_NOTICE } from '@/lib/weighted-prior/workflow'
 
 import {
+  CADENCE_OPTIONS,
+  type Cadence,
   type NetworkMetadata,
   describeBlocks,
+  effectiveBlocks,
   metadataFingerprint,
   nameProblem,
+  requestedBlocks,
 } from '../model'
 import {
   EMPTY_NETWORK_PROFILE,
@@ -234,7 +245,7 @@ export const WeightedPriorWorkspace = ({
   const [author, setAuthor] = useState('')
   const [license, setLicense] = useState('')
   const [transform, setTransform] = useState('')
-  const [epochLength, setEpochLength] = useState('0')
+  const [cadence, setCadence] = useState<Cadence>('fastest')
   const [salt] = useState<Hex>(randomSalt)
   // The fund and governance are structural creation-time features: they can only
   // be chosen here, so both are explicit switches rather than hidden defaults.
@@ -385,11 +396,10 @@ export const WeightedPriorWorkspace = ({
     withGovernance && prepayEth.trim() && !prepayIssue
       ? parseEther(prepayEth.trim())
       : 0n
-  const effectiveEpoch = useMemo(() => {
-    const requested = BigInt(epochLength || '0')
-    const floor = (epochFloor as bigint | undefined) ?? 0n
-    return requested < floor ? floor : requested
-  }, [epochFloor, epochLength])
+  const factoryEpochFloor = (epochFloor as bigint | undefined) ?? 0n
+  const requestedEpoch = requestedBlocks(cadence, factoryEpochFloor)
+  const effectiveEpoch = effectiveBlocks(cadence, factoryEpochFloor)
+  const cadenceRaised = requestedEpoch < effectiveEpoch
   const initialPolicy = useMemo<InitialProvingPolicy | null>(() => {
     try {
       return initialPolicyForCreation(prepayWei, effectiveEpoch, maxPerRootUsd)
@@ -422,7 +432,7 @@ export const WeightedPriorWorkspace = ({
         : address
           ? getAddress(address)
           : zeroAddress,
-      epochLength: BigInt(epochLength || '0'),
+      epochLength: requestedEpoch,
       withDistributor: withFund,
       distributorToken:
         withFund &&
@@ -434,11 +444,11 @@ export const WeightedPriorWorkspace = ({
     }),
     [
       address,
-      epochLength,
       fundToken,
       fundTokenAddress,
       metadataURI,
       name,
+      requestedEpoch,
       salt,
       withFund,
       withGovernance,
@@ -1626,27 +1636,53 @@ export const WeightedPriorWorkspace = ({
                     </p>
                   )}
                 </div>
-                <div>
+                <div className="space-y-2">
                   <label
-                    htmlFor="weighted-epoch"
+                    htmlFor="weighted-cadence"
                     className="text-sm font-medium"
                   >
-                    Scoring round length (blocks)
+                    How often scores can be recalculated
                   </label>
-                  <Input
-                    id="weighted-epoch"
-                    inputMode="numeric"
-                    value={epochLength}
-                    onChange={(e) => {
-                      setEpochLength(e.target.value.replace(/[^0-9]/g, ''))
+                  <Select
+                    value={cadence}
+                    onValueChange={(value) => {
+                      setCadence(value as Cadence)
                       setSimulatedPayload(null)
+                      setGasEstimate(null)
                     }}
-                  />
+                  >
+                    <SelectTrigger id="weighted-cadence">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CADENCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    New vouches appear immediately, but scores change only after
+                    someone publishes a new proof. Faster schedules respond
+                    sooner and cost more to maintain.
+                  </p>
                 </div>
                 <p className="text-xs text-muted-foreground sm:col-span-2">
-                  The factory floor is{' '}
-                  {(epochFloor as bigint | undefined)?.toString() ?? 'loading'}{' '}
-                  blocks; shorter requests are raised to it.
+                  {cadenceRaised ? (
+                    <>
+                      This chain limits score updates to{' '}
+                      {describeBlocks(effectiveEpoch)}, so that is the schedule
+                      your network will use.
+                    </>
+                  ) : epochFloor === undefined ? (
+                    <>Loading this chain&apos;s schedule limit.</>
+                  ) : (
+                    <>
+                      The factory minimum is{' '}
+                      {factoryEpochFloor.toLocaleString()} blocks.
+                    </>
+                  )}
                 </p>
                 <div className="space-y-2 sm:col-span-2">
                   <NetworkProfileFields

@@ -1,12 +1,1 @@
-[
-  {
-    "id": "ethereum-extituional-v1",
-    "name": "Ethereum Extituional (superseded)",
-    "about": "First deployment of Ethereum Extituional, superseded the same day by the fast-schedule redeploy on the floor-1 factory generation. The network remains on-chain; this entry only hides it from the catalog.",
-    "hidden": true,
-    "contracts": {
-      "merkleSnapshot": "0x3E5f0Aab90Fd9a3B2b27AdfC753De635Fbd5ad81",
-      "easIndexerResolver": "0x8D0AA0fc3FC5450661EE8c66e4c9e383b1cbe751"
-    }
-  }
-]
+[]

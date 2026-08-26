@@ -15,7 +15,11 @@
 //! older vouch.
 
 import { getCatalog } from './catalog.server'
-import { APIS, VISIBLE_HYPERCERTS_NETWORKS } from './config'
+import {
+  APIS,
+  VISIBLE_HYPERCERTS_NETWORKS,
+  isNetworkHiddenFromDirectory,
+} from './config'
 import {
   type Directory,
   type DirectoryProgram,
@@ -551,7 +555,7 @@ export const loadDirectory = async (): Promise<Directory> => {
         'Members and delegated agents scored from anchored Buzz/Nostr workspace history.',
       snapshot,
     })),
-  ]
+  ].filter((source) => !isNetworkHiddenFromDirectory(source.id))
 
   const summaries = await Promise.all(
     sources.map((source) =>

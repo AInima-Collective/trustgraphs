@@ -24,12 +24,14 @@ test('standard creation keeps gasless off-chain vouches disabled while retaining
 })
 
 test('standard creation presents scoring and governance decisions in their intended hierarchy', async () => {
-  const [tuning, addOns, review] = await Promise.all([
+  const [model, tuning, addOns, review] = await Promise.all([
+    source('../app/create/model.ts'),
     source('../app/create/steps/TuningStep.tsx'),
     source('../app/create/steps/AddOnsStep.tsx'),
     source('../app/create/steps/ReviewStep.tsx'),
   ])
 
+  assert.match(model, /DEFAULT_TUNING[\s\S]*cadence: 'fastest'/)
   const scoringAdvanced = tuning.indexOf('Advanced settings')
   assert.ok(
     tuning.indexOf('How often scores can be recalculated') < scoringAdvanced

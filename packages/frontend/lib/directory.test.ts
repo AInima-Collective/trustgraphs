@@ -16,6 +16,20 @@ assert.equal(SECTION_META['trust-compose'].scoredLabel, 'Scored accounts')
 
 const server = readFileSync('lib/directory.server.ts', 'utf8')
 const page = readFileSync('app/networks/page.tsx', 'utf8')
+const hiddenIds = JSON.parse(
+  readFileSync('../../config/hidden-network-ids.json', 'utf8')
+) as unknown[]
+
+assert.equal(
+  new Set(hiddenIds).size,
+  hiddenIds.length,
+  'hidden network ids must be unique'
+)
+for (const id of hiddenIds) {
+  assert.equal(typeof id, 'string')
+  assert.match(id as string, /^0x[0-9a-fA-F]{64}$/)
+}
+
 assert.match(
   server,
   /score-programs\?program=nostr-workspace&limit=/,
@@ -31,8 +45,19 @@ assert.match(
 assert.doesNotMatch(server, /create\/weighted\?instance=\$\{source\.id\}/)
 assert.match(server, /`\/networks\/\$\{source\.id\}`/)
 assert.match(server, /\/compositions\?limit=/)
+assert.match(
+  server,
+  /\.filter\(\(source\) => !isNetworkHiddenFromDirectory\(source\.id\)\)/,
+  'global hidden entries must be filtered only while assembling the network directory'
+)
 assert.match(page, /const table = toView\(directory\.sections\)/)
 assert.match(page, /<DirectorySectionBlock section=\{table\}/)
+assert.doesNotMatch(page, /Bring your own community/)
+assert.equal(
+  page.match(/Create a network/g)?.length,
+  1,
+  'the create action should appear once, in the page header'
+)
 assert.doesNotMatch(page, /View composed networks/)
 assert.doesNotMatch(page, /Networks on this chain, and what each one counts/)
 
