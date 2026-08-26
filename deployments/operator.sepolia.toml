@@ -50,12 +50,17 @@ groth16 = true
 timeout_s = 3600
 
 [budget]
-per_instance_usd_per_day = 2
-global_usd_per_day = 15
+# Testnet loss budgets. eth_usd = 1 stops the ledger valuing faucet Sepolia ETH like mainnet ETH
+# (at 5000 a single submitProof booked ~$6.55 of "gas" and wedged the instance on loss_budget for
+# a day). Succinct cycles stay priced for real via cents_per_billion_cycles. The instance cap is
+# raised above spend already booked in the journal at the old price — booked cents are immutable.
+# Mainnet: restore per_instance 2 / global 15 / eth_usd to a real price.
+per_instance_usd_per_day = 10
+global_usd_per_day = 30
 global_alert_percent = 80
 window_seconds = 86400
 cents_per_billion_cycles = 100
-eth_usd = 5000
+eth_usd = 1
 
 [signer_sync]
 enabled = true
