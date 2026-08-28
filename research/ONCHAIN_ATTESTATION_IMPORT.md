@@ -141,9 +141,27 @@ cannot omit anything that is in the log); what weakens is coverage.
 
 Permissionlessness is the mitigation, and it is a strong one, the same shape as forced inclusion
 on rollups: anyone can import their own edge, or anyone else's, at any time, and it lands in the
-next checkpoint. Operationally, an instance bootstraps with one backfill of the existing corpus,
-and the indexer auto-imports new attestations each epoch, so the gap between "exists" and
-"imported" stays a liveness concern, never a safety one.
+next checkpoint.
+
+### The sync gap never has to reach a checkpoint
+
+The gap between "exists on EAS" and "imported" is invisible on-chain (a contract has nothing to
+compare against) but *exact* off-chain: Ponder already reads EAS `Attested` logs, so the indexer
+knows the full pending-uid set at any block. And scores only ever move at checkpoints. Two
+mechanisms make the gap costless where currency matters:
+
+- **Epoch-boundary sweep.** Batch-import every pending attestation and revocation just before
+  `MerkleSnapshot.trigger()`. Every checkpoint is then complete with respect to what exists on
+  EAS at that block, so an imported graph is exactly as current as a native graph at every point
+  scores are read. The gap survives only intra-epoch, where no score can observe it.
+- **Attest-and-import router.** For attestations made through our own app against an imported
+  schema, one multicall does `EAS.attest(...)` (which returns the uid) followed by
+  `importer.importAttestations([uid])` atomically. The gap is zero for our-app attestations;
+  only foreign frontends rely on the sweep.
+
+The residual failure mode is "sweeper down and nobody imported", which degrades to a visibly
+stale as-of date with the permissionless backstop still open. The honest claim therefore
+tightens to: **checkpoint-complete whenever the sweep is live; permissionless backstop always.**
 
 ### Why enforced completeness for a foreign schema is a no-go
 
@@ -154,6 +172,15 @@ never exhaustiveness). For a schema live since 2023 that is millions of blocks o
 proving: ZK-coprocessor scale work, the same wall the ERC-8004 deployed-history analysis hit
 ([`ERC8004_INPUT_COMPLETENESS.md`](./ERC8004_INPUT_COMPLETENESS.md)). Rejected for the same
 reasons. The importer's weaker-but-honest claim is the design boundary.
+
+EAS itself confirms there is nothing to borrow. Core storage is uid-keyed only, with no
+counter, no per-schema list, and no running commitment; the schema resolver is the only
+synchronous attest-time hook, which is exactly what existing schemas lack. EAS's own
+`Indexer.sol` is its answer to enumeration, and it is a permissionless pull contract with the
+same sync gap by the same necessity — and strictly weaker for our purposes: it records uids
+only (no `data`, which the guest needs for weights), tracks no revocations, and its arrays are
+consumable only via deep storage proofs of both the Indexer and EAS's `_db`. It validates the
+pull pattern without replacing the importer.
 
 ## Implementation sketch
 
@@ -169,10 +196,15 @@ Small, and nothing downstream moves:
    resolver; `MerkleSnapshot` wiring is identical.
 4. **Indexer**: handlers already match the emitted events; add the importer address to the
    contract config.
-5. **Frontend / ops**: a backfill script (enumerate uids from EAS logs off-chain, batch-import),
-   and an epoch task that imports anything new. Batches are cheap: each import is one external
-   storage read, one keccak fold, one storage write.
-6. **Guest, prover, golden vectors: no changes.** The one encoding-adjacent change (`_foldAt`)
+5. **Backfill tooling**: enumerate uids from EAS logs off-chain, batch-import, resumable.
+   Batches are cheap: each import is one external storage read, one keccak fold, one storage
+   write.
+6. **Epoch-boundary sweep**: an epoch task that imports every pending attestation and
+   revocation before `trigger()`, so checkpoints are complete under a live sweeper.
+7. **Attest-and-import router**: the app's create-attestation path on importer instances
+   submits one multicall (attest, then import the returned uid), closing the gap for our-app
+   attestations entirely.
+8. **Guest, prover, golden vectors: no changes.** The one encoding-adjacent change (`_foldAt`)
    preserves leaf bytes exactly.
 
 ## Open questions
