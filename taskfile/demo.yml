@@ -299,8 +299,9 @@ tasks:
         # uids flow live from config/networks.development.json (rewritten every deploy), its
         # contract ADDRESSES are wagmi-generated into packages/frontend/lib/contracts.ts — which nothing
         # else in `task demo` touches; normally the frontend dev server's predev regenerates it.
-        # Left stale, the driver sends a current schema uid to a previous deploy's EAS and the
-        # first vouch dies as a bare revert. Regenerate in predev's order: config, symlink, ABIs.
+        # config.json and networks.json are independent environment-selected symlinks, so refresh
+        # both: a previous testnet run can otherwise leave the round driver reading Sepolia's seed
+        # networks while its contracts point at the new local deploy. Regenerate in predev's order.
         #
         # `pnpm frontend …` (the root script) and NOT `pnpm --filter frontend …`: --filter
         # matches package NAMES, the package is named trustgraphs-frontend, and pnpm treats a
@@ -308,6 +309,7 @@ tasks:
         # which is how this step once no-opped its way into that bare revert.
         pnpm frontend config:generate
         pnpm frontend config:link
+        pnpm frontend networks:link
         pnpm frontend wagmi:generate
       - |
         # Codegen that silently didn't happen looks identical to codegen that worked, so check
@@ -320,9 +322,14 @@ tasks:
           echo "✗ frontend codegen is not tracking this deploy:" >&2
           echo "    generated easAddress  ${GEN:-<none>}" >&2
           echo "    deployed EAS          $WANT" >&2
-          echo "  re-run: pnpm frontend config:generate && pnpm frontend config:link && pnpm frontend wagmi:generate" >&2
+          echo "  re-run: pnpm frontend config:generate && pnpm frontend config:link && pnpm frontend networks:link && pnpm frontend wagmi:generate" >&2
           exit 1
         fi
+      - |
+        # Resolve the round and its slot-A trust network before any fixture attestation is sent.
+        # This catches a stale/wrong networks.json target with an actionable error rather than
+        # failing partway into the contribution-round sequence.
+        cd packages/frontend && npx tsx scripts/contribution-round.ts preflight
       - |
         # The whole M5 worked example, driven through the frontend's exact attest seams: the
         # fixture's six vouches, an out-of-window claim, the round window (paramsHash rotation),
