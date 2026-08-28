@@ -106,7 +106,7 @@ export type InstanceRow = {
   epochLength: string
   paramsHash: Hex
   params: InstanceParamsJson
-  paramsControl: 'typed' | 'legacy'
+  paramsControl: 'typed' | 'raw-hash'
   paramsVersion: string | null
   paramsState: 'current-unpinned' | 'active' | null
   paramsExecutedAtBlock: string | null

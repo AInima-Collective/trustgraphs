@@ -235,7 +235,7 @@ export type ParameterHistoryResponse = {
   controller: Hex | null
   currentVersion: string | null
   currentParamsHash: Hex
-  control: 'typed' | 'legacy'
+  control: 'typed' | 'raw-hash'
   versions: Array<{
     version: string
     paramsHash: Hex
