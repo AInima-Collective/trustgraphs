@@ -28,20 +28,8 @@ export interface PopupProps {
   children: ReactNode | ReactNode[]
   wrapperClassName?: string
   popupClassName?: string
-  getKeydownEventListener?: (
-    open: boolean,
-    setOpen: Dispatch<SetStateAction<boolean>>
-  ) => (event: KeyboardEvent) => any
-  headerContent?: ReactNode
-  onOpen?: () => void
-  onClose?: () => void
-  // Give parent a way to access and control open and setOpen.
-  openRef?: RefObject<boolean | null>
+  // Give parent a way to control setOpen.
   setOpenRef?: RefObject<Dispatch<SetStateAction<boolean>> | null>
-  /**
-   * Optionally add offset to the top of the popup.
-   */
-  topOffset?: number
   /**
    * Offset to add to the left/right side calculation.
    */
@@ -85,13 +73,7 @@ export const Popup = ({
   children,
   wrapperClassName,
   popupClassName,
-  getKeydownEventListener,
-  headerContent,
-  onOpen,
-  onClose,
-  openRef,
   setOpenRef,
-  topOffset = 0,
   sideOffset = 0,
   popupPadding,
   popupLabel,
@@ -119,33 +101,18 @@ export const Popup = ({
     setOpen(false)
   }, [pathname, setOpen])
 
-  // Store open and setOpen in ref so parent can access them.
+  // Store setOpen in a ref so the parent can control the popup.
   useEffect(() => {
-    if (openRef) {
-      openRef.current = open
-    }
     if (setOpenRef) {
       setOpenRef.current = setOpen
     }
-    // Remove refs on unmount.
+    // Remove the ref on unmount.
     return () => {
-      if (openRef) {
-        openRef.current = null
-      }
       if (setOpenRef) {
         setOpenRef.current = null
       }
     }
-  }, [open, openRef, setOpen, setOpenRef])
-
-  // Trigger open callbacks.
-  useEffect(() => {
-    if (open) {
-      onOpen?.()
-    } else {
-      onClose?.()
-    }
-  }, [onClose, onOpen, open])
+  }, [setOpen, setOpenRef])
 
   // Close popup on escape if open.
   useEffect(() => {
@@ -194,23 +161,10 @@ export const Popup = ({
     return () => window.removeEventListener('click', closeIfClickOutside)
   }, [open, setOpen])
 
-  // Apply keydown event listener.
-  useEffect(() => {
-    if (!getKeydownEventListener) {
-      return
-    }
-
-    const listener = getKeydownEventListener(open, setOpen)
-
-    document.addEventListener('keydown', listener)
-    // Clean up event listener on unmount.
-    return () => document.removeEventListener('keydown', listener)
-  }, [getKeydownEventListener, open, setOpen])
-
   // Track button to position the dropdown.
   const { onDropdownRef, onTrackRef, updateRectRef } = useTrackDropdown({
     // Some space between trigger and dropdown
-    top: (rect) => rect.bottom + 4 + topOffset,
+    top: (rect) => rect.bottom + 4,
     left:
       position === 'right' || position === 'same'
         ? (rect) => rect.left + sideOffset
@@ -383,12 +337,6 @@ export const Popup = ({
               onDropdownRef(ref)
             }}
           >
-            {headerContent && (
-              <div className="mb-4 border-b border-border-base">
-                <div className="p-4">{headerContent}</div>
-              </div>
-            )}
-
             {children}
           </Card>,
           document.body

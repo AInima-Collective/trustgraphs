@@ -446,27 +446,6 @@ app.get('/lineages/:lineageId', async (c) => {
   })
 })
 
-app.get('/epochs', async (c) => {
-  const { limit, offset } = pagination(
-    c.req.query('limit'),
-    c.req.query('offset')
-  )
-  const lineageId = idParam(c.req.query('lineageId'))
-  if (c.req.query('lineageId') && !lineageId)
-    return c.json({ error: 'invalid lineageId' }, 400)
-  const rows = await db
-    .select()
-    .from(graphLineageEpoch)
-    .where(lineageId ? eq(graphLineageEpoch.lineageId, lineageId) : undefined)
-    .orderBy(desc(graphLineageEpoch.freezeBlock), asc(graphLineageEpoch.id))
-    .limit(limit + 1)
-    .offset(offset)
-  return c.json({
-    items: rows.slice(0, limit).map(serializeEpoch),
-    pagination: { limit, offset, hasMore: rows.length > limit },
-  })
-})
-
 app.get('/endorsements', async (c) => {
   const { limit, offset } = pagination(
     c.req.query('limit'),

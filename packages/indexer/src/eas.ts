@@ -57,7 +57,7 @@ const onRevoked = async ({ event, context }: any) => {
     functionName: 'getAttestation',
     args: [uid],
   })
-  // M0 hazard sweep: ensure-by-readback. The full attestation was just read from the EAS
+  // Out-of-universe guard: ensure-by-readback. The full attestation was just read from the EAS
   // contract, so a revocation whose attest marker predates the start block (or was folded by a
   // resolver we began watching mid-life) materializes the complete row instead of wedging on a
   // bare update. The revoke-fold accumulator record below needs the same data either way.

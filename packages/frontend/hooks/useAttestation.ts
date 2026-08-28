@@ -13,7 +13,7 @@ import {
 
 import { intoAttestationData, intoAttestationsData } from '@/lib/attestation'
 import { easAbi } from '@/lib/contract-abis'
-import { easAddress } from '@/lib/contracts'
+import { easAddress } from '@/lib/config'
 import {
   EAS_DELEGATION_TTL_SECONDS,
   EAS_DELEGATION_VERSION,

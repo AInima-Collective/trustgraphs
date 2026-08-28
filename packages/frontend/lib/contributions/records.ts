@@ -1,4 +1,4 @@
-//! Contribution record payload decoding (INTERFACES.md §1). Mirrors
+//! Contribution record payload decoding (research/operations/contributions/interfaces.md §1). Mirrors
 //! `contributions_core::records`.
 //!
 //! Every decoder is total and deterministic: a malformed payload yields `null` (a provable

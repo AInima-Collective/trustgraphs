@@ -2159,9 +2159,9 @@ export const SettingsPage = ({
                   size="md"
                   className="text-sm text-muted-foreground"
                 >
-                  This legacy network has no factory instance ID, so it cannot
-                  have an instance-keyed proving tank. Contract settings remain
-                  visible below.
+                  This network has no factory instance ID, so it cannot have an
+                  instance-keyed proving tank. Contract settings remain visible
+                  below.
                 </Card>
               ) : !vaultAddress ? (
                 <Card
@@ -2980,7 +2980,7 @@ export const SettingsPage = ({
                   <SettingRow label="Graduation state">
                     {!hasRecordedAuthority ? (
                       <StatusPill tone="muted">
-                        Legacy / not recorded by this governed factory
+                        Not recorded by this governed factory
                       </StatusPill>
                     ) : !authorityReadsComplete ? (
                       <StatusPill tone="muted">

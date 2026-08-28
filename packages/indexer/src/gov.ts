@@ -3,8 +3,6 @@ import {
   merkleGovModule,
   merkleGovModuleProposal,
   merkleGovModuleVote,
-  merkleGovVoteDelegate,
-  merkleGovVoteDelegationEvent,
 } from 'ponder:schema'
 import type { Address } from 'viem'
 
@@ -265,34 +263,6 @@ const voteCast = async ({ event, context }: any) => {
 
 ponder.on('merkleGovModule:VoteCast', voteCast)
 ponder.on('governedMerkleGovModule:VoteCast', voteCast)
-
-// VoteDelegateSet: keep both the current assignment and the append-only receipt history.
-const voteDelegateSet = async ({ event, context }: any) => {
-  const { principal, previousDelegate, newDelegate } = event.args
-  const position = eventPosition(event)
-
-  await context.db
-    .insert(merkleGovVoteDelegate)
-    .values({
-      module: event.log.address,
-      principal,
-      delegate: newDelegate,
-      ...position,
-    })
-    .onConflictDoUpdate({ delegate: newDelegate, ...position })
-
-  await context.db.insert(merkleGovVoteDelegationEvent).values({
-    id: event.id,
-    module: event.log.address,
-    principal,
-    previousDelegate,
-    delegate: newDelegate,
-    ...position,
-  })
-}
-
-ponder.on('merkleGovModule:VoteDelegateSet', voteDelegateSet)
-ponder.on('governedMerkleGovModule:VoteDelegateSet', voteDelegateSet)
 
 // DelegateVoteCast follows VoteCast in the same transaction and decorates that principal's row
 // with the actual actor and event-only rationale. The vote stays provisional until an override.

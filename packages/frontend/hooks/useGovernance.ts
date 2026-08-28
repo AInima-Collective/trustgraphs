@@ -48,14 +48,6 @@ export interface ProposalCore {
   timestamp: bigint
 }
 
-export interface ProposalVote {
-  voter: string
-  voteType: number
-  votingPower: bigint
-  blockNumber: bigint
-  timestamp: bigint
-}
-
 export enum ProposalState {
   Pending = 0,
   Active = 1,

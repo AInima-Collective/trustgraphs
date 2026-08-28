@@ -47,12 +47,12 @@ test('historical repair touches only the authenticated program table families', 
 test('restart repair is idempotent and waits for every contributions surface', () => {
   const contributions = program('contributions', 'contributions-recipient-v1')
   const discriminators = scoreRowDiscriminators(contributions)
-  const legacy = {
+  const preexisting = {
     programId: null as string | null,
     outputDomain: null as string | null,
   }
   const repairedOnce = {
-    ...legacy,
+    ...preexisting,
     ...discriminators.primary,
   }
   assert.deepEqual({ ...repairedOnce, ...discriminators.primary }, repairedOnce)

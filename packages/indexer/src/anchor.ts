@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { sql } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
-import { anchor, anchorCheckpoint, nodeRegistration } from 'ponder:schema'
+import { anchor, anchorCheckpoint } from 'ponder:schema'
 import { type Hex, decodeFunctionData, keccak256, stringToHex } from 'viem'
 
 import { merkleSnapshotAbi } from '../../frontend/lib/contract-abis'
@@ -23,8 +23,8 @@ import { type SharedArgs } from './utils'
  *
  * The `AnchorRegistry` is a chained-hash log of per-identity head anchors (the AttestationAccumulator
  * pattern lifted one level up). We index the two anchor-registry events and the MerkleSnapshot event
- * that freezes the lane-2 accumulator at each snapshot boundary. Single instance for M2 — the
- * multi-instance `instanceId` dimension is deferred to M4/M5.
+ * that freezes the lane-2 accumulator at each snapshot boundary. Single instance today — a
+ * multi-instance `instanceId` dimension can be added when a deployment needs it.
  */
 
 // AnchorRegistry.HeadAnchored — every anchor claim, in fold order.
@@ -49,21 +49,6 @@ ponder.on('anchorRegistry:HeadAnchored', async ({ event, context }) => {
     count,
     dataCommitment,
     blockTimestamp,
-    txHash: event.transaction.hash,
-    blockNumber: event.block.number,
-  })
-})
-
-// AnchorRegistry.NodeRegistered — a node joined the registry (once per node).
-ponder.on('anchorRegistry:NodeRegistered', async ({ event, context }) => {
-  const { nodeId, kind, registrant } = event.args
-
-  await context.db.insert(nodeRegistration).values({
-    nodeId,
-    address: event.log.address,
-    kind,
-    registrant,
-    at: event.block.timestamp,
     txHash: event.transaction.hash,
     blockNumber: event.block.number,
   })

@@ -120,7 +120,7 @@ export const getNetwork = async (
  *
  * `instanceToNetwork` intentionally narrows the 17-field params tuple to what the existing graph
  * screens consume. The settings page is the one place where that loss is unacceptable, so it
- * asks for the authoritative catalog row separately. Failure is non-fatal: seed-only and legacy
+ * asks for the authoritative catalog row separately. Failure is non-fatal: seed-only and pre-factory
  * networks still have useful live contract settings to show.
  */
 export const getInstanceDetails = async (

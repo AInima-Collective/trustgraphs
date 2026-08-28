@@ -1582,7 +1582,7 @@ const LiveScoringSettings = ({
       <section className="space-y-5">
         <SectionHeading n="03">Scoring parameters</SectionHeading>
         <div className="border border-border bg-surface p-5">
-          <Status tone="muted">Legacy parameter control</Status>
+          <Status tone="muted">Raw-hash parameter control</Status>
           <h2 className="mt-4 text-lg font-semibold">
             This network has no typed parameter controller.
           </h2>
@@ -2761,7 +2761,7 @@ export const ScoringAccessCard = ({
             {controller.controllerAddress}
           </span>
         ) : (
-          'Legacy raw-hash control'
+          'Raw-hash control'
         )}
       </FieldRow>
       <FieldRow label="Controller owner">

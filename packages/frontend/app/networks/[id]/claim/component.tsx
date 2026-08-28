@@ -136,7 +136,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
     null) as Hex | null
 
   // The connected account's payout proof bundle for the current root
-  // (M3 route: /contributions/:snapshot/payout/:account; mock-gated in the client module).
+  // (route: /contributions/:snapshot/payout/:account; mock-gated in the client module).
   const payoutBundleQuery = useQuery(
     contributionsQueries.payout(snapshotAddress, connectedAddress)
   )
@@ -476,7 +476,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
         return (
           <Button
             size="xs"
-            variant="brand"
+            variant="default"
             onClick={(e) => {
               e.stopPropagation()
               handleClaim(row)
@@ -584,7 +584,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
           !isLoadingCurrentEntry &&
           !currentEntryFailed && (
             <Button
-              variant="brand"
+              variant="default"
               size="lg"
               className="w-full sm:w-auto"
               onClick={() => handleClaim(currentDistribution)}

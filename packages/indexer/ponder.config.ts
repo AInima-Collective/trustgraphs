@@ -4,7 +4,6 @@ import path from 'path'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
-import { anchorRegistryAbi } from './abis/anchorRegistry'
 import {
   compositionAccumulatorAbi,
   trustComposeFactoryAbi,
@@ -33,6 +32,7 @@ import {
 } from '../../contracts/deploy/release-manifest'
 import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
 import {
+  anchorRegistryAbi,
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
@@ -826,7 +826,7 @@ export default createConfig({
             }
           : {},
     },
-    // The weighted / compose programs' creation-time fund distributors (M5: the create paths
+    // The weighted / compose programs' creation-time fund distributors (the create paths
     // expose `withDistributor`), plus the funds attached to any instance later through
     // `attachDistributor`. Same ABI and the same merkle.ts handlers as `merkleFundDistributor`;
     // separate sources only because each parent factory event names the child differently.
@@ -877,7 +877,7 @@ export default createConfig({
           ? { [CORE_CHAIN]: { address: programFundDistributors } }
           : {},
     },
-    // Lane-2 anchor registry (M2). Discovered from deployment_summary.json under
+    // Lane-2 anchor registry. Discovered from deployment_summary.json under
     // `network.contracts.anchorRegistry` — single instance for now; only present once a lane-2
     // instance is deployed, so gate on its presence exactly like merkleGovModule/safe. Backfills like
     // merkleSnapshot (it emits HeadAnchored/NodeRegistered that may predate the indexer start).
@@ -905,7 +905,7 @@ export default createConfig({
         ? { [CORE_CHAIN]: { address: easOffchainRegistries() } }
         : {},
     },
-    // Contributions-program resolver + accumulator (M3). Discovered from deployment_summary.json
+    // Contributions-program resolver + accumulator. Discovered from deployment_summary.json
     // under `network.contracts.contributionResolver` — only present once a contributions instance is
     // deployed, so gate on its presence exactly like anchorRegistry. Backfills like the EAS resolver
     // (attestations may predate the indexer start; the fold log must be complete for the derived

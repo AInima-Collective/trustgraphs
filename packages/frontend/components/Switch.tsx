@@ -3,8 +3,6 @@ import { MouseEvent } from 'react'
 
 import { cn } from '@/lib/utils'
 
-import { InfoTooltip } from './InfoTooltip'
-
 export type SwitchProps = {
   enabled: boolean
   onClick?: (event: MouseEvent<HTMLDivElement>) => void
@@ -72,46 +70,6 @@ export const Switch = ({
           />
         )}
       </div>
-    </div>
-  )
-}
-
-export interface SwitchCardProps extends SwitchProps {
-  containerClassName?: string
-  // Fallback for both on and off. Use if label should not change.
-  label?: string
-  onLabel?: string
-  offLabel?: string
-  tooltip?: string
-}
-
-export const SwitchCard = ({
-  containerClassName,
-  label,
-  onLabel: _onLabel,
-  offLabel: _offLabel,
-  tooltip,
-  ...props
-}: SwitchCardProps) => {
-  const onLabel = _onLabel ?? label ?? 'ENABLED'
-  const offLabel = _offLabel ?? label ?? 'DISABLED'
-
-  return (
-    <div
-      className={cn(
-        'flex flex-row items-center justify-between gap-4 rounded-md bg-background-secondary py-2 px-3',
-        containerClassName
-      )}
-    >
-      <div className="flex flex-row items-center gap-1">
-        {tooltip && <InfoTooltip title={tooltip} />}
-
-        <p className="secondary-text min-w-[5rem]">
-          {props.enabled ? onLabel : offLabel}
-        </p>
-      </div>
-
-      <Switch {...props} />
     </div>
   )
 }

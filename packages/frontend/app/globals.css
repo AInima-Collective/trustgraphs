@@ -27,7 +27,7 @@
  *                                  --primary. Do not "fix" this to line up.
  *
  * New work should prefer the token utilities generated below (bg-surface,
- * text-subtle, border-hairline, bg-ink) over the legacy shadcn names.
+ * text-subtle, border-hairline, bg-ink) over the shadcn-compatible aliases below.
  * ==========================================================================*/
 
 :root {
@@ -97,7 +97,7 @@
   --font-display: var(--display-family);
   --font-serif: var(--serif-family);
 
-  /* Legacy shadcn surface names. */
+  /* shadcn-compatible surface aliases (live: Tailwind resolves bg-card etc. through these). */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

@@ -1,4 +1,4 @@
-//! The 21-word `paramsHash` encoding (INTERFACES.md §3) — frozen, golden-locked against
+//! The 21-word `paramsHash` encoding (research/operations/contributions/interfaces.md §3) — frozen, golden-locked against
 //! `contributions_core::params::params_hash` and `ContributionsParamsCodec.sol` via
 //! `tests/golden/contributions.json`. All static ABI types, so the encoding is the
 //! concatenation of 32-byte words.
@@ -23,7 +23,7 @@ export const contributionsSeedSetRoot = (seeds: Hex[]): Hex => {
 
 /**
  * The governance-pinned `paramsHash`: keccak over the concatenation of the 21 static ABI words
- * (INTERFACES.md §3 slot order). Bound the same way every program binds params: the contrib
+ * (research/operations/contributions/interfaces.md §3 slot order). Bound the same way every program binds params: the contrib
  * `MerkleSnapshot.submitProof` builds the journal digest from its stored `paramsHash`, so a
  * proof under different params yields a different digest and fails verification.
  */

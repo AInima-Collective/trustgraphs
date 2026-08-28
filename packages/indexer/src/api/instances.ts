@@ -179,7 +179,7 @@ const serialize = (
   epochLength: row.epochLength.toString(),
   paramsHash: row.paramsHash,
   params: row.params as InstanceParamsJson,
-  paramsControl: row.paramsController ? 'typed' : 'legacy',
+  paramsControl: row.paramsController ? 'typed' : 'raw-hash',
   paramsVersion: row.paramsVersion?.toString() ?? null,
   paramsState: row.paramsController
     ? row.paramsFirstCheckpoint === null
@@ -401,7 +401,7 @@ app.get('/:id/params', async (c) => {
       controller: row.paramsController,
       currentVersion: row.paramsVersion?.toString() ?? null,
       currentParamsHash: row.paramsHash,
-      control: row.paramsController ? 'typed' : 'legacy',
+      control: row.paramsController ? 'typed' : 'raw-hash',
       versions: versions.map((version) => ({
         version: version.version.toString(),
         paramsHash: version.paramsHash,

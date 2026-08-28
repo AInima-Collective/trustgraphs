@@ -187,37 +187,6 @@ export const scoreProgramBinding = onchainTable(
   })
 )
 
-/** Append-only audit trail of accepted, unknown, duplicate, and conflicting registry events. */
-export const scoreProgramBindingEvent = onchainTable(
-  'score_program_binding_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    bindingId: t.text().notNull(),
-    chainId: t.text().notNull(),
-    snapshot: t.hex().notNull(),
-    instanceId: t.hex().notNull(),
-    programId: t.hex().notNull(),
-    outputDomain: t.hex(),
-    verifier: t.hex().notNull(),
-    registryOrAccumulator: t.hex().notNull(),
-    paramsHash: t.hex().notNull(),
-    sourceRegistry: t.hex().notNull(),
-    sourceKind: t.text().notNull(),
-    accepted: t.boolean().notNull(),
-    reason: t.text(),
-    blockNumber: t.bigint().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    bindingIdx: index().on(t.bindingId),
-    instanceIdx: index().on(t.instanceId),
-    programIdx: index().on(t.programId),
-    blockIdx: index().on(t.blockNumber),
-  })
-)
-
 /*///////////////////////////////////////////////////////////////
         ERC-8004 IDENTITY — event-sourced enrichment only
 //////////////////////////////////////////////////////////////*/
@@ -409,35 +378,6 @@ export const erc8004ReputationRegistry = onchainTable(
   })
 )
 
-/** Append-only upgrade and ownership history for the Reputation Registry proxy. */
-export const erc8004ReputationRegistryEvent = onchainTable(
-  'erc8004_reputation_registry_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    registryId: t.text().notNull(),
-    kind: t.text().notNull(),
-    implementation: t.hex(),
-    version: t.text(),
-    identityRegistry: t.hex(),
-    previousOwner: t.hex(),
-    newOwner: t.hex(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    registryIdx: index().on(t.registryId),
-    orderIdx: index().on(
-      t.registryId,
-      t.blockNumber,
-      t.transactionIndex,
-      t.logIndex
-    ),
-  })
-)
-
 /** One immutable feedback payload plus its current revocation flag and event-block attribution. */
 export const erc8004Feedback = onchainTable(
   'erc8004_feedback',
@@ -496,34 +436,6 @@ export const erc8004Feedback = onchainTable(
       t.reviewer,
       t.feedbackIndex
     ),
-  })
-)
-
-/** Append-only revocation/response timeline; feedback creation remains in `erc8004_feedback`. */
-export const erc8004FeedbackEvent = onchainTable(
-  'erc8004_feedback_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    feedbackId: t.text().notNull(),
-    kind: t.text().notNull(), // `revoked` | `response`
-    actor: t.hex().notNull(),
-    uri: t.text(),
-    contentHash: t.hex(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-    blockHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    feedbackOrderIdx: index().on(
-      t.feedbackId,
-      t.blockNumber,
-      t.transactionIndex,
-      t.logIndex
-    ),
-    actorIdx: index().on(t.actor),
   })
 )
 
@@ -647,7 +559,7 @@ export const instance = onchainTable(
     epochLength: t.bigint().notNull(),
     paramsHash: t.hex().notNull(),
     params: t.json().notNull(),
-    // Null for legacy raw-hash instances. Versioned factory instances discover this from the
+    // Null for raw-hash instances. Versioned factory instances discover this from the
     // separate `ParamsControllerCreated` event so the frozen `InstanceCreated` ABI never changes.
     paramsController: t.hex(),
     paramsVersion: t.bigint(),
@@ -657,7 +569,7 @@ export const instance = onchainTable(
     // Null until the first CheckpointParamsPinned event carrying the current version's hash.
     paramsFirstCheckpoint: t.bigint(),
     // Present only for the opt-in strict EAS offchain v2 hybrid created by the companion factory
-    // event. Null preserves the frozen InstanceCreated catalog shape for every legacy instance.
+    // event. Null preserves the frozen InstanceCreated catalog shape for pre-factory instances.
     offchainRegistry: t.hex(),
     offchainEasDomainSeparator: t.hex(),
     offchainMaxTotalInputs: t.bigint(),
@@ -1243,13 +1155,13 @@ export const provingVaultCredit = onchainTable(
 )
 
 /*///////////////////////////////////////////////////////////////
-              LANE 2 — offchain-attestation anchors (M2)
+              LANE 2 — offchain-attestation anchors
 //////////////////////////////////////////////////////////////*/
 
 // AnchorRegistry.HeadAnchored — one row per anchor claim folded into the lane-2 chained-hash log
 // (OFFCHAIN_ATTESTATIONS_ZK §4.1). `foldIndex` is the leaf's position in the chain; `head` is the
 // per-identity completeness commitment; `dataCommitment` is where the data behind the head lives.
-// Single-instance for M2 (the multi-instance `instanceId` dimension is deferred to M4/M5); `address`
+// Single-instance today (a multi-instance `instanceId` dimension can be added when needed); `address`
 // is carried only for provenance across a redeploy, not as an instance key.
 export const anchor = onchainTable(
   'anchor',
@@ -1277,27 +1189,6 @@ export const anchor = onchainTable(
   })
 )
 
-// AnchorRegistry.NodeRegistered — one row per registered node. Registration is once-per-node (the
-// contract's AlreadyRegistered guard), so `nodeId` is the natural primary key.
-export const nodeRegistration = onchainTable(
-  'node_registration',
-  (t) => ({
-    nodeId: t.hex().primaryKey(),
-    address: t.hex().notNull(), // AnchorRegistry that emitted it
-    kind: t.integer().notNull(), // uint8 — 0 = address, 1 = DID, ...
-    registrant: t.hex().notNull(),
-    at: t.bigint().notNull(), // block.timestamp of registration
-    txHash: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-  }),
-  (t) => ({
-    addressIdx: index().on(t.address),
-    kindIdx: index().on(t.kind),
-    registrantIdx: index().on(t.registrant),
-    atIdx: index().on(t.at),
-  })
-)
-
 // MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each snapshot trigger.
 // `anchorAcc`/`anchorCount` are what the guest consumes for that epoch (zeros for a lane-1-only
 // instance with no AnchorRegistry).
@@ -1314,7 +1205,7 @@ export const anchorCheckpoint = onchainTable(
     address: t.hex().notNull(), // MerkleSnapshot that emitted it
     anchorAcc: t.hex().notNull(),
     anchorCount: t.bigint().notNull(), // uint64
-    // Authenticated priced work; equals anchorCount for legacy registries.
+    // Authenticated priced work; equals anchorCount for registries without pricing.
     workCount: t.bigint().notNull(),
     blockTimestamp: t.bigint().notNull(),
     txHash: t.hex().notNull(),
@@ -1481,7 +1372,7 @@ export const easOffchainMutation = onchainTable(
 )
 
 /*///////////////////////////////////////////////////////////////
-        CONTRIBUTIONS PROGRAM — fold log + decoded records (M3)
+        CONTRIBUTIONS PROGRAM — fold log + decoded records
 //////////////////////////////////////////////////////////////*/
 
 // The chained-hash accumulator fold log, one row per fold (attest AND revoke), for every
@@ -1516,7 +1407,7 @@ export const accumulatorRecord = onchainTable(
   })
 )
 
-// contribution.claim attestations, decoded (INTERFACES.md §1 schema 0). `malformed = true` rows
+// contribution.claim attestations, decoded (research/operations/contributions/interfaces.md §1 schema 0). `malformed = true` rows
 // failed the guest's structural decoder (`decodeClaim`) and are provably inert in scoring — the
 // row is kept (with whatever fields decoded) so the UI can show the attestation exists.
 export const contributionClaim = onchainTable(
@@ -1711,56 +1602,6 @@ export const merkleGovModuleVote = onchainTable(
   })
 )
 
-/** Current one-delegate-per-principal assignment. Zero address means explicitly revoked. */
-export const merkleGovVoteDelegate = onchainTable(
-  'merkle_gov_vote_delegate',
-  (t) => ({
-    module: t.hex().notNull(),
-    principal: t.hex().notNull(),
-    delegate: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    pk: primaryKey({ columns: [t.module, t.principal] }),
-    moduleIdx: index().on(t.module),
-    principalIdx: index().on(t.principal),
-    delegateIdx: index().on(t.delegate),
-  })
-)
-
-/** Append-only delegation history used as the assignment/revocation receipt timeline. */
-export const merkleGovVoteDelegationEvent = onchainTable(
-  'merkle_gov_vote_delegation_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    module: t.hex().notNull(),
-    principal: t.hex().notNull(),
-    previousDelegate: t.hex().notNull(),
-    delegate: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    moduleIdx: index().on(t.module),
-    principalIdx: index().on(t.principal),
-    delegateIdx: index().on(t.delegate),
-    orderIdx: index().on(
-      t.module,
-      t.principal,
-      t.blockNumber,
-      t.transactionIndex,
-      t.logIndex
-    ),
-  })
-)
-
 /*///////////////////////////////////////////////////////////////
        OPTIONAL FACTORY SIGNER-SYNC — live state and receipts
 //////////////////////////////////////////////////////////////*/
@@ -1867,7 +1708,7 @@ export const merkleFundDistribution = onchainTable(
     amountDistributed: t.bigint().notNull(),
     feeRecipient: t.hex().notNull(),
     feeAmount: t.bigint().notNull(),
-    // M6 expiry + sweep: claims close at `claimDeadline` (unix seconds; 0 = no deadline), after
+    // Round expiry: claims close at `claimDeadline` (unix seconds; 0 = no deadline), after
     // which the funder can sweep the unclaimed remainder back (`Swept`).
     claimDeadline: t.bigint().notNull(),
     sweptAmount: t.bigint().notNull(),

@@ -173,8 +173,7 @@ export const trustNetworkFor = (
 
 /**
  * The two reachable contributions surfaces, plus the trust network that scores the raters.
- * Contributions routes do not render this as a tab row; this model remains for generic callers
- * until M5 retires the legacy payout URL.
+ * Contributions routes do not render this as a tab row; the model exists for generic callers.
  */
 export const contributionsTabs = (
   network: ContributionsNetwork,

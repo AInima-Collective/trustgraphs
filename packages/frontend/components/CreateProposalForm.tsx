@@ -523,7 +523,7 @@ export function CreateProposalForm({
               <Button
                 type="button"
                 onClick={() => addDraft(newSendEth())}
-                variant="brand"
+                variant="default"
                 size="xs"
               >
                 + Send ETH

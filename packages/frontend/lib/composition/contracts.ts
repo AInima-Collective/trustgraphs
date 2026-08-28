@@ -225,9 +225,6 @@ export const compositionMetadataDigest = (
     )
   )
 
-export const compositionAdapterSetHash = (adapters: Address[]): Hex =>
-  keccak256(encodeAbiParameters([{ type: 'address[]' }], [adapters]))
-
 export const compositionCreateArgs = (
   fields: CompositionCreationFields,
   config: CompositionConfig,

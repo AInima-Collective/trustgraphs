@@ -4,7 +4,6 @@ import { db } from 'ponder:api'
 import schema from 'ponder:schema'
 
 import account from './account'
-import attestations from './attestations'
 import compositions from './compositions'
 import contributions from './contributions'
 import easOffchain from './eas-offchain'
@@ -26,7 +25,6 @@ app.use('/', graphql({ db, schema }))
 app.use('/graphql', graphql({ db, schema }))
 
 app.route('/account', account)
-app.route('/attestations', attestations)
 app.route('/contributions', contributions)
 app.route('/compositions', compositions)
 app.route('/erc8004', erc8004)

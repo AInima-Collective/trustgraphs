@@ -452,7 +452,7 @@ export const RewardsPage = ({
 
         {isConnected && available.length > 0 && !isLoading && (
           <Button
-            variant="brand"
+            variant="default"
             size="lg"
             className="w-full md:w-auto"
             onClick={claimAll}
@@ -611,7 +611,7 @@ const ClaimSourceSection = ({
 
                 {reward.status === 'available' && (
                   <Button
-                    variant="brand"
+                    variant="default"
                     size="sm"
                     className="w-full sm:w-auto"
                     onClick={() => onClaim(reward)}

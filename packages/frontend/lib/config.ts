@@ -60,6 +60,8 @@ export const VISIBLE_HYPERCERTS_NETWORKS = HYPERCERTS_NETWORKS.filter(
 export const CHAIN = CONFIG.chain
 export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
+// The chain's public EAS singleton, typed for direct use in wagmi/viem calls.
+export const easAddress = CONTRACT_CONFIG.EAS as `0x${string}`
 export const WEIGHTED_FACTORY = (CONFIG as { weightedFactory?: string })
   .weightedFactory as `0x${string}` | '' | undefined
 // The governed wrapper for the weighted factory. Absent/empty means the weighted workspace does

@@ -462,7 +462,7 @@ export const nostrWorkspaceScore = offchainSchema.table(
 )
 
 /*///////////////////////////////////////////////////////////////
-          CONTRIBUTIONS PROGRAM — derived scoring (M3)
+          CONTRIBUTIONS PROGRAM — derived scoring
 //////////////////////////////////////////////////////////////*/
 
 // contributionRound — per-(snapshot, root) round metadata for the contributions program: the

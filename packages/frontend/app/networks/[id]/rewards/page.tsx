@@ -14,7 +14,7 @@ import {
   sortRoundsNewestActiveFirst,
 } from '@/lib/network-nav'
 
-import { RewardsPage } from '../claims/component'
+import { RewardsPage } from './component'
 
 // Permissionless instances can be created after the production build, and `?fund=` controls the
 // request's initial UI. Keep the route request-time while its catalog reads retain their own

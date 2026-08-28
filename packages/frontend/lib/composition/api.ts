@@ -625,15 +625,3 @@ export const requireCompatibleCandidate = (
     )
   }
 }
-
-export const provenanceForCandidate = async (
-  api: string,
-  candidate: CompositionCandidate,
-  signal?: AbortSignal
-): Promise<ScoreProgramProvenance> => {
-  const response = await fetch(`${api}/score-programs/${candidate.snapshot}`, {
-    signal,
-  })
-  const body = await responseJson<{ scoreProgram: unknown }>(response)
-  return parseScoreProgramProvenance(body.scoreProgram)
-}

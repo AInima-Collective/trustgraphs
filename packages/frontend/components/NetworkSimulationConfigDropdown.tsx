@@ -35,7 +35,7 @@ export const NetworkSimulationConfigDropdown = ({
               open
                 ? 'outline'
                 : simulationConfig.enabled
-                  ? 'brand'
+                  ? 'default'
                   : 'secondary'
             }
             onClick={onClick}

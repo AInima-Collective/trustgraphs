@@ -9,11 +9,9 @@
  * recompute reproduced the PROVEN on-chain root. An unverified round answers 409 here — we refuse
  * to serve numbers we could not validate.
  *
- * Routes ("current" is accepted wherever :root appears; :snapshot may be omitted via the
- * query-less shorthands when the box runs a single contributions instance):
- *   GET /contributions/rounds?snapshot=0x…                 known rounds (newest first)
- *   GET /contributions/round?snapshot=0x…&root=…           round summary (window/pool/root/cid/status)
- *   GET /contributions/claims?snapshot=0x…&root=…          claims list with live decoded data + scores
+ * Routes ("current" is accepted wherever :root appears):
+ *   GET /contributions/:snapshot/round                     round summary (window/pool/root/cid/status)
+ *   GET /contributions/:snapshot/claims                    claims list with live decoded data + scores
  *   GET /contributions/:snapshot/score/:claimUID           score detail at the current root
  *   GET /contributions/:snapshot/:root/score/:claimUID     …at an explicit root
  *   GET /contributions/:snapshot/payout/:account           payout bundle at the current root
@@ -172,17 +170,13 @@ const listInstances = async (parent?: string) =>
     .from(contributionsInstance)
     .where(
       parent
-        ? eq(lower(contributionsInstance.parentInstanceId), parent.toLowerCase())
+        ? eq(
+            lower(contributionsInstance.parentInstanceId),
+            parent.toLowerCase()
+          )
         : undefined
     )
     .orderBy(desc(contributionsInstance.createdTimestamp))
-
-/** Resolve the snapshot: explicit param, else the box's single contributions instance. */
-const resolveSnapshot = async (snapshotQ?: string): Promise<string | null> => {
-  if (snapshotQ) return snapshotQ
-  const rows = await db.select().from(contributionsInstance).limit(2)
-  return rows.length === 1 ? rows[0]!.snapshot : null
-}
 
 /** Resolve `root` ("current" ⇒ latest round row) for a snapshot. Throws if not found. */
 const resolveRound = async (
@@ -283,60 +277,7 @@ app.get('/instances/:id', async (c) => {
   return c.json(instanceRow(row))
 })
 
-// GET /contributions/rounds — discovery: known rounds (newest first), optionally per snapshot.
-app.get('/rounds', async (c) => {
-  const snapshot = c.req.query('snapshot')
-  const rows = await offchainDb.query.contributionRound.findMany({
-    where: snapshot
-      ? (t, { eq }) =>
-          eq(lower(t.merkleSnapshotContract), snapshot.toLowerCase())
-      : undefined,
-    orderBy: (t, { desc }) => desc(t.timestamp),
-  })
-  try {
-    const authenticated = await Promise.all(
-      rows.map(async (row) => {
-        const current = await requireSnapshotScoreProgram(
-          row.merkleSnapshotContract,
-          'contributions'
-        )
-        return {
-          ...row,
-          scoreProgram: requireRowScoreProgram(row, current, 'contributions'),
-        }
-      })
-    )
-    return c.json({ rounds: authenticated.map(roundSummary) })
-  } catch (error) {
-    if (error instanceof ScoreProgramApiError) {
-      return c.json({ error: error.message }, 409)
-    }
-    throw error
-  }
-})
-
-// GET /contributions/round — the round summary at the current (or ?root=) root.
-app.get('/round', async (c) => {
-  const snapshot = await resolveSnapshot(c.req.query('snapshot'))
-  if (!snapshot) {
-    return c.json(
-      { error: 'snapshot is required (no single contributions instance)' },
-      400
-    )
-  }
-  try {
-    const round = await resolveRound(snapshot, c.req.query('root') ?? 'current')
-    return c.json(roundSummary(round))
-  } catch (e: any) {
-    return c.json(
-      { error: e.message },
-      e instanceof ScoreProgramApiError ? 409 : 404
-    )
-  }
-})
-
-// Path-style alias — the shape the frontend's contributions-api client fetches
-// (`/contributions/:snapshot/round`), mirroring the :snapshot param routes below (M5).
+// GET /contributions/:snapshot/round — the round summary at the current (or ?root=) root.
 app.get('/:snapshot/round', async (c) => {
   const { snapshot } = c.req.param()
   try {
@@ -501,20 +442,7 @@ const serveClaims = async (snapshot: string, rootQ: string) => {
   return { status: 200 as const, body }
 }
 
-// GET /contributions/claims — claims + scores at the current (or ?root=) root.
-app.get('/claims', async (c) => {
-  const snapshot = await resolveSnapshot(c.req.query('snapshot'))
-  if (!snapshot) {
-    return c.json(
-      { error: 'snapshot is required (no single contributions instance)' },
-      400
-    )
-  }
-  const res = await serveClaims(snapshot, c.req.query('root') ?? 'current')
-  return c.json(res.body as object, res.status)
-})
-
-// Path-style alias — the frontend client's `/contributions/:snapshot/claims` shape (M5).
+// GET /contributions/:snapshot/claims — claims + scores at the current (or ?root=) root.
 app.get('/:snapshot/claims', async (c) => {
   const { snapshot } = c.req.param()
   const res = await serveClaims(snapshot, c.req.query('root') ?? 'current')

@@ -294,27 +294,6 @@ const serveScoreList = async (snapshot: string, root: string) => {
   }
 }
 
-// GET /hypercerts/scores — the full score set at the single instance's current root (UI list view).
-hypercertsApp.get('/scores', async (c) => {
-  const snapshotQ = c.req.query('snapshot')
-  let snapshot: string
-  if (snapshotQ) {
-    snapshot = snapshotQ
-  } else {
-    const meta = await latestMetadata()
-    if (!meta) return c.json({ error: 'No hypercerts instance indexed' }, 404)
-    snapshot = meta.merkleSnapshotContract
-  }
-  let root: string
-  try {
-    root = await resolveRoot(snapshot, c.req.query('root') ?? 'current')
-  } catch (e: any) {
-    return c.json({ error: e.message }, 404)
-  }
-  const res = await serveScoreList(snapshot, root)
-  return c.json(res.body as object, res.status as 200 | 404 | 409)
-})
-
 // GET /hypercerts/:snapshot/scores — the full score set at that snapshot's current root.
 hypercertsApp.get('/:snapshot/scores', async (c) => {
   const snapshot = c.req.param('snapshot')

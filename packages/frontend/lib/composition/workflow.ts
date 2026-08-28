@@ -198,14 +198,6 @@ export const compositionDeploymentAvailability = ({
   }
 }
 
-export const isCompositionApiUnavailable = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  'status' in error &&
-  ([404, 405] as unknown[]).includes(
-    (error as CompositionApiUnavailableError).status
-  )
-
 export type CompositionHistoryEvent = {
   id: string
   kind: 'create' | 'propose' | 'cancel' | 'activate' | 'checkpoint'

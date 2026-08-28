@@ -353,7 +353,7 @@ export const AccountProfilePage = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 size="icon"
-                variant="brand"
+                variant="default"
               >
                 <FileText className="!w-4.5 !h-4.5" />
               </ButtonLink>

@@ -181,26 +181,9 @@ ponder.on('programSnapshot:setup', async ({ context }) => {
   )
 })
 
-ponder.on('weightedMerkleSnapshot:setup', async ({ context }) => {
-  await backfillSnapshotStates(
-    context,
-    staticAddresses(context.contracts.weightedMerkleSnapshot.address)
-  )
-})
-
-ponder.on('compositionMerkleSnapshot:setup', async ({ context }) => {
-  await backfillSnapshotStates(
-    context,
-    staticAddresses(context.contracts.compositionMerkleSnapshot.address)
-  )
-})
-
-ponder.on('contributionsMerkleSnapshot:setup', async ({ context }) => {
-  await backfillSnapshotStates(
-    context,
-    staticAddresses(context.contracts.contributionsMerkleSnapshot.address)
-  )
-})
+// The factory-discovered snapshot sources (weighted, composition, contributions) have no setup
+// handler: their `address` is a factory() wrapper, so there are no static addresses to backfill —
+// each instance's rows are created by its creation event instead.
 
 type RootRecovery = {
   program: ScoreProgramDefinition
@@ -1116,15 +1099,7 @@ ponder.on('programFundDistributor:setup', async ({ context }) => {
 })
 
 // Factory-discovered round distributors get their row at birth from the creation event
-// (src/contributions-factory.ts); this setup is the same static-list no-op the other factory
-// sources have, kept for shape parity.
-ponder.on('contributionsFundDistributor:setup', async ({ context }) => {
-  for (const address of staticAddresses(
-    context.contracts.contributionsFundDistributor.address
-  )) {
-    await insertDistributorConfig(context, address)
-  }
-})
+// (src/contributions-factory.ts), so they need no setup handler.
 
 const onOwnershipTransferStarted = async ({
   event,
@@ -1318,7 +1293,7 @@ const onDistributed = async ({
   })
 }
 
-// M6 expiry + sweep: the funder reclaimed the unclaimed remainder after the claim deadline.
+// Round expiry: the funder reclaimed the unclaimed remainder after the claim deadline.
 const onSwept = async ({
   event,
   context,

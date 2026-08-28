@@ -8,9 +8,8 @@ import { XIcon } from './icons/XIcon'
 
 /**
  * The footer earns its rule by carrying something: the wordmark and the
- * outbound links. Previously it also repeated the landing-page tagline, which
- * forced the links onto a second line on phones without adding navigation or
- * context.
+ * outbound links. No tagline: it adds no navigation and forces the links onto
+ * a second line on phones.
  *
  * The link row is FAQ · Docs · GitHub · X, per the copy doc. FAQ leads because
  * the questions page is the only place the caveats live, so the footer is the
