@@ -34,8 +34,6 @@ const WalletConnectionContext = createContext<{
 
 export const useWalletConnectionContext = () =>
   useContext(WalletConnectionContext)
-export const useOpenWalletConnector = () =>
-  useWalletConnectionContext().openConnectWallet
 
 export const WalletConnectionProvider = ({
   children,

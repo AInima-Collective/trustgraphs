@@ -12,8 +12,6 @@ export enum AttestationStatus {
   REVOKED = 'revoked',
 }
 
-export const ATTESTATION_STATUSES = Object.values(AttestationStatus)
-
 export type AttestationApiRow = typeof easAttestation.$inferSelect & {
   /** Present on hybrid network responses; absent keeps legacy API/UI rows unchanged. */
   provenance?: AttestationProvenance

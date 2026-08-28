@@ -1,8 +1,6 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
 import { useMemo } from 'react'
 import { Hex, erc20Abi } from 'viem'
 import { useReadContracts } from 'wagmi'
@@ -242,20 +240,3 @@ export const formatContributionScore = (score: string) => {
     : whole.toLocaleString()
 }
 
-/**
- * Contributions routes intentionally have no local tab row. Kept temporarily while the legacy
- * route components still import it; M5 removes those routes entirely.
- */
-export const ContributionsNav = (_props: { network: ContributionsNetwork }) =>
-  null
-
-/** Back link to the round view. */
-export const BackToRound = ({ network }: { network: ContributionsNetwork }) => (
-  <Link
-    href={`/networks/${network.id}`}
-    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-  >
-    <ArrowLeft className="w-4 h-4" />
-    Back to the round
-  </Link>
-)

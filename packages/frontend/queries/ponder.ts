@@ -47,21 +47,6 @@ export const ponderKeys = {
     root?: string
     account?: string
   }) => [...ponderKeys.all, 'merkleTreeEntry', options] as const,
-  attestation: (uid: string) =>
-    [...ponderKeys.all, 'attestation', uid] as const,
-  attestations: (options: {
-    limit: number
-    offset?: number
-    reverse?: boolean
-    schema?: string
-    attester?: string
-    recipient?: string
-  }) => [...ponderKeys.all, 'attestations', options] as const,
-  attestationCount: (options?: {
-    schema?: string
-    attester?: string
-    recipient?: string
-  }) => [...ponderKeys.all, 'attestationCount', options] as const,
   network: (snapshot: string) =>
     [...ponderKeys.all, 'network', snapshot] as const,
   checkpointInputs: (snapshot: string, checkpointId: string) =>
@@ -99,18 +84,6 @@ export type HypercertsScoreList = {
   timestamp: string
   scores: HypercertsScore[]
   scoreProgram: ScoreProgramProvenance
-}
-
-export type FollowerCount = {
-  timestamp: number
-  twitterAccount: string
-  followers: number
-}
-
-export type AttestationCount = {
-  account: string
-  sent: number
-  received: number
 }
 
 export type MerkleMetadata = {
@@ -207,11 +180,6 @@ export type MerkleTreeEntryResponse = {
     proof: string[]
   }
   scoreProgram: ScoreProgramProvenance
-}
-
-export type AttestationUID = {
-  uid: `0x${string}`
-  timestamp: number
 }
 
 export type NetworkData = {
@@ -823,16 +791,6 @@ export const ponderQueryFns = {
           ),
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,
-      }),
-  getGovVoteDelegate:
-    (options: { address: Hex; principal: Hex }) =>
-    (db: Client<ResolvedSchema>['db']) =>
-      db.query.merkleGovVoteDelegate.findFirst({
-        where: (t, { and, eq }) =>
-          and(
-            eq(t.module, options.address),
-            eq(t.principal, options.principal)
-          ),
       }),
   getProofSubmission:
     (options: { snapshot: Hex; root: Hex }) =>

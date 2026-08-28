@@ -294,14 +294,3 @@ export function useBatchEnsQuery(
   })
 }
 
-export function useEnsUtils() {
-  const queryClient = useQueryClient()
-  return {
-    clearCache: () => {
-      void queryClient.invalidateQueries({ queryKey: ['ensName'] })
-      void queryClient.invalidateQueries({ queryKey: ['ensAddress'] })
-      void queryClient.invalidateQueries({ queryKey: ['batch-ens'] })
-    },
-    isValidAddress: (address: string) => isAddress(address, { strict: false }),
-  }
-}
