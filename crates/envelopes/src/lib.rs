@@ -13,7 +13,6 @@
 //! NO platform-dependent operations.
 
 pub mod atproto;
-pub mod eas_offchain;
 pub mod ecdsa;
 
 use alloy_primitives::{Address, B256};

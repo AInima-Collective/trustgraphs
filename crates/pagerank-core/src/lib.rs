@@ -21,7 +21,6 @@ pub use zk_core::{cid, fixed, merkle};
 pub mod compute;
 pub mod distribute;
 pub mod encode;
-pub mod lane2;
 pub mod pagerank;
 pub mod reconcile;
 pub mod signer;
@@ -122,16 +121,6 @@ pub struct AnchorRecord {
     pub block_timestamp: u64,
 }
 
-/// The lane-2 witness: the full anchor log plus whatever per-head envelope data the prover
-/// could supply. Missing/invalid data trips rule Φ per node — never an abort.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Lane2Witness {
-    /// The complete anchor log in fold order (must re-fold to the checkpointed `anchorAcc`).
-    pub anchors: Vec<AnchorRecord>,
-    /// Envelope-0 witnesses, matched to anchors by the owner-derived nodeId.
-    pub envelopes: Vec<envelopes::eas_offchain::Envelope0Witness>,
-}
-
 /// Rule-Φ / deterministic-skip reason codes (the closed list committed via `skippedDigest`).
 pub mod skip_reason {
     /// The node's newest head was unusable; an OLDER in-window head was consumed instead.
@@ -159,15 +148,13 @@ pub struct Binding {
     pub instance_domain: B256,
 }
 
-/// The complete input the guest receives.
+/// The complete input the guest receives. Lane-1 only: the strict two-lane trust-graph
+/// statement lives in `trustgraph-core`, whose `GuestInput` carries the lane-2 witness.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuestInput {
     /// Edges in accumulator fold order (index = `leafCount` position).
     pub edges: Vec<RawEdge>,
     pub params: Params,
-    /// Lane-2 witness; None/absent for a lane-1-only instance (journal commits zero lane).
-    #[serde(default)]
-    pub lane2: Option<Lane2Witness>,
     /// Journal-v3 pass-through commitments (payee + instance domain).
     #[serde(default)]
     pub binding: Binding,
