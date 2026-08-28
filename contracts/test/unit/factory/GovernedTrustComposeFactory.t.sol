@@ -11,6 +11,7 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 
 import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {GovernedTrustComposeFactory} from "src/factory/GovernedTrustComposeFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
 import {TrustComposeParamsController} from "src/factory/TrustComposeParamsController.sol";
 import {
@@ -206,7 +207,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         assertEq(owners[0], creator, "creator must remain the visible Safe owner");
         assertFalse(GnosisSafe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
 
-        GovernedTrustComposeFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         assertEq(authority.safe, safe, "authority Safe");
         assertEq(authority.governanceModule, module, "authority governance module");
         assertEq(authority.initialRecoveryProposer, creator, "authority recovery proposer");
@@ -301,7 +302,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         for (uint256 i = 0; i < logs.length; i++) {
             if (
                 logs[i].emitter == address(governedFactory)
-                    && logs[i].topics[0] == GovernedTrustComposeFactory.GovernedInstanceCreated.selector
+                    && logs[i].topics[0] == GovernedFactoryBase.GovernedInstanceCreated.selector
             ) discoveryIndex = i;
             if (logs[i].emitter != module) continue;
             if (logs[i].topics[0] == MerkleGovModule.MerkleSnapshotContractUpdated.selector) {
@@ -317,7 +318,7 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
-        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig = GovernedFactoryBase.SignerSyncConfig({
             enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
         });
 
@@ -326,7 +327,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         (bytes32 instanceId, address safe,, address snapshot) =
             governedFactory.createGovernedInstance(args, _unpaidPolicy(), signerConfig);
 
-        GovernedTrustComposeFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
         assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
         assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
@@ -402,7 +403,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         ComposeFactorySignerVerifier mismatchedVerifier = new ComposeFactorySignerVerifier(verifierVKey);
         vm.expectRevert(
             abi.encodeWithSelector(
-                GovernedTrustComposeFactory.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
+                GovernedFactoryBase.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
             )
         );
         new GovernedTrustComposeFactory(
@@ -418,12 +419,12 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
-        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig = GovernedFactoryBase.SignerSyncConfig({
             enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
         });
 
         TrustComposeFactory.CreateArgs memory args = _args("unsafe compose selection");
-        GovernedTrustComposeFactory.InitialPolicy memory policy = _unpaidPolicy();
+        GovernedFactoryBase.InitialPolicy memory policy = _unpaidPolicy();
         vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -438,7 +439,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         TrustComposeFactory.CreateArgs memory args = _args("sealed compose owner route");
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        GovernedTrustComposeFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         SafeExecutionGuard guard = SafeExecutionGuard(authority.executionGuard);
         bytes32 originalParamsHash = MerkleSnapshot(snapshot).paramsHash();
 
@@ -570,7 +571,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         vm.prank(creator);
         (bytes32 instanceId, address safe,,) = governedFactory.createGovernedInstance{value: 3 ether}(
             args,
-            GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap}),
             _noSigner()
         );
 
@@ -588,7 +589,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         TrustComposeFactory.CreateArgs memory args = _args("compose disabled prepay");
         vm.deal(creator, 1 ether);
         vm.prank(creator);
-        vm.expectRevert(GovernedTrustComposeFactory.PrepayRequiresPolicy.selector);
+        vm.expectRevert(GovernedFactoryBase.PrepayRequiresPolicy.selector);
         governedFactory.createGovernedInstance{value: 1 ether}(args, _unpaidPolicy(), _noSigner());
         assertEq(registry.instanceCount(), baselineInstanceCount, "invalid prepay must create nothing");
     }
@@ -596,10 +597,10 @@ contract GovernedTrustComposeFactoryTest is Test {
     function test_CreateGovernedInstanceRejectsPolicyWithoutPrepay() public {
         TrustComposeFactory.CreateArgs memory args = _args("compose unfunded policy");
         vm.prank(creator);
-        vm.expectRevert(GovernedTrustComposeFactory.PolicyRequiresPrepay.selector);
+        vm.expectRevert(GovernedFactoryBase.PolicyRequiresPrepay.selector);
         governedFactory.createGovernedInstance(
             args,
-            GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
             _noSigner()
         );
         assertEq(registry.instanceCount(), baselineInstanceCount, "unfunded policy must create nothing");
@@ -611,11 +612,11 @@ contract GovernedTrustComposeFactoryTest is Test {
         vm.prank(creator);
         // The error names band 3 — proof the wrapper asked the vault instead of assuming band 1.
         vm.expectRevert(
-            abi.encodeWithSelector(GovernedTrustComposeFactory.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(3))
+            abi.encodeWithSelector(GovernedFactoryBase.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(3))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
             _noSigner()
         );
     }
@@ -628,31 +629,31 @@ contract GovernedTrustComposeFactoryTest is Test {
         vm.startPrank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                GovernedTrustComposeFactory.InitialPaidIntervalTooShort.selector, EPOCH_FLOOR - 1, EPOCH_FLOOR
+                GovernedFactoryBase.InitialPaidIntervalTooShort.selector, EPOCH_FLOOR - 1, EPOCH_FLOOR
             )
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8}),
             _noSigner()
         );
 
         uint96 maximum = governedFactory.MAX_INITIAL_MAX_PER_ROOT_USD();
         vm.expectRevert(
-            abi.encodeWithSelector(GovernedTrustComposeFactory.InitialCapTooHigh.selector, maximum + 1, maximum)
+            abi.encodeWithSelector(GovernedFactoryBase.InitialCapTooHigh.selector, maximum + 1, maximum)
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1}),
             _noSigner()
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(GovernedTrustComposeFactory.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8))
+            abi.encodeWithSelector(GovernedFactoryBase.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8}),
             _noSigner()
         );
         vm.stopPrank();
@@ -662,20 +663,20 @@ contract GovernedTrustComposeFactoryTest is Test {
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    function _unpaidPolicy() internal pure returns (GovernedTrustComposeFactory.InitialPolicy memory) {
-        return GovernedTrustComposeFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
+    function _unpaidPolicy() internal pure returns (GovernedFactoryBase.InitialPolicy memory) {
+        return GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
     }
 
-    function _noSigner() internal pure returns (GovernedTrustComposeFactory.SignerSyncConfig memory) {
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
         return
-            GovernedTrustComposeFactory.SignerSyncConfig({
+            GovernedFactoryBase.SignerSyncConfig({
                 enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
             });
     }
 
     function _createGoverned(
         TrustComposeFactory.CreateArgs memory args,
-        GovernedTrustComposeFactory.InitialPolicy memory policy
+        GovernedFactoryBase.InitialPolicy memory policy
     ) internal returns (bytes32, address, address, address) {
         return governedFactory.createGovernedInstance(args, policy, _noSigner());
     }

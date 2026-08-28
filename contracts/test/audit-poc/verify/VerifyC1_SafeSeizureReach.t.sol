@@ -6,6 +6,7 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -60,13 +61,13 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy(0, 0),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
+            GovernedFactoryBase.InitialPolicy(0, 0),
+            GovernedFactoryBase.SignerSyncConfig({
                 enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
             })
         );
 
-        GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
         GnosisSafe safe = GnosisSafe(payable(safeAddr));
 
         // Give the Safe something worth stealing.
@@ -129,12 +130,12 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy(0, 0),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
+            GovernedFactoryBase.InitialPolicy(0, 0),
+            GovernedFactoryBase.SignerSyncConfig({
                 enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
             })
         );
-        GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
         GnosisSafe safe = GnosisSafe(payable(safeAddr));
         vm.deal(safeAddr, 10 ether);
 

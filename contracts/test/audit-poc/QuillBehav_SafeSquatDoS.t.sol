@@ -5,6 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -63,9 +64,9 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
         );
     }
 
-    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
         return
-            GovernedTrustgraphsFactory.SignerSyncConfig({
+            GovernedFactoryBase.SignerSyncConfig({
                 enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
             });
     }
@@ -79,7 +80,7 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
         uint256 snap = vm.snapshotState();
         vm.prank(victim);
         governedFactory.createGovernedInstance(
-            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}), _noSigner()
+            args, GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}), _noSigner()
         );
         vm.revertToState(snap);
 
@@ -94,7 +95,7 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
         // 3. The victim adopts the exact pristine Safe and completes creation normally.
         vm.prank(victim);
         (, address safe,,) = governedFactory.createGovernedInstance(
-            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}), _noSigner()
+            args, GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}), _noSigner()
         );
         assertEq(safe, squatted, "the exact bootstrap Safe is reusable, not a collision");
 

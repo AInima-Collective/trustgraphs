@@ -5,6 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -61,8 +62,8 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
         );
     }
 
-    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig(false, 0, 0, 0);
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
+        return GovernedFactoryBase.SignerSyncConfig(false, 0, 0, 0);
     }
 
     function test_SquatNoLongerWastesVictimGas() public {
@@ -78,7 +79,7 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
         uint256 g1 = gasleft();
         vm.prank(victim);
         (, address safe,,) =
-            gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner());
+            gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
         uint256 victimGas = g1 - gasleft();
 
         emit log_named_uint("attacker squat gas", squatGas);
@@ -89,7 +90,7 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
         args.salt = bytes32(uint256(8));
         vm.prank(victim);
         (, address freshSafe,,) =
-            gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner());
+            gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
         assertTrue(freshSafe != address(0), "a fresh salt succeeds when not front-run");
     }
 }
