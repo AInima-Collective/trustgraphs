@@ -31,6 +31,7 @@ import { db } from 'ponder:api'
 import {
   instance,
   merkleGovModule,
+  networkMetadataRevision,
   parameterVersion,
   scoreProgramBinding,
   signerSyncModule,
@@ -92,6 +93,14 @@ const serialize = (
   admin: row.admin,
   name: row.name,
   metadataURI: row.metadataURI,
+  metadataURIHash: row.metadataURIHash,
+  metadataRevision: row.metadataRevision.toString(),
+  metadataStatus: row.metadataStatus,
+  metadataUpdated: {
+    block: row.metadataUpdatedBlock.toString(),
+    timestamp: row.metadataUpdatedTimestamp.toString(),
+    txHash: row.metadataUpdatedTxHash,
+  },
   // The presentation blob `{name, description, criteria, image, applicationUrl}`, or null when the
   // instance shipped no URI (or it could not be resolved). Nothing here is consensus-relevant.
   metadata: row.metadata ?? null,
@@ -418,6 +427,44 @@ app.get('/:id/params', async (c) => {
     console.error('Error fetching parameter versions:', error)
     return c.json({ error: 'Failed to fetch parameter versions' }, 500)
   }
+})
+
+app.get('/:id/metadata-revisions', async (c) => {
+  const id = c.req.param('id')
+  if (!isHex(id) || id.length !== 66) {
+    return c.json({ error: 'id must be a 32-byte instanceId hex string' }, 400)
+  }
+  const limit = intParam(c.req.query('limit'), DEFAULT_LIMIT, MAX_LIMIT)
+  const offset = intParam(c.req.query('offset'), 0, Number.MAX_SAFE_INTEGER)
+  if (limit === null || offset === null) {
+    return c.json(
+      { error: 'limit and offset must be non-negative integers' },
+      400
+    )
+  }
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(networkMetadataRevision)
+      .where(eq(networkMetadataRevision.instanceId, id))
+      .orderBy(desc(networkMetadataRevision.revision))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: count(networkMetadataRevision.id) })
+      .from(networkMetadataRevision)
+      .where(eq(networkMetadataRevision.instanceId, id)),
+  ])
+  return c.json({
+    revisions: rows.map((row) => ({
+      ...row,
+      revision: row.revision.toString(),
+      blockNumber: row.blockNumber.toString(),
+      timestamp: row.timestamp.toString(),
+    })),
+    pagination: { limit, offset, total: totalRow[0]?.total ?? 0 },
+  })
 })
 
 app.get('/:id', async (c) => {

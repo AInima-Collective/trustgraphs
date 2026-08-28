@@ -26,10 +26,12 @@ export const NetworkProfileFields = ({
   idPrefix,
   value,
   onChange,
+  note = 'If you add profile details, they are saved to IPFS when you simulate the creation transaction. Keep private details out.',
 }: {
   idPrefix: string
   value: NetworkProfile
   onChange: (patch: Partial<NetworkProfile>) => void
+  note?: string
 }) => (
   <div className="space-y-5">
     <Field
@@ -96,9 +98,6 @@ export const NetworkProfileFields = ({
       </Field>
     </div>
 
-    <Note>
-      If you add profile details, they are saved to IPFS when you simulate the
-      creation transaction. Keep private details out.
-    </Note>
+    <Note>{note}</Note>
   </div>
 )

@@ -178,7 +178,8 @@ contract TrustComposeFactoryTest is Test {
             keccak256("compose params"),
             IAttestationAccumulator(address(accumulator)),
             address(this),
-            address(this)
+            address(this),
+            ""
         );
         bytes32 instanceId = keccak256("fundless composition");
         registry.register(
@@ -200,7 +201,8 @@ contract TrustComposeFactoryTest is Test {
             keccak256("safe compose params"),
             IAttestationAccumulator(address(accumulator)),
             address(safe),
-            address(safe)
+            address(safe),
+            ""
         );
         bytes32 safeInstanceId = keccak256("safe fundless composition");
         registry.register(

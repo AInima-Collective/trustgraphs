@@ -52,7 +52,7 @@ contract PashovMath_VaultStableDecimalsTest is Test {
     function setUp() public {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
         registry = new InstanceRegistry(address(this));
         usdc6 = new TestUSDC();
         stable18 = new Stable18();

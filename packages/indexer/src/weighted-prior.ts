@@ -1,13 +1,21 @@
 import { eq } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
 import {
+  networkMetadataRevision,
   weightedPriorEntry,
   weightedPriorInstance,
   weightedPriorVersion,
 } from 'ponder:schema'
-import { type Address, type Hex, zeroAddress } from 'viem'
+import {
+  type Address,
+  type Hex,
+  keccak256,
+  stringToHex,
+  zeroAddress,
+} from 'viem'
 
-import { fetchMetadata } from './factory'
+import { fetchNetworkMetadata } from './factory'
+import { revalidateNetwork } from './utils'
 import { weightedManifestFromCalldata } from './weighted-prior-calldata'
 import {
   type WeightedParams,
@@ -142,7 +150,9 @@ ponder.on(
     } = event.args
     const params = onchainParams(eventParams)
     const normalized = normalizeWeightedParams(params)
-    const metadata = await fetchMetadata(metadataURI)
+    const { metadata, status: metadataStatus } =
+      await fetchNetworkMetadata(metadataURI)
+    const metadataURIHash = keccak256(stringToHex(metadataURI))
     await context.db
       .insert(weightedPriorInstance)
       .values({
@@ -154,6 +164,12 @@ ponder.on(
         admin,
         name,
         metadataURI,
+        metadataURIHash,
+        metadataRevision: 0n,
+        metadataStatus,
+        metadataUpdatedBlock: event.block.number,
+        metadataUpdatedTimestamp: event.block.timestamp,
+        metadataUpdatedTxHash: event.transaction.hash,
         metadata,
         resolver,
         schemaUid,
@@ -171,6 +187,27 @@ ponder.on(
         createdTxHash: event.transaction.hash,
       })
       .onConflictDoNothing()
+
+    await context.db
+      .insert(networkMetadataRevision)
+      .values({
+        id: `${snapshot.toLowerCase()}-0`,
+        instanceId,
+        snapshot,
+        revision: 0n,
+        authority: admin,
+        metadataURI,
+        metadataURIHash,
+        previousMetadataURIHash: null,
+        metadata,
+        status: metadataStatus,
+        blockNumber: event.block.number,
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+      })
+      .onConflictDoNothing()
+
+    await revalidateNetwork(instanceId)
   }
 )
 

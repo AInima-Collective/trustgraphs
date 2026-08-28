@@ -61,7 +61,8 @@ contract DeployEasResolver is Script {
             paramsHash,
             IAttestationAccumulator(address(resolver)),
             msg.sender, // constitutional: the e2e re-points the verifier for the on-chain half
-            msg.sender // operational
+            msg.sender, // operational
+            ""
         );
 
         resolver.bindSchema(schemaUid);

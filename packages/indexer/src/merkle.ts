@@ -9,9 +9,11 @@ import {
   merkleFundDistributionClaim,
   merkleFundDistributor,
   merkleSnapshot,
+  networkMetadataRevision,
   parameterVersion,
   proofSubmission,
   snapshotTrigger,
+  weightedPriorInstance,
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
@@ -25,6 +27,7 @@ import {
 } from './composition-ingest'
 import { compositionCheckpointForEvent } from './composition-receipt'
 import { ingestContributionsScores } from './contributions'
+import { fetchNetworkMetadata } from './factory'
 import { ingestNostrWorkspaceScores } from './nostr-workspace'
 import type {
   ScoreProgramDefinition,
@@ -775,6 +778,74 @@ ponder.on('programSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('weightedMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('compositionMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('contributionsMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
+
+/** Materialize the latest profile while preserving every constitutional pointer revision. */
+const onMetadataURIUpdated = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:MetadataURIUpdated'>) => {
+  const [standard] = await context.db.sql
+    .select()
+    .from(instance)
+    .where(eq(instance.snapshot, event.log.address))
+    .limit(1)
+  const [weighted] = standard
+    ? [undefined]
+    : await context.db.sql
+        .select()
+        .from(weightedPriorInstance)
+        .where(eq(weightedPriorInstance.snapshot, event.log.address))
+        .limit(1)
+  const catalog = standard ?? weighted
+  if (!catalog) {
+    console.warn(
+      `merkle: MetadataURIUpdated from unknown snapshot ${event.log.address}`
+    )
+    return
+  }
+
+  const { metadata, status } = await fetchNetworkMetadata(
+    event.args.metadataURI
+  )
+  const update = {
+    metadataURI: event.args.metadataURI,
+    metadataURIHash: event.args.metadataURIHash,
+    metadataRevision: event.args.revision,
+    metadataStatus: status,
+    metadataUpdatedBlock: event.block.number,
+    metadataUpdatedTimestamp: event.block.timestamp,
+    metadataUpdatedTxHash: event.transaction.hash,
+    metadata,
+  }
+  if (standard) {
+    await context.db.update(instance, { id: standard.id }).set(update)
+  } else {
+    await context.db
+      .update(weightedPriorInstance, { id: weighted!.id })
+      .set(update)
+  }
+
+  await context.db.insert(networkMetadataRevision).values({
+    id: `${event.log.address.toLowerCase()}-${event.args.revision}`,
+    instanceId: catalog.id,
+    snapshot: event.log.address,
+    revision: event.args.revision,
+    authority: event.args.authority,
+    metadataURI: event.args.metadataURI,
+    metadataURIHash: event.args.metadataURIHash,
+    previousMetadataURIHash: event.args.previousMetadataURIHash,
+    metadata,
+    status,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    txHash: event.transaction.hash,
+  })
+
+  await revalidateNetwork(catalog.id)
+}
+
+ponder.on('merkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
+ponder.on('weightedMerkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)

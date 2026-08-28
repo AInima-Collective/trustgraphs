@@ -124,6 +124,9 @@ contract WeightedTrustgraphsFactoryTest is Test {
         assertEq(EASIndexerResolver(payable(created.resolver)).boundSchema(), created.schemaUid);
         assertEq(EASIndexerResolver(payable(created.resolver)).snapshot(), created.snapshot);
         assertEq(MerkleSnapshot(created.snapshot).epochLength(), EPOCH_FLOOR);
+        assertEq(MerkleSnapshot(created.snapshot).metadataURI(), args.metadataURI);
+        assertEq(MerkleSnapshot(created.snapshot).metadataURIHash(), keccak256(bytes(args.metadataURI)));
+        assertEq(MerkleSnapshot(created.snapshot).metadataRevision(), 0);
         assertTrue(
             MerkleSnapshot(created.snapshot).provenanceEnabled(),
             "factory mints must open the composition-source window before the first root"
@@ -138,6 +141,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
         assertEq(v1.manifestSha256, sha256(args.manifest));
         assertEq(v1.paramsHash, record.paramsHash);
         assertEq(eventData.name, args.name);
+        assertEq(eventData.metadataURI, args.metadataURI);
         assertEq(eventData.metadataDigest, args.metadataDigest);
         assertEq(eventData.resolver, created.resolver);
         assertEq(eventData.snapshot, created.snapshot);

@@ -11,7 +11,9 @@ export const weightedInstanceToNetwork = (
   instance: WeightedApiInstanceDetail,
   entries: readonly WeightedApiEntry[] = []
 ): Network => {
-  const metadata = instance.metadata ?? {}
+  const metadata: Partial<NonNullable<WeightedApiInstanceDetail['metadata']>> =
+    instance.metadata ?? {}
+  const revisedProfile = BigInt(instance.metadataRevision) > 0n
   return {
     program: 'trust-graph-weighted',
     id: instance.id,
@@ -21,12 +23,20 @@ export const weightedInstanceToNetwork = (
     paramsHash: instance.currentParamsHash,
     createdTimestamp: instance.createdTimestamp,
     name: metadata.name?.trim() || instance.name,
-    about:
-      metadata.description?.trim() ||
-      'Trust scores start from this network’s weighted prior and evolve with member vouches.',
-    criteria:
-      metadata.criteria?.trim() ||
-      'Vouch only for people you actually know and trust. Prior membership does not replace a vouch.',
+    ...(metadata.image?.trim() ? { image: metadata.image.trim() } : {}),
+    metadataURI: instance.metadataURI,
+    metadataURIHash: instance.metadataURIHash,
+    metadataRevision: instance.metadataRevision,
+    metadataStatus: instance.metadataStatus,
+    ...(instance.metadata ? { profile: instance.metadata } : {}),
+    about: revisedProfile
+      ? metadata.description?.trim() || ''
+      : metadata.description?.trim() ||
+        'Trust scores start from this network’s weighted prior and evolve with member vouches.',
+    criteria: revisedProfile
+      ? metadata.criteria?.trim() || ''
+      : metadata.criteria?.trim() ||
+        'Vouch only for people you actually know and trust. Prior membership does not replace a vouch.',
     ...(metadata.applicationUrl?.trim()
       ? { applicationUrl: metadata.applicationUrl.trim() }
       : {}),

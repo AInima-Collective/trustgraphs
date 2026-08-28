@@ -171,6 +171,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
             MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), safe),
             "Safe must hold constitutional authority"
         );
+        assertEq(MerkleSnapshot(snapshot).metadataURI(), args.metadataURI, "Safe-owned snapshot lost metadata");
         assertTrue(
             MerkleSnapshot(snapshot).provenanceEnabled(),
             "governed mints must open the composition-source window: the sealed Safe can never open it later"

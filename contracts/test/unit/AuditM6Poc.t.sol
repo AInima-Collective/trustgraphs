@@ -65,7 +65,7 @@ contract AuditM6Poc is Test {
         mirror = new TrustAccumulatorMirror(IAttestationAccumulator(address(trustResolver)));
         verifier = new MockZkVerifier();
         snapshot = new MerkleSnapshot(
-            verifier, PARAMS_HASH, IAttestationAccumulator(address(mirror)), address(this), address(this)
+            verifier, PARAMS_HASH, IAttestationAccumulator(address(mirror)), address(this), address(this), ""
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(contribResolver)));
         snapshot.setEpochLength(EPOCH_LENGTH);

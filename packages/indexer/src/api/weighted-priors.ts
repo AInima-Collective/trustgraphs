@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
   merkleGovModule,
+  networkMetadataRevision,
   weightedPriorEntry,
   weightedPriorInstance,
   weightedPriorVersion,
@@ -43,6 +44,14 @@ const serializeInstance = (
     : null,
   epochLength: row.epochLength.toString(),
   currentVersion: row.currentVersion.toString(),
+  metadataRevision: row.metadataRevision.toString(),
+  metadataUpdatedBlock: row.metadataUpdatedBlock.toString(),
+  metadataUpdatedTimestamp: row.metadataUpdatedTimestamp.toString(),
+  metadataUpdated: {
+    block: row.metadataUpdatedBlock.toString(),
+    timestamp: row.metadataUpdatedTimestamp.toString(),
+    txHash: row.metadataUpdatedTxHash,
+  },
   createdBlock: row.createdBlock.toString(),
   createdTimestamp: row.createdTimestamp.toString(),
 })
@@ -160,6 +169,41 @@ app.get('/:instanceId', async (c) => {
       row,
       governance.get(row.snapshot.toLowerCase())
     ),
+  })
+})
+
+app.get('/:instanceId/metadata-revisions', async (c) => {
+  const instanceId = idParam(c.req.param('instanceId'))
+  if (!instanceId) return c.json({ error: 'instanceId must be bytes32' }, 400)
+  const limit = boundedInteger(c.req.query('limit'), 50, 200)
+  const offset = boundedInteger(c.req.query('offset'), 0)
+  if (limit === null || offset === null) {
+    return c.json(
+      { error: 'limit and offset must be non-negative integers' },
+      400
+    )
+  }
+  const [rows, total] = await Promise.all([
+    db
+      .select()
+      .from(networkMetadataRevision)
+      .where(eq(networkMetadataRevision.instanceId, instanceId))
+      .orderBy(desc(networkMetadataRevision.revision))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ value: count(networkMetadataRevision.id) })
+      .from(networkMetadataRevision)
+      .where(eq(networkMetadataRevision.instanceId, instanceId)),
+  ])
+  return c.json({
+    revisions: rows.map((row) => ({
+      ...row,
+      revision: row.revision.toString(),
+      blockNumber: row.blockNumber.toString(),
+      timestamp: row.timestamp.toString(),
+    })),
+    page: { limit, offset, total: total[0]?.value ?? 0 },
   })
 })
 

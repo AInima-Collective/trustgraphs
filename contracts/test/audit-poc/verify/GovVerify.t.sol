@@ -234,7 +234,7 @@ contract GovVerify is Test {
         MockAccumulator acc = new MockAccumulator();
         MockZkVerifier verifier = new MockZkVerifier();
         MerkleSnapshot ms = new MerkleSnapshot(
-            verifier, keccak256("params"), IAttestationAccumulator(address(acc)), address(this), address(this)
+            verifier, keccak256("params"), IAttestationAccumulator(address(acc)), address(this), address(this), ""
         );
         MerkleGovModule module = new MerkleGovModule(address(this), address(this), address(this), address(ms));
         ms.addHook(IMerkleSnapshotHook(address(module)));

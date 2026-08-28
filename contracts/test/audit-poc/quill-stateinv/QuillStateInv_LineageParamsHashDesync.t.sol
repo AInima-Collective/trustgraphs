@@ -66,7 +66,8 @@ contract QuillStateInv_LineageParamsHashDesync is Test {
             PARAMS_V1,
             IAttestationAccumulator(address(accumulator)),
             instanceAdmin,
-            instanceAdmin
+            instanceAdmin,
+            ""
         );
 
         vm.prank(registryAdmin);

@@ -4974,6 +4974,7 @@ export const merkleSnapshotAbi = [
       },
       { name: 'constitutionalAdmin', internalType: 'address', type: 'address' },
       { name: 'operationalAdmin', internalType: 'address', type: 'address' },
+      { name: 'initialMetadataURI', internalType: 'string', type: 'string' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -4995,6 +4996,13 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [],
     name: 'HOOK_GAS_STIPEND',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_METADATA_URI_BYTES',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -5412,6 +5420,27 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'metadataRevision',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'metadataURI',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'metadataURIHash',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'nextCheckpointId',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
@@ -5521,6 +5550,15 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [{ name: '_epochLength', internalType: 'uint64', type: 'uint64' }],
     name: 'setEpochLength',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'nextMetadataURI', internalType: 'string', type: 'string' },
+    ],
+    name: 'setMetadataURI',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -5922,6 +5960,43 @@ export const merkleSnapshotAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'revision',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: true,
+      },
+      {
+        name: 'authority',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'metadataURIHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'previousMetadataURIHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'metadataURI',
+        internalType: 'string',
+        type: 'string',
+        indexed: false,
+      },
+    ],
+    name: 'MetadataURIUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'paramsHash',
         internalType: 'bytes32',
         type: 'bytes32',
@@ -6108,6 +6183,7 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'transferor', internalType: 'address', type: 'address' }],
     name: 'ConstitutionalTransferorLostRole',
   },
+  { type: 'error', inputs: [], name: 'EmptyMetadataURI' },
   {
     type: 'error',
     inputs: [
@@ -6123,10 +6199,26 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'successor', internalType: 'address', type: 'address' }],
     name: 'InvalidConstitutionalSuccessor',
   },
+  { type: 'error', inputs: [], name: 'InvalidMetadataURIScheme' },
   {
     type: 'error',
     inputs: [{ name: 'holder', internalType: 'address', type: 'address' }],
     name: 'LastConstitutionalHolder',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'length', internalType: 'uint256', type: 'uint256' },
+      { name: 'maximum', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'MetadataURITooLong',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'metadataURIHash', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'MetadataURIUnchanged',
   },
   {
     type: 'error',

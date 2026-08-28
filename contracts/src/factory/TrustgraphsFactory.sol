@@ -415,7 +415,7 @@ contract TrustgraphsFactory {
         // --- 5. The snapshot. The factory takes both roles transiently so it can install the ----
         //        controller whose constructor needs this newly-created snapshot's address.
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
-            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this)
+            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this), args.metadataURI
         );
         snapshot = address(merkleSnapshot);
 

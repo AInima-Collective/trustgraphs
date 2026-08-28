@@ -64,7 +64,8 @@ contract DeployNostrWorkspaceInstance is Common {
             paramsHash,
             IAttestationAccumulator(address(emptyAcc)),
             deployer,
-            operational
+            operational,
+            ""
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(anchors)));
         anchors.bindSnapshot(address(snapshot));

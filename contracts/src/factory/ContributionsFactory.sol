@@ -303,7 +303,7 @@ contract ContributionsFactory {
         //        `setAnchorRegistry` / `setEpochLength` are constitutional-only and not
         //        constructor arguments, and the controller's constructor needs this address.
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
-            VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this)
+            VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this), args.metadataURI
         );
         snapshot = address(merkleSnapshot);
 

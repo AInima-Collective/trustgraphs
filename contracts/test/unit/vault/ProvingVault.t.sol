@@ -112,7 +112,7 @@ contract ProvingVaultTest is Test {
     function setUp() public {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
         // Only the bound snapshot may mint checkpoints (issue #10).
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
@@ -231,7 +231,7 @@ contract ProvingVaultTest is Test {
         address boundBefore = vault.accountOf(INSTANCE).snapshot;
 
         MockAccumulator rogueAcc = new MockAccumulator();
-        MerkleSnapshot rogue = new MerkleSnapshot(verifier, PARAMS, rogueAcc, address(this), address(this));
+        MerkleSnapshot rogue = new MerkleSnapshot(verifier, PARAMS, rogueAcc, address(this), address(this), "");
         registry.update(
             INSTANCE,
             IInstanceRegistry.Instance({
@@ -838,7 +838,7 @@ contract ProvingVaultTest is Test {
 
         // The community deploys a replacement and updates the directory.
         MockAccumulator acc2 = new MockAccumulator();
-        MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational);
+        MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational, "");
         registry.update(
             INSTANCE,
             IInstanceRegistry.Instance({
@@ -874,7 +874,7 @@ contract ProvingVaultTest is Test {
         assertTrue(vault.isClaimed(INSTANCE, oldId));
 
         MockAccumulator acc2 = new MockAccumulator();
-        MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational);
+        MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational, "");
         registry.update(
             INSTANCE,
             IInstanceRegistry.Instance({

@@ -52,8 +52,8 @@ import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
 import type { InstanceRow } from '@/lib/catalog'
 import {
-  CONTRIBUTIONS_FACTORY,
   CONTRACT_CONFIG,
+  CONTRIBUTIONS_FACTORY,
   GOVERNED_WEIGHTED_FACTORY,
   PROVING_VAULT,
   WEIGHTED_FACTORY,
@@ -92,6 +92,7 @@ import { cn, realAddress } from '@/lib/utils'
 import { getTargetChainConfig } from '@/lib/wagmi'
 import { ponderQueries } from '@/queries/ponder'
 
+import { NetworkProfileSettings } from './profile'
 import { ScoringAccessCard, ScoringSettings } from './scoring'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
 import { WeightedPriorWorkspace } from '../../../create/weighted/workspace'
@@ -1873,6 +1874,22 @@ export const SettingsPage = ({
                   deployment and network type support it.
                 </p>
               </div>
+            </section>
+          )}
+
+          {activeTab === 'profile' && (
+            <section className="space-y-5" aria-labelledby="network-profile">
+              <div>
+                <SectionHeading n="01">
+                  <span id="network-profile">Network profile</span>
+                </SectionHeading>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  Update the public identity people see across Trustgraphs.
+                  Governed networks route this constitutional action through
+                  their governance Safe.
+                </p>
+              </div>
+              <NetworkProfileSettings network={network} instance={instance} />
             </section>
           )}
 

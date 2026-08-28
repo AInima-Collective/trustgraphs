@@ -65,7 +65,8 @@ contract OmegaPassB_HookStipend is Test {
             keccak256("params"),
             IAttestationAccumulator(address(acc)),
             admin,
-            admin
+            admin,
+            ""
         );
         acc.bind(address(snap));
 

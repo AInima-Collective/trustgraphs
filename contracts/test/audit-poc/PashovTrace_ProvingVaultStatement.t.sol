@@ -60,7 +60,7 @@ contract PashovTrace_ProvingVaultStatement is Test {
     function setUp() public {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
         vm.prank(constitutional);
         snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));

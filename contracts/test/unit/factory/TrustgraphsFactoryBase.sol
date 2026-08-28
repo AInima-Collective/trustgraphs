@@ -319,6 +319,9 @@ abstract contract TrustgraphsFactoryBase is Test {
         // Constitutional authority stays with the community admin. Operational authority belongs
         // only to the typed controller, which the same admin owns through a two-step handoff.
         assertTrue(snapshot.hasRole(constitutional, c.admin), "admin must hold CONSTITUTIONAL_ROLE");
+        assertEq(snapshot.metadataURI(), c.evt.metadataURI, "snapshot must retain revision-zero metadata");
+        assertEq(snapshot.metadataURIHash(), keccak256(bytes(c.evt.metadataURI)), "metadata hash mismatch");
+        assertEq(snapshot.metadataRevision(), 0, "factory metadata must begin at revision zero");
         assertFalse(snapshot.hasRole(operational, c.admin), "admin must not retain the raw-hash path");
         assertTrue(snapshot.hasRole(operational, c.controller), "controller must hold OPERATIONAL_ROLE");
         TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);

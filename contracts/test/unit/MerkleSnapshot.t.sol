@@ -38,13 +38,14 @@ contract MerkleSnapshotTest is Test {
     bytes32 constant ROOT = bytes32(uint256(0xC0FFEE));
     bytes32 constant IPFS = bytes32(uint256(0x1F5));
     string constant CID = "bafkreiexamplecidstring";
+    string constant INITIAL_METADATA_URI = "ipfs://bafkreinetworkprofilev0";
     uint256 constant TOTAL = 1_000_000 ether;
     address constant RECIPIENT = address(0xBE);
 
     function setUp() public {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        ms = new MerkleSnapshot(verifier, paramsHash, accer, constitutional, operational);
+        ms = new MerkleSnapshot(verifier, paramsHash, accer, constitutional, operational, INITIAL_METADATA_URI);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -91,6 +92,90 @@ contract MerkleSnapshotTest is Test {
     /*///////////////////////////////////////////////////////////////
                                 LIFECYCLE
     //////////////////////////////////////////////////////////////*/
+
+    function test_MetadataURIStartsAtRevisionZero() public view {
+        assertEq(ms.metadataURI(), INITIAL_METADATA_URI);
+        assertEq(ms.metadataURIHash(), keccak256(bytes(INITIAL_METADATA_URI)));
+        assertEq(ms.metadataRevision(), 0);
+    }
+
+    function test_ConstitutionalAuthorityUpdatesMetadataWithoutTouchingConsensusState() public {
+        string memory nextURI = "ipfs://bafkreinetworkprofilev1";
+        bytes32 previousHash = ms.metadataURIHash();
+        bytes32 nextHash = keccak256(bytes(nextURI));
+        address verifierBefore = address(ms.zkVerifier());
+        address accumulatorBefore = address(ms.accumulator());
+        bytes32 paramsBefore = ms.paramsHash();
+        uint256 checkpointBefore = ms.nextCheckpointId();
+
+        vm.expectEmit(true, true, true, true, address(ms));
+        emit IMerkleSnapshot.MetadataURIUpdated(1, constitutional, nextHash, previousHash, nextURI);
+        vm.prank(constitutional);
+        ms.setMetadataURI(nextURI);
+
+        assertEq(ms.metadataURI(), nextURI);
+        assertEq(ms.metadataURIHash(), nextHash);
+        assertEq(ms.metadataRevision(), 1);
+        assertEq(address(ms.zkVerifier()), verifierBefore);
+        assertEq(address(ms.accumulator()), accumulatorBefore);
+        assertEq(ms.paramsHash(), paramsBefore);
+        assertEq(ms.nextCheckpointId(), checkpointBefore);
+        assertEq(ms.getStateCount(), 0);
+    }
+
+    function test_MetadataURIUpdateRequiresCurrentConstitutionalAuthority() public {
+        vm.prank(operational);
+        vm.expectRevert();
+        ms.setMetadataURI("ipfs://bafkreiunauthorized");
+
+        address successor = address(0x515CC);
+        vm.prank(constitutional);
+        ms.proposeConstitutionalTransfer(successor);
+        vm.prank(successor);
+        ms.acceptConstitutionalTransfer();
+
+        vm.prank(constitutional);
+        vm.expectRevert();
+        ms.setMetadataURI("ipfs://bafkreioldauthority");
+
+        vm.prank(successor);
+        ms.setMetadataURI("ipfs://bafkreinewauthority");
+        assertEq(ms.metadataRevision(), 1);
+    }
+
+    function test_MetadataURIRejectsEmptyMutableWrongSchemeOversizeAndNoop() public {
+        vm.startPrank(constitutional);
+
+        vm.expectRevert(IMerkleSnapshot.EmptyMetadataURI.selector);
+        ms.setMetadataURI("");
+
+        vm.expectRevert(IMerkleSnapshot.InvalidMetadataURIScheme.selector);
+        ms.setMetadataURI("https://example.com/network.json");
+
+        string memory oversized = string.concat("ipfs://", string(new bytes(ms.MAX_METADATA_URI_BYTES() - 6)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleSnapshot.MetadataURITooLong.selector,
+                ms.MAX_METADATA_URI_BYTES() + 1,
+                ms.MAX_METADATA_URI_BYTES()
+            )
+        );
+        ms.setMetadataURI(oversized);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleSnapshot.MetadataURIUnchanged.selector, keccak256(bytes(INITIAL_METADATA_URI))
+            )
+        );
+        ms.setMetadataURI(INITIAL_METADATA_URI);
+
+        vm.stopPrank();
+    }
+
+    function test_ConstructorRejectsInvalidNonemptyMetadataURI() public {
+        vm.expectRevert(IMerkleSnapshot.InvalidMetadataURIScheme.selector);
+        new MerkleSnapshot(verifier, paramsHash, accer, constitutional, operational, "https://mutable.example");
+    }
 
     function test_TriggerCreatesCheckpoint() public {
         accer.setState(bytes32(uint256(1)), 3);
@@ -336,16 +421,16 @@ contract MerkleSnapshotTest is Test {
 
     function test_ConstructorRejectsZeroVerifierAccumulatorOrAdmins() public {
         vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
-        new MerkleSnapshot(MockZkVerifier(address(0)), paramsHash, accer, constitutional, operational);
+        new MerkleSnapshot(MockZkVerifier(address(0)), paramsHash, accer, constitutional, operational, "");
 
         vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
-        new MerkleSnapshot(verifier, paramsHash, MockAccumulator(address(0)), constitutional, operational);
+        new MerkleSnapshot(verifier, paramsHash, MockAccumulator(address(0)), constitutional, operational, "");
 
         vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
-        new MerkleSnapshot(verifier, paramsHash, accer, address(0), operational);
+        new MerkleSnapshot(verifier, paramsHash, accer, address(0), operational, "");
 
         vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
-        new MerkleSnapshot(verifier, paramsHash, accer, constitutional, address(0));
+        new MerkleSnapshot(verifier, paramsHash, accer, constitutional, address(0), "");
     }
 
     function test_SetZeroVerifierReverts() public {
@@ -583,7 +668,7 @@ contract MerkleSnapshotTest is Test {
     function test_Lane2MovementAloneJustifiesACheckpoint() public {
         TestAccumulator productionAccumulator = new TestAccumulator();
         MerkleSnapshot strictSnapshot =
-            new MerkleSnapshot(verifier, paramsHash, productionAccumulator, constitutional, operational);
+            new MerkleSnapshot(verifier, paramsHash, productionAccumulator, constitutional, operational, "");
         productionAccumulator.bindSnapshot(address(strictSnapshot));
         MockAnchorRegistry areg = new MockAnchorRegistry();
         vm.prank(constitutional);
@@ -640,7 +725,7 @@ contract MerkleSnapshotTest is Test {
         assertEq(ms.checkpointWorkCount(legacyId), 9, "missing optional getter falls back");
 
         MockAccumulator nextAccumulator = new MockAccumulator();
-        MerkleSnapshot next = new MerkleSnapshot(verifier, paramsHash, nextAccumulator, constitutional, operational);
+        MerkleSnapshot next = new MerkleSnapshot(verifier, paramsHash, nextAccumulator, constitutional, operational, "");
         MockWorkAnchorRegistry malformed = new MockWorkAnchorRegistry();
         vm.prank(constitutional);
         next.setAnchorRegistry(IAnchorRegistry(address(malformed)));
@@ -826,7 +911,7 @@ contract MerkleSnapshotTest is Test {
     /// here by giving both snapshots the same `paramsHash` and the same input commitment.
     function test_IdenticalTwinsRejectEachOthersProofs() public {
         MockAccumulator accerB = new MockAccumulator();
-        MerkleSnapshot twin = new MerkleSnapshot(verifier, paramsHash, accerB, constitutional, operational);
+        MerkleSnapshot twin = new MerkleSnapshot(verifier, paramsHash, accerB, constitutional, operational, "");
 
         assertTrue(ms.instanceDomain() != twin.instanceDomain(), "clones must not share a domain");
 
@@ -921,7 +1006,7 @@ contract MerkleSnapshotTest is Test {
     /// Zero is the "not pinned" sentinel, so it can never be a real params hash.
     function test_ZeroParamsHashRejected() public {
         vm.expectRevert(IMerkleSnapshot.ZeroParamsHash.selector);
-        new MerkleSnapshot(verifier, bytes32(0), accer, constitutional, operational);
+        new MerkleSnapshot(verifier, bytes32(0), accer, constitutional, operational, "");
 
         vm.prank(operational);
         vm.expectRevert(IMerkleSnapshot.ZeroParamsHash.selector);

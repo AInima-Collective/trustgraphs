@@ -618,8 +618,17 @@ export const instance = onchainTable(
     // Holder of both snapshot roles and the distributor's ownership (creator-as-admin in v1).
     admin: t.hex().notNull(),
     name: t.text().notNull(),
-    // IPFS (or http) URI of `{name, description, criteria, image, applicationUrl}`. May be empty.
+    // IPFS URI of `{name, description, criteria, image, applicationUrl}`. May be empty at birth.
     metadataURI: t.text().notNull(),
+    // Current on-chain profile pointer commitment and monotonically increasing revision.
+    metadataURIHash: t.hex().notNull(),
+    metadataRevision: t.bigint().notNull(),
+    // `valid` only means the fetched blob matched the bounded five-field profile schema. The URI
+    // and its on-chain hash remain authoritative even when a gateway is unavailable.
+    metadataStatus: t.text().notNull(),
+    metadataUpdatedBlock: t.bigint().notNull(),
+    metadataUpdatedTimestamp: t.bigint().notNull(),
+    metadataUpdatedTxHash: t.hex().notNull(),
     // The resolved presentation blob, or null when absent/unreachable/not-yet-fetched. Never
     // consensus-relevant, so a failure to fetch it must not (and does not) stall indexing.
     metadata: t.json(),
@@ -670,6 +679,31 @@ export const instance = onchainTable(
     createdTimestampIdx: index().on(t.createdTimestamp),
     paramsControllerIdx: index().on(t.paramsController),
     offchainRegistryIdx: index().on(t.offchainRegistry),
+  })
+)
+
+/** Append-only network-profile pointer history shared by standard and weighted trust graphs. */
+export const networkMetadataRevision = onchainTable(
+  'network_metadata_revision',
+  (t) => ({
+    id: t.text().primaryKey(), // `${lowercase snapshot}-${revision}`
+    instanceId: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    revision: t.bigint().notNull(),
+    authority: t.hex().notNull(),
+    metadataURI: t.text().notNull(),
+    metadataURIHash: t.hex().notNull(),
+    previousMetadataURIHash: t.hex(),
+    metadata: t.json(),
+    status: t.text().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    instanceRevisionIdx: index().on(t.instanceId, t.revision),
+    snapshotRevisionIdx: index().on(t.snapshot, t.revision),
+    authorityIdx: index().on(t.authority),
   })
 )
 
@@ -815,6 +849,12 @@ export const weightedPriorInstance = onchainTable(
     admin: t.hex().notNull(),
     name: t.text().notNull(),
     metadataURI: t.text().notNull(),
+    metadataURIHash: t.hex().notNull(),
+    metadataRevision: t.bigint().notNull(),
+    metadataStatus: t.text().notNull(),
+    metadataUpdatedBlock: t.bigint().notNull(),
+    metadataUpdatedTimestamp: t.bigint().notNull(),
+    metadataUpdatedTxHash: t.hex().notNull(),
     // Same presentation-only profile shape used by standard Trustgraphs. A failed fetch leaves
     // this null and must never block indexing the consensus-relevant instance.
     metadata: t.json(),

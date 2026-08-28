@@ -188,7 +188,7 @@ contract TrustComposeCaptureTest is Test {
     function test_ProvenanceIsExplicitOneWayPreStateOptIn() public {
         MockAccumulator sourceAccumulator = new MockAccumulator();
         MerkleSnapshot sourceSnapshot = new MerkleSnapshot(
-            sourceVerifier, keccak256("legacy params"), sourceAccumulator, address(this), address(this)
+            sourceVerifier, keccak256("legacy params"), sourceAccumulator, address(this), address(this), ""
         );
         registry.registerWithParamsAuthority(
             bytes32(uint256(99)),
@@ -455,7 +455,8 @@ contract TrustComposeCaptureTest is Test {
                 keccak256(abi.encode("source params", i)),
                 sourceAccumulator,
                 address(this),
-                address(this)
+                address(this),
+                ""
             );
             sourceSnapshot.enableStateProvenance();
             bytes32 sourceInstanceId = bytes32(i + 1);

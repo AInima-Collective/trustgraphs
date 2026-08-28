@@ -37,14 +37,18 @@ contract MerkleSnapshotDeployer {
     /// @param accumulator The instance's `EASIndexerResolver` (its attestation accumulator).
     /// @param constitutionalAdmin Holder of `CONSTITUTIONAL_ROLE` at birth (the factory, transiently).
     /// @param operationalAdmin Holder of `OPERATIONAL_ROLE` at birth (the instance admin).
+    /// @param initialMetadataURI Initial presentation document for the instance.
     function deploy(
         IZkVerifier verifier,
         bytes32 paramsHash,
         IAttestationAccumulator accumulator,
         address constitutionalAdmin,
-        address operationalAdmin
+        address operationalAdmin,
+        string calldata initialMetadataURI
     ) external returns (MerkleSnapshot) {
-        return new MerkleSnapshot(verifier, paramsHash, accumulator, constitutionalAdmin, operationalAdmin);
+        return new MerkleSnapshot(
+            verifier, paramsHash, accumulator, constitutionalAdmin, operationalAdmin, initialMetadataURI
+        );
     }
 }
 

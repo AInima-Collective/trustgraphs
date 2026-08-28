@@ -34,6 +34,21 @@ export type Network = {
     maxTotalInputs: string
   }
   name: string
+  /** Presentation image from the current network metadata revision. */
+  image?: string
+  /** Current constitutional profile pointer and catalog materialization status. */
+  metadataURI?: string
+  metadataURIHash?: Hex
+  metadataRevision?: string
+  metadataStatus?: string
+  /** Exact current five-field profile, preserving intentional empty values. */
+  profile?: {
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
+  }
   hidden?: boolean
   link?: {
     prefix: string

@@ -26,6 +26,16 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Owns `paramsHash` — governance-cadence parameter changes.
     bytes32 public constant OPERATIONAL_ROLE = keccak256("OPERATIONAL_ROLE");
 
+    /// @notice Maximum encoded length of the presentation document URI.
+    uint256 public constant MAX_METADATA_URI_BYTES = 512;
+
+    /// @notice Current presentation-only IPFS document for this instance.
+    /// @dev Neither this value nor its revision/hash enters a proof journal, checkpoint, root, or
+    ///      params commitment. Revision zero is initialized by the factory at construction.
+    string public metadataURI;
+    bytes32 public metadataURIHash;
+    uint64 public metadataRevision;
+
     /// @notice Number of live constitutional authorities. Never allowed to reach zero.
     uint256 public constitutionalHolderCount;
 
@@ -151,12 +161,15 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @param _accumulator The attestation accumulator that produces checkpoints.
     /// @param constitutionalAdmin Authority (e.g. long-timelock) over the truth-defining knobs.
     /// @param operationalAdmin Authority (e.g. short-timelock) over `paramsHash`.
+    /// @param initialMetadataURI Initial presentation document, or empty when this low-level
+    ///        snapshot is intentionally created without a public profile.
     constructor(
         IZkVerifier _zkVerifier,
         bytes32 _paramsHash,
         IAttestationAccumulator _accumulator,
         address constitutionalAdmin,
-        address operationalAdmin
+        address operationalAdmin,
+        string memory initialMetadataURI
     ) {
         if (
             address(_zkVerifier) == address(0) || address(_accumulator) == address(0)
@@ -168,6 +181,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         zkVerifier = _zkVerifier;
         paramsHash = _paramsHash;
         accumulator = _accumulator;
+        metadataURIHash = _validateMetadataURI(initialMetadataURI, true);
+        metadataURI = initialMetadataURI;
 
         // Constitutional role administers both roles (an operational compromise cannot escalate).
         _setRoleAdmin(CONSTITUTIONAL_ROLE, CONSTITUTIONAL_ROLE);
@@ -179,6 +194,35 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /*///////////////////////////////////////////////////////////////
                         GOVERNANCE (two-tier)
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Replace the presentation-only IPFS document. Constitutional governance only.
+    function setMetadataURI(string calldata nextMetadataURI) external onlyRole(CONSTITUTIONAL_ROLE) {
+        bytes32 nextHash = _validateMetadataURI(nextMetadataURI, false);
+        bytes32 previousHash = metadataURIHash;
+        if (nextHash == previousHash) revert MetadataURIUnchanged(nextHash);
+
+        uint64 nextRevision = metadataRevision + 1;
+        metadataRevision = nextRevision;
+        metadataURIHash = nextHash;
+        metadataURI = nextMetadataURI;
+
+        emit MetadataURIUpdated(nextRevision, msg.sender, nextHash, previousHash, nextMetadataURI);
+    }
+
+    function _validateMetadataURI(string memory candidate, bool allowEmpty) internal pure returns (bytes32 digest) {
+        bytes memory encoded = bytes(candidate);
+        uint256 length = encoded.length;
+        if (length == 0) {
+            if (!allowEmpty) revert EmptyMetadataURI();
+            return keccak256(encoded);
+        }
+        if (length > MAX_METADATA_URI_BYTES) revert MetadataURITooLong(length, MAX_METADATA_URI_BYTES);
+        if (
+            length < 7 || encoded[0] != "i" || encoded[1] != "p" || encoded[2] != "f" || encoded[3] != "s"
+                || encoded[4] != ":" || encoded[5] != "/" || encoded[6] != "/"
+        ) revert InvalidMetadataURIScheme();
+        digest = keccak256(encoded);
+    }
 
     /// @notice Begin an explicit two-step handoff of the caller's constitutional authority.
     /// @dev Direct multi-holder grants remain available, but the last holder can only move through

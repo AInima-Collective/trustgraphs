@@ -145,7 +145,8 @@ contract DeployContributionsInstance is Common {
             IAttestationAccumulator(address(mirror)),
             // Deployer holds both roles during wiring; hand-off below.
             deployer,
-            deployer
+            deployer,
+            ""
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(resolver)));
         // M6-1: only the snapshot's trigger() may mint mirror checkpoints (a directly-minted id

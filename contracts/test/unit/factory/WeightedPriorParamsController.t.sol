@@ -36,7 +36,7 @@ contract WeightedPriorParamsControllerTest is Test {
         registry = new InstanceRegistry(address(this));
         accumulator = new MockAccumulator();
         snapshot = new MerkleSnapshot(
-            new MockZkVerifier(), WeightedPriorParamsCodec.hash(initial), accumulator, address(this), address(this)
+            new MockZkVerifier(), WeightedPriorParamsCodec.hash(initial), accumulator, address(this), address(this), ""
         );
         controller = new WeightedPriorParamsController(
             INSTANCE_ID,

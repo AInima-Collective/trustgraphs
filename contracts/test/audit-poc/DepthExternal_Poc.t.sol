@@ -130,7 +130,7 @@ contract DepthExternal_Poc is Test {
         MockAccumulator accer = new MockAccumulator();
         address ghost = address(0xBEEF00);
         MerkleSnapshot ms =
-            new MerkleSnapshot(IZkVerifier(ghost), keccak256("params"), accer, address(this), address(this));
+            new MerkleSnapshot(IZkVerifier(ghost), keccak256("params"), accer, address(this), address(this), "");
 
         accer.setState(keccak256("acc"), 3);
         vm.roll(100);
@@ -153,7 +153,7 @@ contract DepthExternal_Poc is Test {
         SP1JournalVerifier v = new SP1JournalVerifier(ISP1Verifier(address(g)), keccak256("vkey"));
 
         MockAccumulator accer = new MockAccumulator();
-        MerkleSnapshot ms = new MerkleSnapshot(v, keccak256("params"), accer, address(this), address(this));
+        MerkleSnapshot ms = new MerkleSnapshot(v, keccak256("params"), accer, address(this), address(this), "");
 
         accer.setState(keccak256("acc"), 3);
         vm.roll(100);
@@ -190,7 +190,7 @@ contract DepthExternal_Poc is Test {
         bytes32 fakeVKey = keccak256("the-real-trust-graph-vkey");
         LyingVerifier v = new LyingVerifier(fakeVKey);
         MockAccumulator accer = new MockAccumulator();
-        MerkleSnapshot ms = new MerkleSnapshot(v, keccak256("params"), accer, address(this), address(this));
+        MerkleSnapshot ms = new MerkleSnapshot(v, keccak256("params"), accer, address(this), address(this), "");
         ms.enableStateProvenance();
 
         accer.setState(keccak256("acc"), 3);
@@ -206,7 +206,7 @@ contract DepthExternal_Poc is Test {
     function test_E_liveAnchorWork_acceptsInflatedWork() public {
         MockAccumulator accer = new MockAccumulator();
         LyingVerifier v = new LyingVerifier(bytes32(0));
-        MerkleSnapshot ms = new MerkleSnapshot(v, keccak256("params"), accer, address(this), address(this));
+        MerkleSnapshot ms = new MerkleSnapshot(v, keccak256("params"), accer, address(this), address(this), "");
 
         LyingWorkRegistry reg = new LyingWorkRegistry();
         reg.setState(keccak256("anchoracc"), 1, type(uint64).max);

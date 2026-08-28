@@ -104,6 +104,7 @@ test('weighted routes are additive and leave the binary instance API mounted unc
     new URL('../weighted-prior.ts', import.meta.url),
     'utf8'
   )
-  assert.match(eventHandler, /fetchMetadata\(metadataURI\)/)
-  assert.match(eventHandler, /metadataURI,\s+metadata,/)
+  assert.match(eventHandler, /fetchNetworkMetadata\(metadataURI\)/)
+  assert.match(eventHandler, /metadataURI,\s+metadataURIHash,/)
+  assert.match(eventHandler, /insert\(networkMetadataRevision\)/)
 })

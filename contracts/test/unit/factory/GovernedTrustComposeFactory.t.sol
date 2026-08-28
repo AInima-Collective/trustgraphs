@@ -742,7 +742,8 @@ contract GovernedTrustComposeFactoryTest is Test {
                 keccak256(abi.encode("source params", i)),
                 sourceAccumulator,
                 address(this),
-                address(this)
+                address(this),
+                ""
             );
             sourceSnapshot.enableStateProvenance();
             bytes32 sourceInstanceId = bytes32(i + 1);

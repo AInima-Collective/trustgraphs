@@ -168,7 +168,7 @@ contract WeightedTrustgraphsFactory {
         bytes32 paramsHash = WeightedPriorParamsCodec.hash(params);
 
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
-            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this)
+            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this), args.metadataURI
         );
         snapshot = address(merkleSnapshot);
         // Enable the accepted-state provenance history now, while zero states exist — the only

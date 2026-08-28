@@ -46,13 +46,21 @@ export type InstanceRow = {
   admin: Hex
   name: string
   metadataURI: string
+  metadataURIHash: Hex
+  metadataRevision: string
+  metadataStatus: string
+  metadataUpdated: {
+    block: string
+    timestamp: string
+    txHash: Hex
+  }
   /** The pinned `{name, description, criteria, image, applicationUrl}` blob, or null. */
   metadata: {
-    name?: string
-    description?: string
-    criteria?: string
-    image?: string
-    applicationUrl?: string
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
   } | null
   contracts: {
     merkleSnapshot: Hex
@@ -183,7 +191,9 @@ export const fromFp = (raw: string | bigint, scale: bigint): number => {
 /** Turn one `/instances` row into the `Network` shape every existing page already understands. */
 export const instanceToNetwork = (row: InstanceRow): Network => {
   const scale = scaleOf(row.params)
-  const metadata = row.metadata ?? {}
+  const metadata: Partial<NonNullable<InstanceRow['metadata']>> =
+    row.metadata ?? {}
+  const revisedProfile = BigInt(row.metadataRevision) > 0n
   const scoreProgram = parseScoreProgramProvenance(row.scoreProgram)
   if (
     scoreProgram.programName !== 'trust-graph' &&
@@ -201,6 +211,12 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
     id: row.id,
     instanceId: row.id,
     name: metadata.name?.trim() || row.name,
+    ...(metadata.image?.trim() ? { image: metadata.image.trim() } : {}),
+    metadataURI: row.metadataURI,
+    metadataURIHash: row.metadataURIHash,
+    metadataRevision: row.metadataRevision,
+    metadataStatus: row.metadataStatus,
+    ...(row.metadata ? { profile: row.metadata } : {}),
     admin: row.admin,
     epochLength: row.epochLength,
     paramsHash: row.paramsHash,
@@ -214,8 +230,12 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
           },
         }
       : {}),
-    about: metadata.description?.trim() || NO_DESCRIPTION,
-    criteria: metadata.criteria?.trim() || NO_CRITERIA,
+    about: revisedProfile
+      ? metadata.description?.trim() || ''
+      : metadata.description?.trim() || NO_DESCRIPTION,
+    criteria: revisedProfile
+      ? metadata.criteria?.trim() || ''
+      : metadata.criteria?.trim() || NO_CRITERIA,
     ...(metadata.applicationUrl?.trim()
       ? { applicationUrl: metadata.applicationUrl.trim() }
       : {}),
@@ -317,36 +337,44 @@ const sameSnapshot = (a: string | undefined, b: string | undefined) => {
  * Overlay a seed entry's curated presentation onto a catalog row. The chain wins on everything it
  * pins; the config file wins on everything it is the only source of.
  */
-const overlaySeed = (catalog: Network, seed: Network): Network => ({
-  ...catalog,
-  // The slug people have bookmarked and linked. `instanceId` stays resolvable too.
-  id: seed.id,
-  name: seed.name,
-  ...(seed.hidden !== undefined ? { hidden: seed.hidden } : {}),
-  ...(seed.link ? { link: seed.link } : {}),
-  ...(seed.callToAction ? { callToAction: seed.callToAction } : {}),
-  ...(seed.applicationUrl ? { applicationUrl: seed.applicationUrl } : {}),
-  about: seed.about || catalog.about,
-  criteria: seed.criteria || catalog.criteria,
-  contracts: {
-    // Seed-only addresses survive; chain-discovered addresses win. Merge Safe fields separately
-    // so a runtime proxy does not erase the seed's optional factory/singleton metadata.
-    ...seed.contracts,
-    ...catalog.contracts,
-    ...(seed.contracts.safe || catalog.contracts.safe
-      ? {
-          safe: {
-            ...seed.contracts.safe,
-            ...catalog.contracts.safe,
-          } as NonNullable<Network['contracts']['safe']>,
-        }
+const overlaySeed = (catalog: Network, seed: Network): Network => {
+  // Once governance has deliberately revised the profile, stale seed copy must not overwrite it
+  // (including deliberate empty values). Revision 0 keeps the curated migration-era overlay.
+  const revised = BigInt(catalog.metadataRevision ?? '0') > 0n
+  return {
+    ...catalog,
+    // The slug people have bookmarked and linked. `instanceId` stays resolvable too.
+    id: seed.id,
+    name: revised ? catalog.name : seed.name,
+    ...(seed.hidden !== undefined ? { hidden: seed.hidden } : {}),
+    ...(seed.link ? { link: seed.link } : {}),
+    ...(seed.callToAction ? { callToAction: seed.callToAction } : {}),
+    ...(!revised && seed.image ? { image: seed.image } : {}),
+    ...(!revised && seed.applicationUrl
+      ? { applicationUrl: seed.applicationUrl }
       : {}),
-  },
-  safeZodiacSignerSync: catalog.safeZodiacSignerSync.enabled
-    ? catalog.safeZodiacSignerSync
-    : seed.safeZodiacSignerSync,
-  validatedThreshold: seed.validatedThreshold,
-})
+    about: revised ? catalog.about : seed.about || catalog.about,
+    criteria: revised ? catalog.criteria : seed.criteria || catalog.criteria,
+    contracts: {
+      // Seed-only addresses survive; chain-discovered addresses win. Merge Safe fields separately
+      // so a runtime proxy does not erase the seed's optional factory/singleton metadata.
+      ...seed.contracts,
+      ...catalog.contracts,
+      ...(seed.contracts.safe || catalog.contracts.safe
+        ? {
+            safe: {
+              ...seed.contracts.safe,
+              ...catalog.contracts.safe,
+            } as NonNullable<Network['contracts']['safe']>,
+          }
+        : {}),
+    },
+    safeZodiacSignerSync: catalog.safeZodiacSignerSync.enabled
+      ? catalog.safeZodiacSignerSync
+      : seed.safeZodiacSignerSync,
+    validatedThreshold: seed.validatedThreshold,
+  }
+}
 
 /**
  * One catalog row as a `Network`, with its seed entry's curated presentation applied when the two

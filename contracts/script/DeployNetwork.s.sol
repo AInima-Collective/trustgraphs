@@ -174,7 +174,12 @@ contract DeployScript is Common {
             ParamsJson.read(paramsPath, deployed.schemaUid, address(deployed.resolver), uint64(block.chainid))
         );
         deployed.snapshot = new MerkleSnapshot(
-            IZkVerifier(zkVerifier), paramsHash, IAttestationAccumulator(address(deployed.resolver)), deployer, deployer
+            IZkVerifier(zkVerifier),
+            paramsHash,
+            IAttestationAccumulator(address(deployed.resolver)),
+            deployer,
+            deployer,
+            ""
         );
 
         // Enable the accepted-state provenance history now, while zero states exist — the only

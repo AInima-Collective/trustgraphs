@@ -167,7 +167,12 @@ contract TrustComposeFactory {
         bytes32 paramsHash = TrustComposeParamsCodec.hash(params);
 
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
-            VERIFIER, paramsHash, IAttestationAccumulator(accumulatorAddress), address(this), address(this)
+            VERIFIER,
+            paramsHash,
+            IAttestationAccumulator(accumulatorAddress),
+            address(this),
+            address(this),
+            args.metadataURI
         );
         snapshot = address(merkleSnapshot);
         // Composition indexers must authenticate the exact accepted checkpoint, params, verifier,

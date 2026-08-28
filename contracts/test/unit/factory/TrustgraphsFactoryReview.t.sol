@@ -210,7 +210,7 @@ contract TrustgraphsFactoryReviewTest is TrustgraphsFactoryBase {
     function test_F10_AnyoneCanMintAnUnregisteredSnapshotNamingTheFactory() public {
         vm.prank(attacker);
         MerkleSnapshot rogue = snapshotDeployer.deploy(
-            verifier, bytes32(uint256(1)), IAttestationAccumulator(address(0xACC)), address(factory), attacker
+            verifier, bytes32(uint256(1)), IAttestationAccumulator(address(0xACC)), address(factory), attacker, ""
         );
 
         assertTrue(rogue.hasRole(rogue.CONSTITUTIONAL_ROLE(), address(factory)), "as constructed");

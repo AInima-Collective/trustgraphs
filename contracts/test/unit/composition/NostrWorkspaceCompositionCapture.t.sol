@@ -49,7 +49,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         CompositionSourceAccumulator accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
         NostrCaptureVerifier composeVerifier = new NostrCaptureVerifier(keccak256("capture-only compose verifier"));
         MerkleSnapshot snapshot = new MerkleSnapshot(
-            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this)
+            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this), ""
         );
         accumulator.bind(address(snapshot), address(this));
 
@@ -77,7 +77,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         CompositionSourceAccumulator accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
         NostrCaptureVerifier composeVerifier = new NostrCaptureVerifier(keccak256("capture-only compose verifier"));
         MerkleSnapshot snapshot = new MerkleSnapshot(
-            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this)
+            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this), ""
         );
         accumulator.bind(address(snapshot), address(this));
 
@@ -91,7 +91,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         MockAccumulator sourceAccumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256(abi.encode(NOSTR_OUTPUT_DOMAIN, "nostr params", index));
         MerkleSnapshot sourceSnapshot =
-            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this));
+            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this), "");
         sourceSnapshot.enableStateProvenance();
         bytes32 instanceId = bytes32(index + 1);
         registry.registerWithParamsAuthority(

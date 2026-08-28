@@ -64,7 +64,8 @@ contract DeployHypercertsInstance is Common {
             // Deployer holds the roles during wiring; hand-off to the timelocks is the
             // last rehearsal step (see the runbook's roles table).
             deployer,
-            operational
+            operational,
+            ""
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(anchorRegistry)));
         anchorRegistry.bindSnapshot(address(snapshot));

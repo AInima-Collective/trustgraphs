@@ -285,7 +285,7 @@ contract PlamenGovAndBind is Test {
         address admin = address(this);
 
         MerkleSnapshot ms = new MerkleSnapshot(
-            IZkVerifier(address(v)), bytes32(uint256(1)), IAttestationAccumulator(address(accStub)), admin, admin
+            IZkVerifier(address(v)), bytes32(uint256(1)), IAttestationAccumulator(address(accStub)), admin, admin, ""
         );
 
         PlamenHookStub hook = new PlamenHookStub();

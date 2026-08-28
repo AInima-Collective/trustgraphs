@@ -47,7 +47,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         MockAccumulator accumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256("params");
         MerkleSnapshot snapshot =
-            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL);
+            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL, "");
 
         assertEq(address(snapshot.zkVerifier()), address(verifier));
         assertEq(address(snapshot.accumulator()), address(accumulator));
@@ -79,7 +79,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         params.lane2MaxHeadAge = 0;
         bytes32 paramsHash = ParamsCodec.hash(params);
         MerkleSnapshot snapshot =
-            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL);
+            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL, "");
         TrustgraphsParamsControllerDeployer directDeployer = new TrustgraphsParamsControllerDeployer();
         address owner = address(0xA11CE);
         TrustgraphsParamsController controller = directDeployer.deploy(
@@ -110,7 +110,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
     function test_MerkleGovModuleDeployerUsesOnlyExplicitAuthorityAndSnapshot() public {
         MockAccumulator accumulator = new MockAccumulator();
         MerkleSnapshot snapshot =
-            snapshotDeployer.deploy(verifier, keccak256("params"), accumulator, CONSTITUTIONAL, OPERATIONAL);
+            snapshotDeployer.deploy(verifier, keccak256("params"), accumulator, CONSTITUTIONAL, OPERATIONAL, "");
         MerkleGovModuleDeployer directDeployer = new MerkleGovModuleDeployer();
         MerkleGovModule module = directDeployer.deploy(SAFE, SAFE, SAFE, address(snapshot));
 
