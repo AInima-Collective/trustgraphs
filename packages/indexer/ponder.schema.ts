@@ -550,7 +550,7 @@ export const instance = onchainTable(
     epochLength: t.bigint().notNull(),
     paramsHash: t.hex().notNull(),
     params: t.json().notNull(),
-    // Null for legacy raw-hash instances. Versioned factory instances discover this from the
+    // Null for raw-hash instances. Versioned factory instances discover this from the
     // separate `ParamsControllerCreated` event so the frozen `InstanceCreated` ABI never changes.
     paramsController: t.hex(),
     paramsVersion: t.bigint(),
@@ -560,7 +560,7 @@ export const instance = onchainTable(
     // Null until the first CheckpointParamsPinned event carrying the current version's hash.
     paramsFirstCheckpoint: t.bigint(),
     // Present only for the opt-in strict EAS offchain v2 hybrid created by the companion factory
-    // event. Null preserves the frozen InstanceCreated catalog shape for every legacy instance.
+    // event. Null preserves the frozen InstanceCreated catalog shape for pre-factory instances.
     offchainRegistry: t.hex(),
     offchainEasDomainSeparator: t.hex(),
     offchainMaxTotalInputs: t.bigint(),
@@ -1115,13 +1115,13 @@ export const provingVaultCredit = onchainTable(
 )
 
 /*///////////////////////////////////////////////////////////////
-              LANE 2 — offchain-attestation anchors (M2)
+              LANE 2 — offchain-attestation anchors
 //////////////////////////////////////////////////////////////*/
 
 // AnchorRegistry.HeadAnchored — one row per anchor claim folded into the lane-2 chained-hash log
 // (OFFCHAIN_ATTESTATIONS_ZK §4.1). `foldIndex` is the leaf's position in the chain; `head` is the
 // per-identity completeness commitment; `dataCommitment` is where the data behind the head lives.
-// Single-instance for M2 (the multi-instance `instanceId` dimension is deferred to M4/M5); `address`
+// Single-instance today (a multi-instance `instanceId` dimension can be added when needed); `address`
 // is carried only for provenance across a redeploy, not as an instance key.
 export const anchor = onchainTable(
   'anchor',
@@ -1165,7 +1165,7 @@ export const anchorCheckpoint = onchainTable(
     address: t.hex().notNull(), // MerkleSnapshot that emitted it
     anchorAcc: t.hex().notNull(),
     anchorCount: t.bigint().notNull(), // uint64
-    // Authenticated priced work; equals anchorCount for legacy registries.
+    // Authenticated priced work; equals anchorCount for registries without pricing.
     workCount: t.bigint().notNull(),
     blockTimestamp: t.bigint().notNull(),
     txHash: t.hex().notNull(),
@@ -1332,7 +1332,7 @@ export const easOffchainMutation = onchainTable(
 )
 
 /*///////////////////////////////////////////////////////////////
-        CONTRIBUTIONS PROGRAM — fold log + decoded records (M3)
+        CONTRIBUTIONS PROGRAM — fold log + decoded records
 //////////////////////////////////////////////////////////////*/
 
 // The chained-hash accumulator fold log, one row per fold (attest AND revoke), for every
@@ -1367,7 +1367,7 @@ export const accumulatorRecord = onchainTable(
   })
 )
 
-// contribution.claim attestations, decoded (INTERFACES.md §1 schema 0). `malformed = true` rows
+// contribution.claim attestations, decoded (research/operations/contributions/interfaces.md §1 schema 0). `malformed = true` rows
 // failed the guest's structural decoder (`decodeClaim`) and are provably inert in scoring — the
 // row is kept (with whatever fields decoded) so the UI can show the attestation exists.
 export const contributionClaim = onchainTable(
@@ -1668,7 +1668,7 @@ export const merkleFundDistribution = onchainTable(
     amountDistributed: t.bigint().notNull(),
     feeRecipient: t.hex().notNull(),
     feeAmount: t.bigint().notNull(),
-    // M6 expiry + sweep: claims close at `claimDeadline` (unix seconds; 0 = no deadline), after
+    // Round expiry: claims close at `claimDeadline` (unix seconds; 0 = no deadline), after
     // which the funder can sweep the unclaimed remainder back (`Swept`).
     claimDeadline: t.bigint().notNull(),
     sweptAmount: t.bigint().notNull(),

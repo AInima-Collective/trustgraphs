@@ -62,7 +62,7 @@ export const roundPhase = ({
 }
 
 /**
- * All the data the contributions screens share: the round summary (M3 indexer route), the live
+ * All the data the contributions screens share: the round summary (indexer route), the live
  * on-chain record log (generic EAS attestation table + the parity-locked reconciliation from
  * `lib/contributions/`), and the pool token metadata.
  */

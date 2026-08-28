@@ -80,8 +80,7 @@ const recordBinding = async (
       conflictReason: reason,
     })
   } else if (!accepted && !existing.conflict) {
-    // Preserve the first accepted identity and its provenance; only add the conflict marker. The
-    // append-only event row below carries the competing tuple for audit.
+    // Preserve the first accepted identity and its provenance; only add the conflict marker.
     await context.db.update(scoreProgramBinding, { id }).set({
       conflict: true,
       conflictReason: reason,
@@ -99,7 +98,6 @@ const recordBinding = async (
       sourceTxHash: event.transaction.hash,
     })
   }
-
 }
 
 ponder.on('instanceRegistry:InstanceRegistered', async ({ event, context }) =>
@@ -133,7 +131,7 @@ ponder.on(
       )
       .limit(1)
     if (!binding) {
-      // M0 hazard sweep: a params-hash rotation for an instance whose registration predates the
+      // Out-of-universe guard: a params-hash rotation for an instance whose registration predates the
       // start block is out-of-universe. The fold is event-sourced provenance — synthesizing a
       // binding from current chain state would forge history — so log and skip (there is no
       // binding id to hang even a receipt on), and never wedge the indexer on a valid chain.
@@ -163,7 +161,6 @@ ponder.on(
         conflictReason: reason,
       })
     }
-
   }
 )
 

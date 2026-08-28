@@ -1222,7 +1222,7 @@ const onDistributed = async ({
   })
 }
 
-// M6 expiry + sweep: the funder reclaimed the unclaimed remainder after the claim deadline.
+// Round expiry: the funder reclaimed the unclaimed remainder after the claim deadline.
 const onSwept = async ({
   event,
   context,

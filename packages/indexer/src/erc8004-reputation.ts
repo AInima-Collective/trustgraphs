@@ -207,7 +207,7 @@ ponder.on(
     const position = eventPosition(event)
     const feedback = await context.db.find(erc8004Feedback, { id: feedbackId })
     if (!feedback) {
-      // M0 hazard sweep: feedback that predates the start block (or a foreign registry window) is
+      // Out-of-universe guard: feedback that predates the start block (or a foreign registry window) is
       // out of our universe — log and skip instead of wedging the indexer on its revocation.
       console.warn(
         `erc8004 reputation: revocation references unobserved ${feedbackId} (feedback predates the start block?) — skipping`
@@ -238,7 +238,7 @@ ponder.on(
     const position = eventPosition(event)
     const feedback = await context.db.find(erc8004Feedback, { id: feedbackId })
     if (!feedback) {
-      // M0 hazard sweep: same out-of-universe rule as `FeedbackRevoked` above — log and skip.
+      // Out-of-universe guard: same out-of-universe rule as `FeedbackRevoked` above — log and skip.
       console.warn(
         `erc8004 reputation: response references unobserved ${feedbackId} (feedback predates the start block?) — skipping`
       )

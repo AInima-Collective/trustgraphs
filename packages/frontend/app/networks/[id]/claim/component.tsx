@@ -136,7 +136,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
     null) as Hex | null
 
   // The connected account's payout proof bundle for the current root
-  // (M3 route: /contributions/:snapshot/payout/:account; mock-gated in the client module).
+  // (route: /contributions/:snapshot/payout/:account; mock-gated in the client module).
   const payoutBundleQuery = useQuery(
     contributionsQueries.payout(snapshotAddress, connectedAddress)
   )

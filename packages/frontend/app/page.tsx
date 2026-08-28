@@ -219,9 +219,8 @@ export default async function LandingPage() {
            * rule, so the three panels read as one figure in three parts.
            *
            * Every panel carries a figure, and every figure is pinned to the
-           * bottom of its panel (see `Move`). Two of the three used to be text
-           * alone next to a drawing, which read as one finished panel and two
-           * that had not been got to yet. */}
+           * bottom of its panel (see `Move`) — text-only panels next to a
+           * drawing read as unfinished. */}
           <Move n="1" title="Vouch" figure={<VouchFigure />}>
             Sign a public, weighted vouch. Update or revoke it at any time.
           </Move>

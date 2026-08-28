@@ -455,7 +455,7 @@ ponder.on(
       id: `${event.args.instanceId}-${event.args.version}`,
     })
     if (!policy || !sameHex(policy.proposalId ?? '', event.args.proposalId)) {
-      // M0 hazard sweep: a cancellation can reference a proposal outside our universe (proposed
+      // Out-of-universe guard: a cancellation can reference a proposal outside our universe (proposed
       // before the start block) or a version row recorded without a proposal id — log and skip
       // rather than wedge the indexer; the contract remains the authority on proposal state.
       console.warn(

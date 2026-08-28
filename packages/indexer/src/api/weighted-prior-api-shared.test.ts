@@ -30,7 +30,7 @@ test('every documented version and availability filter is accepted', () => {
   for (const status of ['available', 'degraded', 'unavailable']) {
     assert.equal(availabilityStatus(status), true)
   }
-  assert.equal(versionStatus('legacy'), false)
+  assert.equal(versionStatus('nonsense'), false)
   assert.equal(availabilityStatus('substituted'), false)
 })
 

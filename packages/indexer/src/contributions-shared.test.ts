@@ -1,6 +1,6 @@
 /**
  * Unit tests for the contributions derive glue (src/contributions-shared.ts) against the frozen
- * golden vectors (tests/golden/contributions.json — the M1 fixture oracle shared by every lane).
+ * golden vectors (tests/golden/contributions.json — the fixture oracle shared by every implementation).
  * The scoring itself is the golden-locked `packages/frontend/lib/contributions` port; what's under test
  * here is the indexer's glue: fold-log rows → RawEdge stream, params sidecar → ContributionsParams
  * (hash-checked), and the score/audit row derivation the API serves.
@@ -200,7 +200,7 @@ test('deriveAudit partitions every live valuation with guest-identical verdicts'
       assert.equal(a.discountFp, params.precisionScale)
     }
   }
-  // The fixture exercises both filters and the discount (the M1 worked example includes a
+  // The fixture exercises both filters and the discount (the worked example includes a
   // self-valuation and a collaborator pair) — guard against a silently-empty audit.
   assert.ok(filtered.length > 0)
   assert.ok(audit.some((a) => a.status === 'discounted'))

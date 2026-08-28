@@ -23,8 +23,8 @@ import { type SharedArgs } from './utils'
  *
  * The `AnchorRegistry` is a chained-hash log of per-identity head anchors (the AttestationAccumulator
  * pattern lifted one level up). We index the two anchor-registry events and the MerkleSnapshot event
- * that freezes the lane-2 accumulator at each snapshot boundary. Single instance for M2 — the
- * multi-instance `instanceId` dimension is deferred to M4/M5.
+ * that freezes the lane-2 accumulator at each snapshot boundary. Single instance today — a
+ * multi-instance `instanceId` dimension can be added when a deployment needs it.
  */
 
 // AnchorRegistry.HeadAnchored — every anchor claim, in fold order.

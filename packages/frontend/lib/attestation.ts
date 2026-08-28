@@ -13,7 +13,7 @@ export enum AttestationStatus {
 }
 
 export type AttestationApiRow = typeof easAttestation.$inferSelect & {
-  /** Present on hybrid network responses; absent keeps legacy API/UI rows unchanged. */
+  /** Present on hybrid network responses; absent on plain onchain-only rows. */
   provenance?: AttestationProvenance
 }
 

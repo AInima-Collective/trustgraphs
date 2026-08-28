@@ -53,7 +53,7 @@
  *    serves first was rendered during `next build`. Switching the fixture and
  *    restarting the server would screenshot the previous state's cache. So each
  *    state gets its own build (see `TG_FIXTURE` in lib/directory.fixtures.ts) and
- *    only shoots `/networks`, at the two viewports M2 is graded on.
+ *    only shoots `/networks`, at the two review viewports.
  */
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, rm } from 'node:fs/promises'
