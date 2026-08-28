@@ -485,34 +485,39 @@ contract MerkleGovModuleTest is Test {
         assertEq(uint256(govModule.state(proposalId)), uint256(MerkleGovModule.ProposalState.Cancelled));
     }
 
-    function test_OnlyOwnerCanUpdateParameters() public {
-        // Non-owner cannot update parameters
+    function test_OnlyAvatarCanUpdateParameters() public {
+        // A stranger cannot update parameters
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(MerkleGovModule.NotAuthorized.selector);
         govModule.setQuorum(5e16);
 
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(MerkleGovModule.NotAuthorized.selector);
         govModule.setVotingDelay(10);
 
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(MerkleGovModule.NotAuthorized.selector);
         govModule.setVotingPeriod(100000);
 
         vm.prank(alice);
-        vm.expectRevert();
-        govModule.setMerkleSnapshotContract(address(0x1234)); // also reverts due to onlyOwner
+        vm.expectRevert(MerkleGovModule.NotAuthorized.selector);
+        govModule.setMerkleSnapshotContract(address(0x1234));
 
-        // Owner can update parameters
+        // The module owner is not the DAO: voting config is out of its hands too.
         vm.prank(owner);
+        vm.expectRevert(MerkleGovModule.NotAuthorized.selector);
+        govModule.setQuorum(5e16);
+
+        // The avatar Safe — the network DAO — can update parameters
+        vm.prank(address(safe));
         govModule.setQuorum(5e16);
         assertEq(govModule.quorum(), 5e16);
 
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setVotingDelay(10);
         assertEq(govModule.votingDelay(), 10);
 
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setVotingPeriod(100000);
         assertEq(govModule.votingPeriod(), 100000);
 
@@ -526,7 +531,7 @@ contract MerkleGovModuleTest is Test {
                 totalValue: 999e18
             })
         );
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setMerkleSnapshotContract(address(newSnapshot));
         assertEq(govModule.merkleSnapshotContract(), address(newSnapshot));
     }
@@ -568,7 +573,7 @@ contract MerkleGovModuleTest is Test {
         assertEq(uint256(govModule.state(p1)), uint256(MerkleGovModule.ProposalState.Passed));
 
         // Raising the quorum to 50% must NOT flip the already-decided P1 (its snapshot is honored).
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setQuorum(5e17); // 50%
         assertEq(uint256(govModule.state(p1)), uint256(MerkleGovModule.ProposalState.Passed));
 
@@ -1042,7 +1047,7 @@ contract MerkleGovModuleTest is Test {
             })
         );
 
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setMerkleSnapshotContract(address(newSnapshot));
 
         assertEq(govModule.merkleSnapshotContract(), address(newSnapshot));
@@ -1102,7 +1107,7 @@ contract MerkleGovModuleTest is Test {
 
         vm.expectEmit(true, true, false, true, address(freshGov));
         emit MerkleGovModule.MerkleSnapshotContractUpdated(address(merkleSnapshot), address(emptySnapshot));
-        vm.prank(owner);
+        vm.prank(address(safe));
         freshGov.setMerkleSnapshotContract(address(emptySnapshot));
 
         // A later "initial" announcement would be stale and out of order; rotation consumed it.
@@ -1117,7 +1122,7 @@ contract MerkleGovModuleTest is Test {
 
         MockMerkleSnapshotNoStates emptySnapshot = new MockMerkleSnapshotNoStates();
 
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setMerkleSnapshotContract(address(emptySnapshot));
 
         assertEq(govModule.merkleSnapshotContract(), address(emptySnapshot));
@@ -1359,7 +1364,7 @@ contract MerkleGovModuleTest is Test {
             "deadline does not snapshot delay plus window"
         );
 
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setExecutionDelay(0);
         _passWithAliceYes(pid);
 
@@ -1415,7 +1420,7 @@ contract MerkleGovModuleTest is Test {
         );
 
         // Allowlisted: proposable.
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setDelegateCallTarget(address(target_), true);
         uint256 pid = _proposeAction(address(target_), data, Operation.DelegateCall);
         _passWithAliceYes(pid);
@@ -1423,7 +1428,7 @@ contract MerkleGovModuleTest is Test {
         vm.roll(p.endBlock + govModule.executionDelay() + 1);
 
         // Revoked between propose and execute: the execute-time re-check refuses.
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setDelegateCallTarget(address(target_), false);
         vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.DelegateCallNotAllowed.selector, address(target_)));
         govModule.execute(pid);
@@ -1433,7 +1438,7 @@ contract MerkleGovModuleTest is Test {
     /// participation was mostly abstentions passed on a tiny "for" minority.
     function test_M5_AbstainDoesNotCountTowardQuorum() public {
         // Raise quorum to 50% of 575e18 = 287.5e18 for a clean separation.
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setQuorum(5e17);
 
         uint256 pid = _proposeEmpty();
@@ -1723,7 +1728,7 @@ contract MerkleGovModuleTest is Test {
     }
 
     function test_DelegatedVotesCountIdenticallyForQuorumAndOverrideRecomputesIt() public {
-        vm.prank(owner);
+        vm.prank(address(safe));
         govModule.setQuorum(5e17); // 287.5e18 decisive power required
         uint256 pid = _proposeEmpty();
         vm.prank(bob);
@@ -1762,7 +1767,6 @@ contract MerkleGovModuleTest is Test {
 
         assertEq(govModule.activityAccumulator(), expected);
         assertEq(govModule.activityCount(), 1);
-        assertEq(govModule.lastDirectActivityBlock(alice), activityBlock);
         assertEq(govModule.activityCheckpointCount(), 1);
         MerkleGovModule.ActivityCheckpoint memory checkpoint = govModule.getActivityCheckpoint(0);
         assertEq(checkpoint.acc, expected);
@@ -1785,7 +1789,6 @@ contract MerkleGovModuleTest is Test {
         vm.prank(alice);
         govModule.castVote(pid, MerkleGovModule.VoteType.No, votingPowers[alice], proofs[alice]);
         assertEq(govModule.activityCount(), 1);
-        assertEq(govModule.lastDirectActivityBlock(alice), block.number);
     }
 
     function test_PermissionlessActivityCheckpointRefreshDoesNotInventActivity() public {
