@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zk_core::anchor::{anchor_leaf, skipped_digest, SkipEntry};
 use zk_core::fold::fold;
-use zk_core::words::word_u256;
 
 use crate::params::{params_hash, Params, ParamsError};
 use crate::semantics::{self, Provenance, SemanticEvent};
@@ -87,29 +86,9 @@ fn witness_commitment(bytes: &[u8]) -> B256 {
     B256::from(<[u8; 32]>::from(Sha256::digest(bytes)))
 }
 
-fn canonical_blob(scores: &[(B256, U256)]) -> Vec<u8> {
-    let mut output = String::from("{");
-    for (index, (node, value)) in scores.iter().enumerate() {
-        if index != 0 {
-            output.push(',');
-        }
-        output.push_str("\"0x");
-        output.push_str(&alloy_primitives::hex::encode(node.as_slice()));
-        output.push_str("\":\"");
-        output.push_str(&value.to_string());
-        output.push('"');
-    }
-    output.push('}');
-    output.into_bytes()
-}
+use zk_core::cid::canonical_node_blob as canonical_blob;
 
-pub fn node_output_leaf(node_id: B256, value: U256) -> B256 {
-    let mut words = [0; 64];
-    words[..32].copy_from_slice(node_id.as_slice());
-    words[32..].copy_from_slice(&word_u256(value));
-    let inner = keccak256(words);
-    keccak256(inner.as_slice())
-}
+pub use zk_core::merkle::node_output_leaf;
 
 fn provenance(variant: CommitmentVariant) -> Provenance {
     match variant {

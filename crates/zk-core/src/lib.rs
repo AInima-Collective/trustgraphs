@@ -14,8 +14,10 @@
 
 pub mod anchor;
 pub mod cid;
+pub mod edge;
 pub mod fixed;
 pub mod fold;
 pub mod journal;
 pub mod merkle;
+pub mod serde_hex;
 pub mod words;

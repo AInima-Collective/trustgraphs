@@ -218,7 +218,7 @@ pub struct Binding {
 #[serde(rename_all = "camelCase")]
 pub struct SourcePreimage {
     pub cid: String,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub blob: Vec<u8>,
 }
 
@@ -226,7 +226,7 @@ pub struct SourcePreimage {
 #[serde(rename_all = "camelCase")]
 pub struct GuestInput {
     pub params: Params,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub manifest: Vec<u8>,
     pub source_preimages: Vec<SourcePreimage>,
     pub capture_commitment: B256,
@@ -299,26 +299,4 @@ pub struct ComputeResult {
     pub blob: Vec<u8>,
     pub cid: String,
     pub manifest: CapturedManifest,
-}
-
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            serializer.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-        } else {
-            serializer.serialize_bytes(bytes)
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
-        if deserializer.is_human_readable() {
-            let value = String::deserialize(deserializer)?;
-            let value = value.strip_prefix("0x").unwrap_or(&value);
-            alloy_primitives::hex::decode(value).map_err(serde::de::Error::custom)
-        } else {
-            serde_bytes::ByteBuf::deserialize(deserializer).map(serde_bytes::ByteBuf::into_vec)
-        }
-    }
 }

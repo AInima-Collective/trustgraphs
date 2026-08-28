@@ -40,10 +40,10 @@ pub struct OffchainAttestation {
     pub expiration_time: u64,
     pub revocable: bool,
     pub ref_uid: B256,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub data: Vec<u8>,
     pub salt: B256,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub signature: Vec<u8>,
 }
 
@@ -113,18 +113,4 @@ pub fn offchain_uid_v2(attestation: &OffchainAttestation) -> B256 {
 /// Canonical address node id: `keccak256(abi.encode(owner))`.
 pub fn address_node_id(owner: Address) -> B256 {
     keccak256(word_addr(owner))
-}
-
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
-        let value = String::deserialize(deserializer)?;
-        alloy_primitives::hex::decode(value.strip_prefix("0x").unwrap_or(&value))
-            .map_err(serde::de::Error::custom)
-    }
 }

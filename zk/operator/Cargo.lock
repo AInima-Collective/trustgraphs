@@ -2532,7 +2532,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "eas-offchain-v2"
+name = "eas-offchain"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
@@ -7575,7 +7575,7 @@ name = "trustgraph-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
- "eas-offchain-v2",
+ "eas-offchain",
  "pagerank-core",
  "serde",
  "zk-core",
@@ -8403,6 +8403,7 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "serde",
+ "serde_bytes",
  "sha2 0.10.9",
 ]
 
