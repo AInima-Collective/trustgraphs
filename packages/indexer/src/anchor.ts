@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { sql } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
-import { anchor, anchorCheckpoint, nodeRegistration } from 'ponder:schema'
+import { anchor, anchorCheckpoint } from 'ponder:schema'
 import { type Hex, decodeFunctionData, keccak256, stringToHex } from 'viem'
 
 import { merkleSnapshotAbi } from '../../frontend/lib/contract-abis'
@@ -49,21 +49,6 @@ ponder.on('anchorRegistry:HeadAnchored', async ({ event, context }) => {
     count,
     dataCommitment,
     blockTimestamp,
-    txHash: event.transaction.hash,
-    blockNumber: event.block.number,
-  })
-})
-
-// AnchorRegistry.NodeRegistered — a node joined the registry (once per node).
-ponder.on('anchorRegistry:NodeRegistered', async ({ event, context }) => {
-  const { nodeId, kind, registrant } = event.args
-
-  await context.db.insert(nodeRegistration).values({
-    nodeId,
-    address: event.log.address,
-    kind,
-    registrant,
-    at: event.block.timestamp,
     txHash: event.transaction.hash,
     blockNumber: event.block.number,
   })

@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
-import { scoreProgramBinding, scoreProgramBindingEvent } from 'ponder:schema'
+import { scoreProgramBinding } from 'ponder:schema'
 
 import {
   type ScoreProgramProvenance,
@@ -100,26 +100,6 @@ const recordBinding = async (
     })
   }
 
-  await context.db.insert(scoreProgramBindingEvent).values({
-    id: event.id,
-    bindingId: id,
-    chainId,
-    snapshot: args.snapshot,
-    instanceId: args.instanceId,
-    programId: args.program,
-    outputDomain: definition?.outputDomain ?? null,
-    verifier: args.verifier,
-    registryOrAccumulator: args.registryOrAccumulator,
-    paramsHash: args.paramsHash,
-    sourceRegistry: event.log.address,
-    sourceKind,
-    accepted,
-    reason,
-    blockNumber: event.block.number,
-    logIndex: event.log.logIndex,
-    timestamp: event.block.timestamp,
-    txHash: event.transaction.hash,
-  })
 }
 
 ponder.on('instanceRegistry:InstanceRegistered', async ({ event, context }) =>
@@ -184,26 +164,6 @@ ponder.on(
       })
     }
 
-    await context.db.insert(scoreProgramBindingEvent).values({
-      id: event.id,
-      bindingId: binding.id,
-      chainId,
-      snapshot: binding.snapshot,
-      instanceId: args.instanceId,
-      programId: binding.programId,
-      outputDomain: binding.outputDomain,
-      verifier: binding.verifier,
-      registryOrAccumulator: binding.registryOrAccumulator,
-      paramsHash: args.newParamsHash,
-      sourceRegistry: event.log.address,
-      sourceKind: 'instance-params-hash-updated',
-      accepted,
-      reason,
-      blockNumber: event.block.number,
-      logIndex: event.log.logIndex,
-      timestamp: event.block.timestamp,
-      txHash: event.transaction.hash,
-    })
   }
 )
 

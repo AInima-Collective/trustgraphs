@@ -187,37 +187,6 @@ export const scoreProgramBinding = onchainTable(
   })
 )
 
-/** Append-only audit trail of accepted, unknown, duplicate, and conflicting registry events. */
-export const scoreProgramBindingEvent = onchainTable(
-  'score_program_binding_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    bindingId: t.text().notNull(),
-    chainId: t.text().notNull(),
-    snapshot: t.hex().notNull(),
-    instanceId: t.hex().notNull(),
-    programId: t.hex().notNull(),
-    outputDomain: t.hex(),
-    verifier: t.hex().notNull(),
-    registryOrAccumulator: t.hex().notNull(),
-    paramsHash: t.hex().notNull(),
-    sourceRegistry: t.hex().notNull(),
-    sourceKind: t.text().notNull(),
-    accepted: t.boolean().notNull(),
-    reason: t.text(),
-    blockNumber: t.bigint().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    bindingIdx: index().on(t.bindingId),
-    instanceIdx: index().on(t.instanceId),
-    programIdx: index().on(t.programId),
-    blockIdx: index().on(t.blockNumber),
-  })
-)
-
 /*///////////////////////////////////////////////////////////////
         ERC-8004 IDENTITY — event-sourced enrichment only
 //////////////////////////////////////////////////////////////*/
@@ -409,35 +378,6 @@ export const erc8004ReputationRegistry = onchainTable(
   })
 )
 
-/** Append-only upgrade and ownership history for the Reputation Registry proxy. */
-export const erc8004ReputationRegistryEvent = onchainTable(
-  'erc8004_reputation_registry_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    registryId: t.text().notNull(),
-    kind: t.text().notNull(),
-    implementation: t.hex(),
-    version: t.text(),
-    identityRegistry: t.hex(),
-    previousOwner: t.hex(),
-    newOwner: t.hex(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    registryIdx: index().on(t.registryId),
-    orderIdx: index().on(
-      t.registryId,
-      t.blockNumber,
-      t.transactionIndex,
-      t.logIndex
-    ),
-  })
-)
-
 /** One immutable feedback payload plus its current revocation flag and event-block attribution. */
 export const erc8004Feedback = onchainTable(
   'erc8004_feedback',
@@ -496,34 +436,6 @@ export const erc8004Feedback = onchainTable(
       t.reviewer,
       t.feedbackIndex
     ),
-  })
-)
-
-/** Append-only revocation/response timeline; feedback creation remains in `erc8004_feedback`. */
-export const erc8004FeedbackEvent = onchainTable(
-  'erc8004_feedback_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    feedbackId: t.text().notNull(),
-    kind: t.text().notNull(), // `revoked` | `response`
-    actor: t.hex().notNull(),
-    uri: t.text(),
-    contentHash: t.hex(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-    blockHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    feedbackOrderIdx: index().on(
-      t.feedbackId,
-      t.blockNumber,
-      t.transactionIndex,
-      t.logIndex
-    ),
-    actorIdx: index().on(t.actor),
   })
 )
 
@@ -1237,27 +1149,6 @@ export const anchor = onchainTable(
   })
 )
 
-// AnchorRegistry.NodeRegistered — one row per registered node. Registration is once-per-node (the
-// contract's AlreadyRegistered guard), so `nodeId` is the natural primary key.
-export const nodeRegistration = onchainTable(
-  'node_registration',
-  (t) => ({
-    nodeId: t.hex().primaryKey(),
-    address: t.hex().notNull(), // AnchorRegistry that emitted it
-    kind: t.integer().notNull(), // uint8 — 0 = address, 1 = DID, ...
-    registrant: t.hex().notNull(),
-    at: t.bigint().notNull(), // block.timestamp of registration
-    txHash: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-  }),
-  (t) => ({
-    addressIdx: index().on(t.address),
-    kindIdx: index().on(t.kind),
-    registrantIdx: index().on(t.registrant),
-    atIdx: index().on(t.at),
-  })
-)
-
 // MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each snapshot trigger.
 // `anchorAcc`/`anchorCount` are what the guest consumes for that epoch (zeros for a lane-1-only
 // instance with no AnchorRegistry).
@@ -1668,56 +1559,6 @@ export const merkleGovModuleVote = onchainTable(
     voteTypeIdx: index().on(t.voteType),
     blockNumberIdx: index().on(t.blockNumber),
     timestampIdx: index().on(t.timestamp),
-  })
-)
-
-/** Current one-delegate-per-principal assignment. Zero address means explicitly revoked. */
-export const merkleGovVoteDelegate = onchainTable(
-  'merkle_gov_vote_delegate',
-  (t) => ({
-    module: t.hex().notNull(),
-    principal: t.hex().notNull(),
-    delegate: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    pk: primaryKey({ columns: [t.module, t.principal] }),
-    moduleIdx: index().on(t.module),
-    principalIdx: index().on(t.principal),
-    delegateIdx: index().on(t.delegate),
-  })
-)
-
-/** Append-only delegation history used as the assignment/revocation receipt timeline. */
-export const merkleGovVoteDelegationEvent = onchainTable(
-  'merkle_gov_vote_delegation_event',
-  (t) => ({
-    id: t.text().primaryKey(),
-    module: t.hex().notNull(),
-    principal: t.hex().notNull(),
-    previousDelegate: t.hex().notNull(),
-    delegate: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-    transactionIndex: t.integer().notNull(),
-    logIndex: t.integer().notNull(),
-    timestamp: t.bigint().notNull(),
-    txHash: t.hex().notNull(),
-  }),
-  (t) => ({
-    moduleIdx: index().on(t.module),
-    principalIdx: index().on(t.principal),
-    delegateIdx: index().on(t.delegate),
-    orderIdx: index().on(
-      t.module,
-      t.principal,
-      t.blockNumber,
-      t.transactionIndex,
-      t.logIndex
-    ),
   })
 )
 
