@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {OzMerkle} from "../merkle/OzMerkle.sol";
+
 /// @title ParamsCodec
 /// @notice On-chain encoder for the governance-pinned PageRank `paramsHash`, byte-identical to
 ///         `pagerank-core::encode::params_hash` (Rust) and `packages/frontend/lib/pagerank` (TS). The three
@@ -85,36 +87,6 @@ library ParamsCodec {
         for (uint256 i = 0; i < seeds.length; i++) {
             leaves[i] = keccak256(abi.encode(seeds[i]));
         }
-        return _ozRoot(leaves);
-    }
-
-    /// @dev Minimal OpenZeppelin StandardMerkleTree root: sort leaves, then hash each parent as the
-    ///      commutative `keccak256(abi.encode(min, max))`. Identical to the guest's tree builder.
-    function _ozRoot(bytes32[] memory leaves) private pure returns (bytes32) {
-        uint256 n = leaves.length;
-        if (n == 0) return bytes32(0);
-        // insertion sort (small n)
-        for (uint256 i = 1; i < n; i++) {
-            bytes32 key = leaves[i];
-            uint256 j = i;
-            while (j > 0 && leaves[j - 1] > key) {
-                leaves[j] = leaves[j - 1];
-                j--;
-            }
-            leaves[j] = key;
-        }
-        if (n == 1) return leaves[0];
-        uint256 size = 2 * n - 1;
-        bytes32[] memory tree = new bytes32[](size);
-        for (uint256 i = 0; i < n; i++) {
-            tree[size - 1 - i] = leaves[i];
-        }
-        for (uint256 i = n - 1; i > 0; i--) {
-            uint256 idx = i - 1;
-            bytes32 a = tree[2 * idx + 1];
-            bytes32 b = tree[2 * idx + 2];
-            tree[idx] = a <= b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
-        }
-        return tree[0];
+        return OzMerkle.root(leaves);
     }
 }

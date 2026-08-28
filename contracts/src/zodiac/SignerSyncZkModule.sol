@@ -6,6 +6,7 @@ import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {OzMerkle} from "../merkle/OzMerkle.sol";
 
 interface ISignerSyncCheckpointSource {
     function checkpointParamsHash(uint256 checkpointId) external view returns (bytes32);
@@ -380,7 +381,7 @@ contract SignerSyncZkModule is Module {
             prev = sgn;
             leaves[i] = keccak256(abi.encode(sgn));
         }
-        return _ozRoot(leaves);
+        return OzMerkle.root(leaves);
     }
 
     function _ownerSetRoot(address[] memory owners) internal pure returns (bytes32) {
@@ -388,7 +389,7 @@ contract SignerSyncZkModule is Module {
         for (uint256 i = 0; i < owners.length; i++) {
             leaves[i] = keccak256(abi.encode(owners[i]));
         }
-        return _ozRoot(leaves);
+        return OzMerkle.root(leaves);
     }
 
     function _setSelectionParams(
@@ -407,36 +408,6 @@ contract SignerSyncZkModule is Module {
             keccak256(abi.encode(topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses));
         maxInactiveBlocks = maxInactiveBlocks_;
         emit SelectionParamsHashUpdated(selectionParamsHash);
-    }
-
-    /// @dev Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).
-    ///      Byte-identical to `pagerank-core::merkle::seed_set_root` and `GoldenVectors._ozRoot`.
-    function _ozRoot(bytes32[] memory leaves) internal pure returns (bytes32) {
-        uint256 n = leaves.length;
-        if (n == 0) return bytes32(0);
-        // insertion sort (small n)
-        for (uint256 i = 1; i < n; i++) {
-            bytes32 key = leaves[i];
-            uint256 j = i;
-            while (j > 0 && leaves[j - 1] > key) {
-                leaves[j] = leaves[j - 1];
-                j--;
-            }
-            leaves[j] = key;
-        }
-        if (n == 1) return leaves[0];
-        uint256 size = 2 * n - 1;
-        bytes32[] memory tree = new bytes32[](size);
-        for (uint256 i = 0; i < n; i++) {
-            tree[size - 1 - i] = leaves[i];
-        }
-        for (uint256 i = n - 1; i > 0; i--) {
-            uint256 idx = i - 1;
-            bytes32 a = tree[2 * idx + 1];
-            bytes32 b = tree[2 * idx + 2];
-            tree[idx] = a <= b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
-        }
-        return tree[0];
     }
 
     /// @dev The Safe's current owners, in linked-list order.
