@@ -44,19 +44,6 @@ tasks:
           1 \
           --rpc-url {{.RPC_URL}} --broadcast
 
-  query-voting-power:
-    desc: 'Check voting power for recipient'
-    vars:
-      RPC_URL:
-        sh: task get-rpc
-    cmds:
-      - |
-        forge script contracts/script/Governance.s.sol:Governance \
-          --sig "queryVotingPower(string,string)" \
-          "{{.VOTING_POWER_ADDR}}" \
-          "{{.WALLET_ADDRESS}}" \
-          --rpc-url {{.RPC_URL}}
-
   update-rewards:
     desc: 'Trigger merkle tree / rewards distribution update'
     vars:

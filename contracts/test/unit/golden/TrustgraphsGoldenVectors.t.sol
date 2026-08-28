@@ -172,7 +172,7 @@ contract TrustgraphsGoldenVectorsTest is Test {
         assertEq(keccak256(abi.encodePacked(separators)), json.readBytes32(".params.domainSetHash"));
     }
 
-    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork and by TrustgraphsFactory) must
+    /// paramsHash: `ParamsCodec.hash` (used by the deploy scripts and by TrustgraphsFactory) must
     /// reproduce the golden vector, locking the on-chain 17-field encoding to
     /// pagerank-core::encode::params_hash.
     function test_ParamsHashEncoding() public view {

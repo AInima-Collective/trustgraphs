@@ -312,7 +312,7 @@ contract PlamenGovAndBind is Test {
         SchemaRegistry registry = new SchemaRegistry();
         EAS eas = new EAS(ISchemaRegistry(address(registry)));
 
-        // Operator deploys the resolver (tx 1 of the DeployNetwork / DeployEasResolver sequence).
+        // Operator deploys the resolver (tx 1 of the DeployEasResolver sequence).
         EASIndexerResolver resolver = new EASIndexerResolver(IEAS(address(eas)));
 
         // Operator registers the real schema (tx 2).

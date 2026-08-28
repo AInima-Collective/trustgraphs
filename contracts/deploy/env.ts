@@ -770,8 +770,8 @@ export class DevEnv extends EnvBase {
           sig: 'run(string,string,string,string,uint256,uint256,bool,uint256,uint96)',
           args: () => [
             readJsonKey('.docker/factory_deploy.json', 'factory'),
-            // The governance params. Unlike the old DeployNetwork path, the factory derives
-            // `schema_uid`, `accumulator` and `chain_id` itself — the file supplies only knobs.
+            // The governance params. The factory derives `schema_uid`, `accumulator` and
+            // `chain_id` itself — the file supplies only knobs.
             process.env.PARAMS_JSON || 'params.json',
             networksConfigTemplateFile,
             'dev',
@@ -788,8 +788,7 @@ export class DevEnv extends EnvBase {
         // contributions SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = a nonzero dev
         // placeholder, valid only against the mock gateway), the controller deployer, the factory
         // (reusing the base factory's snapshot/distributor deployer singletons), and the
-        // append-only registrar grant. Replaces the per-instance DeployContributionsInstance
-        // script in this chain.
+        // append-only registrar grant.
         {
           name: 'Contributions Factory',
           script:

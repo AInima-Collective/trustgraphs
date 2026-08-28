@@ -16,7 +16,6 @@ import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 
 import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
-import {PayableEASIndexerResolver} from "src/eas/resolvers/PayableEASIndexerResolver.sol";
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {
@@ -285,49 +284,6 @@ contract DepthExternal_Poc is Test {
         _attest(s, address(0xAA), exp);
         assertEq(r.acc(), bytes32(0), "expiring edge reached the accumulator");
         assertEq(r.leafCount(), 0);
-    }
-
-    /// Batch semantics of the payable resolver under EAS's real value-splitting.
-    function test_I_payableResolver_batchValueSplitting() public {
-        _bootEas();
-        PayableEASIndexerResolver p = new PayableEASIndexerResolver(IEAS(address(eas)), 1 ether, address(this));
-        bytes32 s = registry.register("uint256 a", p, true);
-
-        AttestationRequestData[] memory data = new AttestationRequestData[](2);
-        data[0] = AttestationRequestData({
-            recipient: address(0xAA),
-            expirationTime: NO_EXPIRATION_TIME,
-            revocable: true,
-            refUID: EMPTY_UID,
-            data: hex"01",
-            value: 1 ether
-        });
-        data[1] = AttestationRequestData({
-            recipient: address(0xBB),
-            expirationTime: NO_EXPIRATION_TIME,
-            revocable: true,
-            refUID: EMPTY_UID,
-            data: hex"02",
-            value: 1 ether
-        });
-        MultiAttestationRequest[] memory reqs = new MultiAttestationRequest[](1);
-        reqs[0] = MultiAttestationRequest({schema: s, data: data});
-
-        vm.deal(address(this), 10 ether);
-        // Paying for BOTH: succeeds, resolver keeps 2 ether.
-        eas.multiAttest{value: 2 ether}(reqs);
-        assertEq(address(p).balance, 2 ether, "resolver did not collect both fees");
-
-        // Underpaying the batch: EAS's InsufficientValue stops it. (No free ride.)
-        vm.expectRevert();
-        eas.multiAttest{value: 1 ether}(reqs);
-
-        // But value 0 on an attestation is only checked against _targetValue, so a
-        // targetValue of 0 makes the resolver free while still being "payable".
-        PayableEASIndexerResolver free = new PayableEASIndexerResolver(IEAS(address(eas)), 0, address(this));
-        bytes32 sf = registry.register("uint256 a", free, true);
-        _attest(sf, address(0xAA), NO_EXPIRATION_TIME);
-        console.log("payable resolver batch accounting is exact per-attestation");
     }
 
     /// Anything but EAS reaching onAttest/onRevoke.

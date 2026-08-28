@@ -32,11 +32,11 @@ contract AcceptAllVerifier is IZkVerifier {
 ///         resolver (issue #10), so an exporter e2e could freeze inputs with one `cast send` and
 ///         never deploy a snapshot at all. Now the accumulator is bound to exactly one snapshot and
 ///         only that snapshot's `trigger()` may mint — which is also what pins the checkpoint's
-///         `paramsHash`, without which no proof can be submitted. So the e2e deploys the same
-///         resolver → schema → paramsHash → snapshot → bind chain that `DeployNetwork` does.
+///         `paramsHash`, without which no proof can be submitted. So the e2e deploys the full
+///         resolver → schema → paramsHash → snapshot → bind chain.
 contract DeployEasResolver is Script {
-    /// The e2e's governance params (`schema_uid` is patched in by the caller; the v2 domain
-    /// separators come from this deploy, exactly as in `DeployNetwork`).
+    /// The e2e's governance params (`schema_uid` is patched in by the caller; the domain
+    /// separators come from this deploy).
     string constant PARAMS_TEMPLATE = "tests/e2e/params.template.json";
 
     function run() external {

@@ -20,7 +20,7 @@ import {Common} from "script/Common.s.sol";
 /// in the adapter (see `SP1JournalVerifier` / DECISIONS D8).
 ///
 /// The deployed adapter address is written to `.docker/zk_verifier_deploy.json` so the TypeScript
-/// deploy orchestration can thread it into `DeployNetwork` as `MerkleSnapshot.zkVerifier`.
+/// deploy orchestration can thread it into the network deploy as `MerkleSnapshot.zkVerifier`.
 contract DeployZkVerifier is Common {
     using stdJson for string;
 
