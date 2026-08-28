@@ -11,6 +11,7 @@ import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
+import { CreateBatchAttestationModal } from '@/components/CreateBatchAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { HybridVouchAudit } from '@/components/HybridVouchAudit'
@@ -204,6 +205,7 @@ export const NetworkPage = () => {
 
           <div className="flex shrink-0 flex-row flex-wrap items-center gap-3 lg:pt-1">
             <ScoreUpdateChip snapshot={network.contracts.merkleSnapshot} />
+            <CreateBatchAttestationModal className="h-11 px-5" />
             <CreateAttestationModal
               title="Make attestation"
               className="h-11 px-5"
