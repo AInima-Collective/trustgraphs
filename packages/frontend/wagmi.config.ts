@@ -11,27 +11,15 @@ const ABI_NOT_GENERATED = new Set([
   'SchemaRegistry',
 ])
 
-export default defineConfig([
-  // save contract ABIs to a file included in git
-  {
-    out: 'lib/contract-abis.ts',
-    contracts: Object.keys(CONTRACT_CONFIG)
-      .filter((name) => !ABI_NOT_GENERATED.has(name))
-      .sort((a, b) => a.localeCompare(b))
-      .map((name) => ({
-        abi: require(`./abis/${name}.json`).abi,
-        name,
-      })),
-  },
-  // save contract addresses to a separate file ignored by git (since these change on each development deployment)
-  {
-    out: 'lib/contracts.ts',
-    contracts: Object.entries(CONTRACT_CONFIG)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, address]) => ({
-        abi: require(`./abis/${name}.json`).abi,
-        name,
-        ...(address ? { address: address as `0x${string}` } : {}),
-      })),
-  },
-])
+// Contract ABIs, committed to git. Addresses are not generated: call sites read
+// them from CONTRACT_CONFIG (config.json) at runtime.
+export default defineConfig({
+  out: 'lib/contract-abis.ts',
+  contracts: Object.keys(CONTRACT_CONFIG)
+    .filter((name) => !ABI_NOT_GENERATED.has(name))
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({
+      abi: require(`./abis/${name}.json`).abi,
+      name,
+    })),
+})

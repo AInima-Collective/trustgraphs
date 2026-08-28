@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { readContract } from '@wagmi/core'
 
 import { easAbi } from '@/lib/contract-abis'
-import { easAddress } from '@/lib/contracts'
+import { easAddress } from '@/lib/config'
 import { SchemaManager } from '@/lib/schemas'
 import { makeWagmiConfig } from '@/lib/wagmi'
 

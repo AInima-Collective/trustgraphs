@@ -46,9 +46,8 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { foundry } from 'viem/chains'
 
-import { SEED_NETWORKS } from '../lib/config'
+import { SEED_NETWORKS, easAddress } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
-import { easAddress } from '../lib/contracts'
 import {
   fetchContributionsPayout,
   fetchContributionsRound,
