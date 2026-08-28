@@ -499,16 +499,6 @@ contract MerkleFundDistributorTest is Test {
         assertEq(distributor.getAllowlistLength(), 2);
     }
 
-    function test_GetAllowlistAt_ReturnsCorrectAddress() public {
-        vm.startPrank(owner);
-        distributor.updateDistributorAllowance(alice, true);
-        distributor.updateDistributorAllowance(bob, true);
-        vm.stopPrank();
-
-        assertEq(distributor.getAllowlistAt(0), alice);
-        assertEq(distributor.getAllowlistAt(1), bob);
-    }
-
     function test_GetAllowlist_ReturnsAllAddresses() public {
         vm.startPrank(owner);
         distributor.updateDistributorAllowance(alice, true);
@@ -520,33 +510,6 @@ contract MerkleFundDistributorTest is Test {
         assertEq(allowlist[0], alice);
         assertEq(allowlist[1], bob);
     }
-
-    function test_GetAllowlistPaginated_ReturnsPaginatedResults() public {
-        vm.startPrank(owner);
-        distributor.updateDistributorAllowance(alice, true);
-        distributor.updateDistributorAllowance(bob, true);
-        distributor.updateDistributorAllowance(charlie, true);
-        vm.stopPrank();
-
-        address[] memory firstTwo = distributor.getAllowlistPaginated(0, 2);
-        assertEq(firstTwo.length, 2);
-        assertEq(firstTwo[0], alice);
-        assertEq(firstTwo[1], bob);
-
-        address[] memory lastOne = distributor.getAllowlistPaginated(2, 2);
-        assertEq(lastOne.length, 1);
-        assertEq(lastOne[0], charlie);
-    }
-
-    function test_GetAllowlistPaginated_ReturnsEmptyForOffsetBeyondLength() public {
-        vm.prank(owner);
-        distributor.updateDistributorAllowance(alice, true);
-
-        address[] memory result = distributor.getAllowlistPaginated(10, 5);
-        assertEq(result.length, 0);
-    }
-
-    /* ========== DISTRIBUTION VIEW TESTS ========== */
 
     function test_GetDistributionCount_ReturnsZeroInitially() public view {
         assertEq(distributor.getDistributionCount(), 0);
@@ -562,31 +525,6 @@ contract MerkleFundDistributorTest is Test {
         assertEq(dist.amountFunded, 100 ether);
         assertEq(dist.root, TEST_ROOT);
     }
-
-    function test_GetDistributions_ReturnsPaginatedResults() public {
-        // Create 3 distributions
-        _createERC20Distribution(alice, 100 ether);
-        _createERC20Distribution(alice, 200 ether);
-        _createERC20Distribution(alice, 300 ether);
-
-        IMerkleFundDistributor.DistributionState[] memory firstTwo = distributor.getDistributions(0, 2);
-        assertEq(firstTwo.length, 2);
-        assertEq(firstTwo[0].amountFunded, 100 ether);
-        assertEq(firstTwo[1].amountFunded, 200 ether);
-
-        IMerkleFundDistributor.DistributionState[] memory lastOne = distributor.getDistributions(2, 5);
-        assertEq(lastOne.length, 1);
-        assertEq(lastOne[0].amountFunded, 300 ether);
-    }
-
-    function test_GetDistributions_ReturnsEmptyForOffsetBeyondLength() public {
-        _createERC20Distribution(alice, 100 ether);
-
-        IMerkleFundDistributor.DistributionState[] memory result = distributor.getDistributions(10, 5);
-        assertEq(result.length, 0);
-    }
-
-    /* ========== DISTRIBUTE TESTS ========== */
 
     function test_Distribute_ERC20_CreatesDistribution() public {
         uint256 amount = 100 ether;

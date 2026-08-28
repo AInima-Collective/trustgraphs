@@ -261,29 +261,6 @@ contract MerkleSnapshotTest is Test {
         assertEq(ms.lastAppliedCheckpoint(), 0, "revert rolls back the newer checkpoint marker");
     }
 
-    function test_StatePaginationIsEmptyAndOverflowSafeAtEveryBoundary() public {
-        _mint(bytes32(uint256(1)), 1, 10);
-        _mint(bytes32(uint256(2)), 2, 20);
-        _submit(0);
-        _submit(1);
-
-        assertEq(ms.getStateBlocks(2, 1).length, 0, "exact end");
-        assertEq(ms.getStateBlocks(3, 1).length, 0, "past end");
-        assertEq(ms.getStateBlocks(type(uint256).max, type(uint256).max).length, 0, "max offset");
-        assertEq(ms.getStateBlocks(0, 0).length, 0, "zero limit");
-        uint256[] memory tailBlocks = ms.getStateBlocks(1, type(uint256).max);
-        assertEq(tailBlocks.length, 1, "max limit clamps without addition overflow");
-        assertEq(tailBlocks[0], 20);
-
-        assertEq(ms.getStates(2, 1).length, 0, "states exact end");
-        assertEq(ms.getStates(3, 1).length, 0, "states past end");
-        assertEq(ms.getStates(type(uint256).max, type(uint256).max).length, 0, "states max offset");
-        assertEq(ms.getStates(0, 0).length, 0, "states zero limit");
-        IMerkleSnapshot.MerkleState[] memory tailStates = ms.getStates(1, type(uint256).max);
-        assertEq(tailStates.length, 1);
-        assertEq(tailStates[0].blockNumber, 20);
-    }
-
     function test_EmptyCheckpointProvable() public {
         uint256 id = _mint(bytes32(0), 0, 7);
         bytes32 digest = keccak256(

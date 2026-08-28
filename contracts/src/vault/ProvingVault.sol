@@ -330,7 +330,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             return (0, 0);
         }
 
-        if (!t.sizeKnown || bandOf(t.program, t.leafCount, t.anchorCount) == 0) {
+        uint8 band = bandOf(t.program, t.leafCount, t.anchorCount);
+        if (!t.sizeKnown || band == 0) {
             _skip(instanceId, checkpointId, IneligibleReason.UnknownProgram, minPayoutUsd);
             return (0, 0);
         }
@@ -351,15 +352,13 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         }
 
         // --- the proving fee ----------------------------------------------------------------
-        if (t.sizeKnown) {
-            feeUsd = feePerRootUsd[t.program][bandOf(t.program, t.leafCount, t.anchorCount)];
-            if (feeUsd > cap) feeUsd = cap;
-        }
+        feeUsd = feePerRootUsd[t.program][band];
+        if (feeUsd > cap) feeUsd = cap;
 
         // --- the gas reimbursement ------------------------------------------------------------
         uint256 units = _refundSafeGasUnits(_min(gasUsed, maxGasUnitsPerClaim));
         if (units != 0) {
-            gasUsd = (units * block.basefee * ethUsdPrice) / 1e18;
+            gasUsd = _gasUsd(units, ethUsdPrice);
             uint256 room = cap > feeUsd ? cap - feeUsd : 0;
             if (gasUsd > room) gasUsd = room;
         }
@@ -372,8 +371,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
         uint256 ethSpent;
         uint256 usdcSpent;
-        (feeUsd, ethSpent, usdcSpent) = _pay(a, recipient, feeUsd, ethUsdPrice, feedOk);
-        (uint256 gasPaid, uint256 e2, uint256 u2) = _pay(a, msg.sender, gasUsd, ethUsdPrice, feedOk);
+        (feeUsd, ethSpent, usdcSpent) = _pay(a, recipient, feeUsd, ethUsdPrice);
+        (uint256 gasPaid, uint256 e2, uint256 u2) = _pay(a, msg.sender, gasUsd, ethUsdPrice);
         gasUsd = gasPaid;
         ethSpent += e2;
         usdcSpent += u2;
@@ -397,14 +396,20 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         emit ClaimSkipped(instanceId, checkpointId, uint8(reason));
     }
 
+    /// The one gas-USD formula, shared by `_settle` and `quote` so the pre-flight quote and the
+    /// settlement can never round apart and trip the operator's own minimum-payout guard.
+    function _gasUsd(uint256 units, uint256 ethUsdPrice) internal view returns (uint256) {
+        return (units * block.basefee * ethUsdPrice) / 1e18;
+    }
+
     /// Credit `usdAmount` to `to`, ETH first then USDC, returning what was actually paid.
-    function _pay(Account storage a, address to, uint256 usdAmount, uint256 ethUsdPrice, bool feedOk)
+    function _pay(Account storage a, address to, uint256 usdAmount, uint256 ethUsdPrice)
         internal
         returns (uint256 paidUsd, uint256 ethSpent, uint256 usdcSpent)
     {
         if (usdAmount == 0 || to == address(0)) return (0, 0, 0);
 
-        if (feedOk && ethUsdPrice != 0 && a.ethBalance != 0) {
+        if (a.ethBalance != 0) {
             uint256 wantWei = (usdAmount * 1e18) / ethUsdPrice;
             uint256 payWei = wantWei > a.ethBalance ? a.ethBalance : wantWei;
             if (payWei != 0) {
@@ -738,7 +743,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         // is instructed to trust before spending proving time; a reverting quote is
         // indistinguishable from an unreachable node and stops the loop for every instance.
         uint256 units = _refundSafeGasUnits(_min(nominalGasUnits, maxGasUnitsPerClaim));
-        q.gasUsd = ((units * block.basefee) / 1e9) * ethUsdPrice / 1e9;
+        q.gasUsd = _gasUsd(units, ethUsdPrice);
         uint256 room = cap > q.feeUsd ? cap - q.feeUsd : 0;
         if (q.gasUsd > room) q.gasUsd = room;
 

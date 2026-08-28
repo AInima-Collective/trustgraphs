@@ -149,8 +149,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(IMerkleSnapshotHook hook => uint256 hookIndex) public hookIndex;
     /// @notice One past the last live hook. Starts at 1 since 0 is the membership sentinel.
     uint64 public nextHookIndex = 1;
-    /// @notice The number of hooks.
-    uint64 public hookCount;
 
     /// @notice Per-hook gas budget for `onMerkleUpdate`. Ample for a legitimate consumer's state
     ///         writes while bounding a griefing hook; a hook that exceeds it is skipped, not fatal.
@@ -649,9 +647,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         // surfaced via HookFailed) rather than reverting the whole submitProof for every consumer.
         for (uint256 i = 1; i < nextHookIndex; i++) {
             IMerkleSnapshotHook hook = hooks[i];
-            if (address(hook) == address(0)) {
-                continue;
-            }
             try hook.onMerkleUpdate{gas: HOOK_GAS_STIPEND}(states[stateIndex]) {}
             catch {
                 emit HookFailed(i, address(hook));
@@ -691,49 +686,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Verify a merkle proof for a given account with the latest state
     function verifyProof(address account, uint256 value, bytes32[] calldata proof) public view returns (bool) {
         return _verifyProof(getLatestState().root, account, value, proof);
-    }
-
-    /// @notice Verify a merkle proof for the sender with the latest state
-    function verifyMyProof(uint256 value, bytes32[] calldata proof) public view returns (bool) {
-        return verifyProof(msg.sender, value, proof);
-    }
-
-    /// @notice Verify a merkle proof against the state at a specific block number
-    function verifyProofAtBlock(address account, uint256 value, bytes32[] calldata proof, uint256 blockNumber)
-        public
-        view
-        returns (bool)
-    {
-        MerkleState memory state = getStateAtBlock(blockNumber);
-        return _verifyProof(state.root, account, value, proof);
-    }
-
-    /// @notice Verify a merkle proof for the sender against the state at a specific block number
-    function verifyMyProofAtBlock(uint256 value, bytes32[] calldata proof, uint256 blockNumber)
-        public
-        view
-        returns (bool)
-    {
-        return verifyProofAtBlock(msg.sender, value, proof, blockNumber);
-    }
-
-    /// @notice Verify a merkle proof against the state at a specific index
-    function verifyProofAtStateIndex(address account, uint256 value, bytes32[] calldata proof, uint256 stateIndex)
-        public
-        view
-        returns (bool)
-    {
-        MerkleState memory state = getStateAtIndex(stateIndex);
-        return _verifyProof(state.root, account, value, proof);
-    }
-
-    /// @notice Verify a merkle proof for the sender against the state at a specific index
-    function verifyMyProofAtStateIndex(uint256 value, bytes32[] calldata proof, uint256 stateIndex)
-        public
-        view
-        returns (bool)
-    {
-        return verifyProofAtStateIndex(msg.sender, value, proof, stateIndex);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -825,36 +777,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         return stateBlocks.length;
     }
 
-    /// @notice Get paginated block numbers that have states
-    function getStateBlocks(uint256 offset, uint256 limit) public view returns (uint256[] memory result_) {
-        uint256 length = stateBlocks.length;
-        if (offset >= length || limit == 0) return new uint256[](0);
-        uint256 count = length - offset;
-        if (limit < count) count = limit;
-        uint256 end = offset + count;
-
-        uint256[] memory result = new uint256[](count);
-        for (uint256 i = offset; i < end; i++) {
-            result[i - offset] = stateBlocks[i];
-        }
-        return result;
-    }
-
-    /// @notice Get paginated states
-    function getStates(uint256 offset, uint256 limit) public view returns (MerkleState[] memory result_) {
-        uint256 length = stateBlocks.length;
-        if (offset >= length || limit == 0) return new MerkleState[](0);
-        uint256 count = length - offset;
-        if (limit < count) count = limit;
-        uint256 end = offset + count;
-
-        MerkleState[] memory result = new MerkleState[](count);
-        for (uint256 i = offset; i < end; i++) {
-            result[i - offset] = states[i];
-        }
-        return result;
-    }
-
     /*///////////////////////////////////////////////////////////////
                                 HOOKS
     //////////////////////////////////////////////////////////////*/
@@ -869,7 +791,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         hooks[nextHookIndex] = hook;
         hookIndex[hook] = nextHookIndex;
         nextHookIndex++;
-        hookCount++;
     }
 
     /// @notice Remove a hook
@@ -892,12 +813,16 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         delete hooks[lastIndex];
         delete hookIndex[hook];
         nextHookIndex = uint64(lastIndex);
-        hookCount--;
+    }
+
+    /// @notice The number of live hooks. The set is dense, so the count is derivable.
+    function hookCount() external view returns (uint256) {
+        return nextHookIndex - 1;
     }
 
     /// @notice List all hooks
     function getHooks() external view returns (IMerkleSnapshotHook[] memory) {
-        IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](hookCount);
+        IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](nextHookIndex - 1);
         for (uint256 i = 1; i < nextHookIndex; i++) {
             result[i - 1] = hooks[i];
         }

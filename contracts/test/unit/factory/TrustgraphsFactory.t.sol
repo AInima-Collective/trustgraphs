@@ -543,9 +543,9 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         uint256 totalPool
     ) public {
         ParamsCodec.Params memory p = _baseParams();
-        p.dampingFp = bound(dampingFp, 1, factory.PRECISION_SCALE() - 1);
-        p.toleranceFp = bound(toleranceFp, factory.MIN_TOLERANCE_FP(), factory.MAX_TOLERANCE_FP());
-        p.maxIterations = uint32(bound(uint256(maxIterations), 1, factory.MAX_ITERATIONS()));
+        p.dampingFp = bound(dampingFp, 1, TrustgraphsParamsValidator.PRECISION_SCALE - 1);
+        p.toleranceFp = bound(toleranceFp, TrustgraphsParamsValidator.MIN_TOLERANCE_FP, TrustgraphsParamsValidator.MAX_TOLERANCE_FP);
+        p.maxIterations = uint32(bound(uint256(maxIterations), 1, TrustgraphsParamsValidator.MAX_ITERATIONS));
         p.totalPool = bound(totalPool, 1, type(uint128).max);
         Created memory c = _create(_args("fuzz-params", p));
 
@@ -909,8 +909,8 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_FrozenConstants() public view {
         assertEq(factory.VOUCH_SCHEMA(), "string comment,uint256 confidence", "vouch schema");
         assertEq(factory.PROGRAM(), keccak256("trust-graph"), "program label");
-        assertEq(factory.PRECISION_SCALE(), 1e18, "S is the guest's constant");
-        assertEq(uint256(factory.WEIGHT_FIELD_INDEX()), 1, "confidence is ABI head slot 1");
+        assertEq(TrustgraphsParamsValidator.PRECISION_SCALE, 1e18, "S is the guest's constant");
+        assertEq(uint256(TrustgraphsParamsValidator.WEIGHT_FIELD_INDEX), 1, "confidence is ABI head slot 1");
         assertEq(factory.EPOCH_FLOOR(), EPOCH_FLOOR, "floor is immutable");
     }
 

@@ -141,22 +141,8 @@ contract TrustgraphsFactory {
                        CREATION-TIME PARAM BOUNDS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The fixed-point scale S every instance must use (the guest's own constant).
-    uint256 public constant PRECISION_SCALE = 1e18;
-    /// @notice `weightFieldIndex` is fixed by `VOUCH_SCHEMA`: `confidence` sits in ABI head slot 1.
-    uint32 public constant WEIGHT_FIELD_INDEX = 1;
-    /// @notice Iteration ceiling — past this the guest's cycle count, not the maths, is the limit.
-    uint32 public constant MAX_ITERATIONS = 500;
-    /// @notice Convergence tolerance must be meaningfully below S; 1e15 is 0.1% of a unit score.
-    uint256 public constant MAX_TOLERANCE_FP = 1e15;
-    /// @notice Empirical floor: below this, real fixed-point limit cycles can miss convergence.
-    uint256 public constant MIN_TOLERANCE_FP = 1e6;
-    /// @notice Ceiling on a single vouch's weight. The canonical schema's `confidence` is a small
-    ///         integer (the live network caps at 100), so a million units is four orders of
-    ///         headroom while still bounding the per-attester weight sums the guest accumulates.
-    uint256 public constant MAX_WEIGHT_FP = 1e6 * PRECISION_SCALE;
-    /// @notice Seeds are hashed into a merkle root at creation; keep the loop bounded.
-    uint256 public constant MAX_TRUSTED_SEEDS = 64;
+    /// @dev The rank-parameter bounds and their error selectors live in
+    ///      `TrustgraphsParamsValidator`; `_validateParams` delegates there.
     /// @notice `name` bound — it is part of `instanceId` and of every directory row.
     uint256 public constant MAX_NAME_BYTES = 64;
 
@@ -213,12 +199,6 @@ contract TrustgraphsFactory {
     /// @notice `msg.value` was sent to a factory deployed without a vault.
     error NoVaultConfigured();
     error NameTooLong(uint256 length);
-    /// @notice A derived field (`schemaUid`, `accumulator`, `chainId`) was not submitted as zero.
-    error DerivedFieldNotZero();
-    error InvalidDamping(uint256 dampingFp);
-    error InvalidTolerance(uint256 toleranceFp);
-    error InvalidIterations(uint32 maxIterations);
-    error InvalidWeightBounds(uint256 minWeightFp, uint256 maxWeightFp);
     /// @notice EAS returned a schema UID other than the one its documented derivation implies.
     error SchemaUidMismatch(bytes32 registered, bytes32 expected);
 
@@ -226,17 +206,6 @@ contract TrustgraphsFactory {
     ///         registered — i.e. someone front-ran the registration. Harmless (the record is
     ///         necessarily the one we wanted), but worth being able to see from the outside.
     event SchemaAdopted(bytes32 indexed instanceId, bytes32 schemaUid);
-    error InvalidTrustShare(uint256 trustShareFp);
-    error InvalidTrustDecay(uint256 trustDecayFp);
-    error InvalidPrecisionScale(uint256 precisionScale);
-    error InvalidTotalPool();
-    error InvalidWeightFieldIndex(uint32 weightFieldIndex);
-    error NoTrustedSeeds();
-    error TooManyTrustedSeeds(uint256 count);
-    /// @notice A seed was the zero address, or the same address appeared twice.
-    error InvalidSeed(address seed);
-    /// @notice Lane 2 (off-chain envelopes) is not part of the v1 factory bundle.
-    error Lane2NotSupported();
     /// @notice `attachDistributor` was asked about an id this factory's program never registered.
     error UnknownInstance(bytes32 instanceId);
     /// @notice The proposed fund owner does not hold the instance's constitutional role.

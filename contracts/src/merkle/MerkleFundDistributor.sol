@@ -146,31 +146,6 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         return distributions[distributionIndex];
     }
 
-    /// @notice Gets paginated distributions.
-    /// @param offset The offset to start from.
-    /// @param limit The number of distributions to return.
-    /// @return result The distributions.
-    function getDistributions(uint256 offset, uint256 limit) external view returns (DistributionState[] memory) {
-        if (offset >= distributions.length) {
-            return new DistributionState[](0);
-        }
-
-        uint256 end = offset + limit;
-        if (end > distributions.length) {
-            end = distributions.length;
-        }
-
-        DistributionState[] memory result = new DistributionState[](end - offset);
-        for (uint256 i = offset; i < end;) {
-            result[i - offset] = distributions[i];
-            unchecked {
-                ++i;
-            }
-        }
-
-        return result;
-    }
-
     /// @notice Returns the total number of distributions.
     /// @return total The total number of distributions.
     function getDistributionCount() external view returns (uint256 total) {
@@ -190,43 +165,10 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         return _allowlist.length();
     }
 
-    /// @notice Returns the address at a given index in the allowlist.
-    /// @param index The index to query.
-    /// @return The address at the index.
-    function getAllowlistAt(uint256 index) external view returns (address) {
-        return _allowlist.at(index);
-    }
-
     /// @notice Returns all addresses in the allowlist.
     /// @return All allowlisted addresses.
     function getAllowlist() external view returns (address[] memory) {
         return _allowlist.values();
-    }
-
-    /// @notice Returns paginated addresses in the allowlist.
-    /// @param offset The offset to start from.
-    /// @param limit The number of addresses to return.
-    /// @return result The allowlisted addresses.
-    function getAllowlistPaginated(uint256 offset, uint256 limit) external view returns (address[] memory) {
-        uint256 length = _allowlist.length();
-        if (offset >= length) {
-            return new address[](0);
-        }
-
-        uint256 end = offset + limit;
-        if (end > length) {
-            end = length;
-        }
-
-        address[] memory result = new address[](end - offset);
-        for (uint256 i = offset; i < end;) {
-            result[i - offset] = _allowlist.at(i);
-            unchecked {
-                ++i;
-            }
-        }
-
-        return result;
     }
 
     /* EXTERNAL */

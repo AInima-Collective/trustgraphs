@@ -130,11 +130,6 @@ interface IProvingVault {
         CadenceNotElapsed,
         InsufficientBalance,
         UnknownProgram,
-        /// @notice Retained for the UI's vault panel. Deliberately NOT a blocker: a pending
-        ///         withdrawal no longer removes funds from the spendable balance, so a prover
-        ///         proving today is still paid today. Making it a blocker was how an earlier
-        ///         version let a community take roots for free.
-        WithdrawalPending,
         /// @notice This checkpoint on the currently bound snapshot already paid its bounty.
         AlreadyClaimed,
         /// @notice The ETH/USD feed is currently unusable. Transient: retry after it recovers.
@@ -181,7 +176,6 @@ interface IProvingVault {
 
     event PolicyUpdated(bytes32 indexed instanceId, uint64 minPaidIntervalBlocks, uint96 maxPerRootUsd);
     event FeeScheduleUpdated(bytes32 indexed program, uint8 indexed band, uint256 usdPerRoot);
-    event PriceFeedUpdated(address feed, uint64 maxStaleness);
 
     /*///////////////////////////////////////////////////////////////
                                 ERRORS
@@ -210,8 +204,6 @@ interface IProvingVault {
     error PayoutBelowMinimum(uint256 offeredUsd, uint256 requiredUsd);
     /// @notice `claim` called for a checkpoint whose root has not been applied.
     error CheckpointNotApplied2(uint256 checkpointId);
-    /// @notice This exact proven statement has already paid a bounty under another checkpoint id.
-    error StatementAlreadyPaid(bytes32 statement);
 
     /*///////////////////////////////////////////////////////////////
                             FUNDING
