@@ -1,10 +1,10 @@
 [package]
-name = "trustgraph-program-v2"
+name = "trust-graph-program"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "trustgraph-program-v2"
+name = "trust-graph-program"
 path = "src/main.rs"
 
 [dependencies]

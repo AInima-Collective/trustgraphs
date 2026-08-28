@@ -864,7 +864,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
-name = "eas-offchain-v2"
+name = "eas-offchain"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
@@ -1455,7 +1455,7 @@ dependencies = [
  "anyhow",
  "clap",
  "contributions-core",
- "eas-offchain-v2",
+ "eas-offchain",
  "hex",
  "k256",
  "pagerank-core",
@@ -1782,7 +1782,6 @@ name = "pagerank-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
- "envelopes",
  "hex",
  "k256",
  "proptest",
@@ -2914,7 +2913,7 @@ name = "trustgraph-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
- "eas-offchain-v2",
+ "eas-offchain",
  "k256",
  "pagerank-core",
  "serde",
@@ -3414,5 +3413,6 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "serde",
+ "serde_bytes",
  "sha2",
 ]

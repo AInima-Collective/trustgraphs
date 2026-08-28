@@ -1781,7 +1781,6 @@ name = "pagerank-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
- "envelopes",
  "serde",
  "zk-core",
 ]
@@ -2736,7 +2735,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "trustgraph-program"
+name = "trustgraph-guests"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
@@ -3027,6 +3026,7 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "serde",
+ "serde_bytes",
  "sha2",
 ]
 

@@ -1,8 +1,8 @@
 //! Contributions root-producer program: proves stage-1 reputation (the canonical `pagerank-core`
 //! Trust-Aware PageRank over the trust accumulator's vouch edges) + stage-2 rep-weighted budgeted
 //! valuation with consent/collaborator discounts and the evaluator carve-out
-//! (`contributions-core`, research/operations/contributions/interfaces.md), and emits the journal-v2 merkle root
-//! + payout blob. Mirrors `trust_graph.rs`/`hypercerts.rs`; the built-in sample is the 6-persona
+//! (`contributions-core`, research/operations/contributions/interfaces.md), and emits the
+//! journal-v2 merkle root + payout blob. Mirrors `trust_graph.rs`/`hypercerts.rs`; the built-in sample is the 6-persona
 //! worked example (`contributions_core::testutil::fixture()`), identical to
 //! `tests/golden/contributions.json`'s `compute` family, so `execute`/`prove` run with no external
 //! witness.
@@ -30,10 +30,6 @@ use crate::common;
 /// The vkey it derives is the one the deployed `SP1JournalVerifier` must be pinned to; the daemon
 /// checks that at startup rather than discovering it on a failed submit.
 pub fn elf() -> Elf {
-    load_elf()
-}
-
-fn load_elf() -> Elf {
     include_elf!("trustgraph-contributions-program")
 }
 
@@ -226,7 +222,7 @@ const OUT_DIR: &str = "contributions";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
-        Command::Vkey => common::print_vkey(load_elf()),
+        Command::Vkey => common::print_vkey(elf()),
         Command::Paramshash { params: p } => {
             let p = load_params(p.as_ref())?;
             println!("0x{}", hex::encode(params::params_hash(&p)));
@@ -286,7 +282,7 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
     let native_pub = encode::journal_encoded(&native.journal);
 
-    common::execute_and_check(load_elf(), &input, &native_pub)?;
+    common::execute_and_check(elf(), &input, &native_pub)?;
 
     println!("journalDigest: 0x{}", hex::encode(encode::journal_digest(&native.journal)));
     println!("acc:           0x{}", hex::encode(native.journal.acc));
@@ -314,7 +310,7 @@ fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Resul
     // blob next to proof.bin (same bytes execute writes — its sha256 is the journal's ipfsHash).
     let native = compute(&input);
 
-    let (public_values, seal) = common::prove_and_verify(load_elf(), &input, groth16)?;
+    let (public_values, seal) = common::prove_and_verify(elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
     let proof_path = common::write_out(&out, "contributions_proof.bin", &blob)?;

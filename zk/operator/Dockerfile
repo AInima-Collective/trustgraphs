@@ -57,7 +57,7 @@ COPY . .
 RUN set -eu; \
     T=riscv64im-succinct-zkvm-elf/release; \
     for elf in \
-      "zk/trustgraph-program-v2/target/elf-compilation/docker/$T/trustgraph-program-v2" \
+      "zk/trust-graph-program/target/elf-compilation/docker/$T/trust-graph-program" \
       "zk/program/target/elf-compilation/docker/$T/trustgraph-signer-program" \
       "zk/nostr-program/target/elf-compilation/docker/$T/nostr-workspace" \
       ; do \

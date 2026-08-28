@@ -1460,13 +1460,13 @@ fn act(
             })?;
 
             health.enter(Phase::Proving);
-            let proof = handlers::prove(cfg, &built)?;
+            let proof = handlers::prove(cfg, built)?;
             journal.append(Record::Requested { key, request_id: proof.request_id, at: now() })?;
 
             // Persist both the proof and its canonical score bytes before publication. A crash
             // after this point resumes the cheap, idempotent publish rather than buying a proof
             // again. Submission remains unreachable until publication satisfies policy.
-            handlers::save_held(cfg, entry, *checkpoint_id, &built, &proof)?;
+            handlers::save_held(cfg, entry, *checkpoint_id, built, &proof)?;
             logger.event(
                 "proved",
                 json!({
@@ -1882,6 +1882,62 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
+/// The vkey each of this binary's guests produces. Derived once per run: it is a function of the
+/// ELF, which cannot change while the process is alive.
+/// The guests this binary embeds: each program's vkey, and the sha256 of the ELF it came from.
+///
+/// The digest is not decoration. A vkey answers "will the deployed verifier accept what I
+/// produce"; the ELF digest answers "which build is this", which is the question anyone checking
+/// a container against the published release table is actually asking. Both are derived here,
+/// once, at startup — and the image ships the same digests at `/etc/trustgraph/elf-digests.txt`
+/// so the question can also be answered without starting anything.
+fn guest_vkeys() -> Result<BTreeMap<Program, (B256, String)>> {
+    let mut out = BTreeMap::new();
+    for (program, vk) in [
+        (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
+        (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
+        (Program::Weighted, trustgraph_prover::programs::weighted::elf()),
+        (Program::Composition, trustgraph_prover::programs::composition::elf()),
+        (Program::NostrWorkspace, trustgraph_prover::programs::nostr_workspace::elf()),
+        (Program::Signer, trustgraph_prover::programs::signer::elf()),
+    ] {
+        let elf_sha256 = trustgraph_prover::common::elf_sha256(&vk);
+        let s = trustgraph_prover::common::vkey(vk)?;
+        let b = hex::decode(s.trim().trim_start_matches("0x"))?;
+        anyhow::ensure!(b.len() == 32, "vkey for {} was not 32 bytes", program.name());
+        out.insert(program, (B256::from_slice(&b), elf_sha256));
+    }
+    Ok(out)
+}
+
+fn verify_release_guest_identities(
+    expected: &BTreeMap<Program, ReleaseProgramIdentity>,
+    embedded: &BTreeMap<Program, (B256, String)>,
+) -> Result<()> {
+    for (program, expected) in expected {
+        let (vkey, elf_sha256) = embedded.get(program).with_context(|| {
+            format!(
+                "release manifest requires the {} guest, but this operator does not embed it",
+                program.name()
+            )
+        })?;
+        anyhow::ensure!(
+            vkey == &expected.vkey,
+            "embedded {} guest vkey {vkey:#x} does not match release manifest {:#x}",
+            program.name(),
+            expected.vkey
+        );
+        anyhow::ensure!(
+            elf_sha256.trim_start_matches("0x").eq_ignore_ascii_case(&expected.elf_sha256),
+            "embedded {} guest ELF sha256 {} does not match release manifest {}",
+            program.name(),
+            elf_sha256,
+            expected.elf_sha256
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1980,60 +2036,4 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         assert!(!underpriced.eligible);
         assert_eq!(underpriced.reason, u8::MAX);
     }
-}
-
-/// The vkey each of this binary's guests produces. Derived once per run: it is a function of the
-/// ELF, which cannot change while the process is alive.
-/// The guests this binary embeds: each program's vkey, and the sha256 of the ELF it came from.
-///
-/// The digest is not decoration. A vkey answers "will the deployed verifier accept what I
-/// produce"; the ELF digest answers "which build is this", which is the question anyone checking
-/// a container against the published release table is actually asking. Both are derived here,
-/// once, at startup — and the image ships the same digests at `/etc/trustgraph/elf-digests.txt`
-/// so the question can also be answered without starting anything.
-fn guest_vkeys() -> Result<BTreeMap<Program, (B256, String)>> {
-    let mut out = BTreeMap::new();
-    for (program, vk) in [
-        (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
-        (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
-        (Program::Weighted, trustgraph_prover::programs::weighted::elf()),
-        (Program::Composition, trustgraph_prover::programs::composition::elf()),
-        (Program::NostrWorkspace, trustgraph_prover::programs::nostr_workspace::elf()),
-        (Program::Signer, trustgraph_prover::programs::signer::elf()),
-    ] {
-        let elf_sha256 = trustgraph_prover::common::elf_sha256(&vk);
-        let s = trustgraph_prover::common::vkey(vk)?;
-        let b = hex::decode(s.trim().trim_start_matches("0x"))?;
-        anyhow::ensure!(b.len() == 32, "vkey for {} was not 32 bytes", program.name());
-        out.insert(program, (B256::from_slice(&b), elf_sha256));
-    }
-    Ok(out)
-}
-
-fn verify_release_guest_identities(
-    expected: &BTreeMap<Program, ReleaseProgramIdentity>,
-    embedded: &BTreeMap<Program, (B256, String)>,
-) -> Result<()> {
-    for (program, expected) in expected {
-        let (vkey, elf_sha256) = embedded.get(program).with_context(|| {
-            format!(
-                "release manifest requires the {} guest, but this operator does not embed it",
-                program.name()
-            )
-        })?;
-        anyhow::ensure!(
-            vkey == &expected.vkey,
-            "embedded {} guest vkey {vkey:#x} does not match release manifest {:#x}",
-            program.name(),
-            expected.vkey
-        );
-        anyhow::ensure!(
-            elf_sha256.trim_start_matches("0x").eq_ignore_ascii_case(&expected.elf_sha256),
-            "embedded {} guest ELF sha256 {} does not match release manifest {}",
-            program.name(),
-            elf_sha256,
-            expected.elf_sha256
-        );
-    }
-    Ok(())
 }

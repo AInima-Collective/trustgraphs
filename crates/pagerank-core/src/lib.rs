@@ -21,7 +21,6 @@ pub use zk_core::{cid, fixed, merkle};
 pub mod compute;
 pub mod distribute;
 pub mod encode;
-pub mod lane2;
 pub mod pagerank;
 pub mod reconcile;
 pub mod signer;
@@ -35,23 +34,7 @@ mod pagerank_test_support;
 #[cfg(test)]
 mod tests;
 
-/// A single folded edge, in accumulator fold order. The guest re-folds these to reproduce `acc`.
-///
-/// `data` is the raw EAS attestation `data` (the preimage of `dataHash = keccak256(data)`); the
-/// weight (confidence) is decoded from it at `Params::weight_field_index`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RawEdge {
-    /// 0 = attest, 1 = revoke.
-    pub kind: u8,
-    pub attester: Address,
-    pub recipient: Address,
-    pub uid: B256,
-    /// The `block.timestamp` folded on-chain (drives the reconciliation order).
-    pub block_timestamp: u64,
-    /// Raw attestation data (ABI-encoded `string comment, uint256 confidence`).
-    #[serde(with = "serde_bytes_hex")]
-    pub data: Vec<u8>,
-}
+pub use zk_core::edge::RawEdge;
 
 /// Governance-pinned parameters. All `*_fp` fields are scaled by `precision_scale` (1e18).
 /// The exact ABI tuple that hashes to `paramsHash` is frozen in [`encode::params_hash`].
@@ -122,16 +105,6 @@ pub struct AnchorRecord {
     pub block_timestamp: u64,
 }
 
-/// The lane-2 witness: the full anchor log plus whatever per-head envelope data the prover
-/// could supply. Missing/invalid data trips rule Φ per node — never an abort.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Lane2Witness {
-    /// The complete anchor log in fold order (must re-fold to the checkpointed `anchorAcc`).
-    pub anchors: Vec<AnchorRecord>,
-    /// Envelope-0 witnesses, matched to anchors by the owner-derived nodeId.
-    pub envelopes: Vec<envelopes::eas_offchain::Envelope0Witness>,
-}
-
 /// Rule-Φ / deterministic-skip reason codes (the closed list committed via `skippedDigest`).
 pub mod skip_reason {
     /// The node's newest head was unusable; an OLDER in-window head was consumed instead.
@@ -159,52 +132,19 @@ pub struct Binding {
     pub instance_domain: B256,
 }
 
-/// The complete input the guest receives.
+/// The complete input the guest receives. Lane-1 only: the strict two-lane trust-graph
+/// statement lives in `trustgraph-core`, whose `GuestInput` carries the lane-2 witness.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuestInput {
     /// Edges in accumulator fold order (index = `leafCount` position).
     pub edges: Vec<RawEdge>,
     pub params: Params,
-    /// Lane-2 witness; None/absent for a lane-1-only instance (journal commits zero lane).
-    #[serde(default)]
-    pub lane2: Option<Lane2Witness>,
     /// Journal-v3 pass-through commitments (payee + instance domain).
     #[serde(default)]
     pub binding: Binding,
 }
 
-/// The 12 public fields the guest commits (journal v3 — two-lane plus the v3 bindings).
-/// `keccak256(abi.encode(..))` of these is the journal digest the on-chain verifier binds.
-/// Field order is FROZEN — see [`encode::journal_digest`]. An instance with an empty lane
-/// encodes it as the zero accumulator: lane-1-only ⇒ `anchor_acc = 0, anchor_count = 0,
-/// skipped_digest = 0`; lane-2-only ⇒ `acc = 0, leaf_count = 0`. The guest, not the
-/// contract, decides what an empty lane means. (Journal v1 exists solely as the frozen
-/// live deployment; there is no v1 code path. v2 is the 10-field shape v3 appends to.)
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Journal {
-    pub acc: B256,
-    pub leaf_count: u64,
-    /// Lane-2 anchor-log accumulator at the checkpoint (`AnchorRegistry.anchorAcc`).
-    pub anchor_acc: B256,
-    /// Lane-2 anchor count at the checkpoint.
-    pub anchor_count: u64,
-    pub params_hash: B256,
-    pub output_root: B256,
-    pub ipfs_hash: B256,
-    pub cid_digest: B256,
-    pub total_value: U256,
-    /// Chained fold over rule-Φ / deterministic-skip entries (`zk_core::anchor::skipped_digest`);
-    /// `bytes32(0)` when nothing was skipped (or the instance has no lane 2).
-    pub skipped_digest: B256,
-    /// v3: the bounty payee, committed verbatim from [`Binding::recipient`]. Bound because
-    /// `submitProof` folds its own `recipient` argument into the digest, so the fee provably
-    /// follows the journal rather than `msg.sender` — a copied transaction pays the original
-    /// prover (PROOF_SCHEDULER.md §4.3, superseding commit-reveal).
-    pub recipient: Address,
-    /// v3: the instance this proof is for, committed verbatim from [`Binding::instance_domain`].
-    /// Bound because `submitProof` rebuilds it from `address(this)` and `block.chainid`.
-    pub instance_domain: B256,
-}
+pub use zk_core::journal::Journal;
 
 /// Full result of a canonical computation: the journal plus the artifacts the host needs to pin
 /// and serve (the scored set, the canonical blob, and its CID string).
@@ -338,19 +278,4 @@ pub struct SignerComputeResult {
     /// the pre-rotation Safe state.
     pub activity_applied: bool,
     pub rank: RankTelemetry,
-}
-
-/// Minimal `serde` helper so `RawEdge::data` round-trips as a `0x`-hex string in golden vectors.
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        let s = s.strip_prefix("0x").unwrap_or(&s);
-        alloy_primitives::hex::decode(s).map_err(serde::de::Error::custom)
-    }
 }

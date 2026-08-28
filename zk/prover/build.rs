@@ -59,7 +59,7 @@ fn guest_target_dir(guest: &str) -> Option<PathBuf> {
 /// Every isolated guest workspace, and whether its lockfile is frozen.
 const GUESTS: &[(&str, bool)] = &[
     ("../program", false),
-    ("../trustgraph-program-v2", false),
+    ("../trust-graph-program", false),
     ("../weighted-program", false),
     ("../composition-program", false),
     // This one has always been built `--locked`; a guest whose dependency versions can move under

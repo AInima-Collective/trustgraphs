@@ -111,7 +111,6 @@ pub fn prepare(
     anyhow::ensure!(entry.program == Program::Composition, "not a composition catalog entry");
     let params = entry
         .composition_params
-        .clone()
         .ok_or_else(|| anyhow!("{} has no authenticated composition params", entry.name))?;
     params.validate().map_err(|error| anyhow!("invalid composition params: {error}"))?;
     anyhow::ensure!(
@@ -242,13 +241,13 @@ mod tests {
         assert_eq!(classify_work(8, 8_192, 8_192, 1024 * 1024).unwrap().band, 4);
     }
 
-    #[test]
-    fn measured_cycle_bands_are_monotonic_and_below_the_guest_cap() {
-        assert!(BAND_1_CYCLES < BAND_2_CYCLES);
-        assert!(BAND_2_CYCLES < BAND_3_CYCLES);
-        assert!(BAND_3_CYCLES < BAND_4_CYCLES);
-        assert!(BAND_4_CYCLES < 1_000_000_000);
-    }
+    // Compile-time: the measured cycle bands must stay monotonic and below the guest cap.
+    const _: () = assert!(
+        BAND_1_CYCLES < BAND_2_CYCLES
+            && BAND_2_CYCLES < BAND_3_CYCLES
+            && BAND_3_CYCLES < BAND_4_CYCLES
+            && BAND_4_CYCLES < 1_000_000_000
+    );
 
     #[test]
     fn two_source_and_exact_maximum_guest_fixtures_select_authenticated_bands() {

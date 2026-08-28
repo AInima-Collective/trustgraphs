@@ -73,7 +73,7 @@ DIGESTS=$(docker run --rm --entrypoint cat "$IMAGE" /etc/trustgraph/elf-digests.
   || die "the image does not carry /etc/trustgraph/elf-digests.txt"
 COUNT=$(printf '%s\n' "$DIGESTS" | wc -l | tr -d ' ')
 [ "$COUNT" -ge 9 ] || die "only $COUNT guest ELF digests in the image; expected at least 9"
-say "   $COUNT guests, e.g. $(printf '%s\n' "$DIGESTS" | grep 'trustgraph-program-v2$' | awk '{print $1}')"
+say "   $COUNT guests, e.g. $(printf '%s\n' "$DIGESTS" | grep 'trust-graph-program$' | awk '{print $1}')"
 say "   ${GREEN}answerable without starting it ✓${NC}"
 
 # --- 3. one config file, two secrets, one volume ----------------------------------------------

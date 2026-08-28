@@ -74,7 +74,7 @@ tasks:
         fi
         # Derived, not globbed: reproducible builds land one directory deeper than the plain
         # ones, and one guest's target directory belongs to the workspace above it.
-        if ! sh scripts/guest-elf-dirs.sh --files 2>/dev/null | grep -q "/trustgraph-program-v2$"; then
+        if ! sh scripts/guest-elf-dirs.sh --files 2>/dev/null | grep -q "/trust-graph-program$"; then
           echo "⚠️  SP1 guest ELFs not built yet. Run: task zk:build"
         fi
         # Check docker

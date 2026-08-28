@@ -1,5 +1,5 @@
 [package]
-name = "eas-offchain-v2"
+name = "eas-offchain"
 description = "Strict canonical EAS off-chain v2 payload and typed-head verifier for Trustgraphs"
 edition.workspace = true
 version.workspace = true

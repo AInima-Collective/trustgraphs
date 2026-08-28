@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'packages/eas-offchain-client/**'
-      - 'crates/eas-offchain-v2/**'
+      - 'crates/eas-offchain/**'
       - 'crates/input-exporter/**'
       - 'crates/operator-core/**'
       - 'crates/trustgraph-core/**'
@@ -44,7 +44,7 @@ on:
       - 'contracts/test/unit/factory/**'
       - 'contracts/test/unit/MerkleSnapshot.t.sol'
       - 'contracts/test/unit/vault/ProvingVault.t.sol'
-      - 'zk/trustgraph-program-v2/**'
+      - 'zk/trust-graph-program/**'
       - 'zk/prover/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
@@ -134,7 +134,7 @@ jobs:
           pnpm --dir packages/frontend exec tsc --noEmit
 
       - name: Guest and reader suites
-        run: cargo test -p eas-offchain-v2 -p trustgraph-core -p input-exporter
+        run: cargo test -p eas-offchain -p trustgraph-core -p input-exporter
 
       - name: Registry and factory suites
         env:
@@ -231,7 +231,7 @@ jobs:
       - name: Build pinned guest ELFs
         run: |
           (cd zk/program && cargo prove build)
-          (cd zk/trustgraph-program-v2 && cargo prove build)
+          (cd zk/trust-graph-program && cargo prove build)
           (cd zk/weighted-program && cargo prove build)
           (cd zk/composition-program && cargo prove build)
           (cd zk/nostr-program/program && cargo prove build)

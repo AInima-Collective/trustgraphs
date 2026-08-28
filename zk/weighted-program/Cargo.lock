@@ -2777,6 +2777,7 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "serde",
+ "serde_bytes",
  "sha2",
 ]
 

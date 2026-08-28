@@ -289,10 +289,6 @@ impl std::error::Error for RpcResponseError {}
 pub const DEFAULT_RPC_TIMEOUT_SECONDS: u64 = 30;
 
 impl Rpc {
-    pub fn new(url: String) -> Self {
-        Self::with_timeout(url, std::time::Duration::from_secs(DEFAULT_RPC_TIMEOUT_SECONDS))
-    }
-
     pub fn with_timeout(url: String, timeout: std::time::Duration) -> Self {
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)

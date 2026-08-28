@@ -3,7 +3,7 @@ use k256::schnorr::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 use super::event::{decode_hex, lowercase_hex, NostrEvent};
-use super::{NostrError, SkipReason};
+use super::SkipReason;
 
 fn canonical_decimal(value: &str, maximum: u64) -> Option<u64> {
     if value.is_empty()
@@ -69,13 +69,4 @@ pub fn owner_for_event(event: &NostrEvent) -> Result<Option<[u8; 32]>, SkipReaso
         [tag] => verify_tag(tag, &event.pubkey, event.kind, event.created_at).map(Some),
         _ => Err(SkipReason::OaAmbiguous),
     }
-}
-
-pub fn verify_tag_hard(
-    tag: &[String],
-    agent: &[u8; 32],
-    kind: u16,
-    created_at: u64,
-) -> Result<[u8; 32], NostrError> {
-    verify_tag(tag, agent, kind, created_at).map_err(|_| NostrError::BadOa)
 }

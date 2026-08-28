@@ -127,10 +127,6 @@ impl Car {
         self.blocks.get(cid)
     }
 
-    pub fn clone_blocks(&self) -> BTreeMap<Cid, Vec<u8>> {
-        self.blocks.clone()
-    }
-
     pub fn from_blocks(roots: Vec<Cid>, blocks: BTreeMap<Cid, Vec<u8>>) -> Car {
         let n = blocks.len();
         Car { roots, blocks, num_blocks: n }

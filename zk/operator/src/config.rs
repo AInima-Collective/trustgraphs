@@ -1010,7 +1010,6 @@ impl Config {
                     self.budget.global_usd_per_day * 100
                 },
             },
-            ..Policy::default()
         }
     }
 
@@ -1421,10 +1420,7 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         match recorded {
             0 => {
                 let error = Config::load(&config_path).unwrap_err().to_string();
-                assert!(
-                    error.contains("exactly one tracked release instance, found 0"),
-                    "{error}"
-                );
+                assert!(error.contains("exactly one tracked release instance, found 0"), "{error}");
             }
             1 => {
                 let expected: B256 =

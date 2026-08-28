@@ -31,7 +31,7 @@ Trustgraphs implements attestation-based governance using EAS (Ethereum Attestat
 > **SP1 zero-knowledge proof** of correct fixed-point PageRank, not a WAVS operator quorum. See
 > [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) for the design and
 > [`research/operations/trust-graph/runbook.md`](./research/operations/trust-graph/runbook.md) for build/contracts/deploy/run. The canonical algorithm + encodings live in `crates/pagerank-core` (compiled to
-> the SP1 guest in `zk/trustgraph-program-v2`, the host in `zk/prover`, and ported to the browser in
+> the SP1 guest in `zk/trust-graph-program`, the host in `zk/prover`, and ported to the browser in
 > `packages/frontend/lib/pagerank`). **WAVS has been fully removed** — attestations are created directly against
 > EAS and indexing is done by Ponder reading contract events directly. The Safe signer-sync capability
 > was reimplemented as a ZK proof (`SignerSyncZkModule` + a signer guest in `zk/program`); see
@@ -45,7 +45,7 @@ The system consists of:
 ### Core Components Structure
 - **Solidity Contracts** (`contracts/src/`): On-chain logic including attestation resolvers, governance, rewards, and the merkle snapshot
 - **PageRank core** (`crates/pagerank-core/`): The canonical fixed-point Trust-Aware PageRank + all byte encodings, the single source of truth for the ZK guest, host, and frontend
-- **ZK root producer** (`zk/`): The SP1 guest (`zk/trustgraph-program-v2`) and host CLI (`zk/prover`) that prove the merkle root
+- **ZK root producer** (`zk/`): The SP1 guest (`zk/trust-graph-program`) and host CLI (`zk/prover`) that prove the merkle root
 - **Deployment Scripts** (`contracts/script/`): Foundry scripts for contract deployment
 - **Frontend** (`packages/frontend/`): Next.js application for interacting with the system
 - **Indexer** (`packages/indexer/`): Ponder indexer that reads each contract's events directly (EAS, MerkleSnapshot, gov, fund, Safe)
@@ -57,7 +57,7 @@ The system consists of:
 The `{account → score}` merkle root is produced off-chain by proving correct fixed-point PageRank in
 the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified by
 `SP1JournalVerifier`. The canonical algorithm + encodings live in `crates/pagerank-core`
-(compiled to the SP1 guest in `zk/trustgraph-program-v2`, the host in `zk/prover`, and ported to the browser in
+(compiled to the SP1 guest in `zk/trust-graph-program`, the host in `zk/prover`, and ported to the browser in
 `packages/frontend/lib/pagerank`). Input completeness is proven against an on-chain `AttestationAccumulator`
 (a chained-hash mixin folded into `EASIndexerResolver`). See
 [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) and
