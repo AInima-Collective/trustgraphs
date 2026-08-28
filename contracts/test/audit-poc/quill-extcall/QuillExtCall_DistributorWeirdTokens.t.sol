@@ -118,7 +118,7 @@ contract QuillExtCall_DistributorWeirdTokens is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_ClaimNativeReturnDataBombInflatesCallerGas() public {
-        // M0 disposition: preserve this refutation and its measured assertions, but do not make
+        // Disposition: preserve this refutation and its measured assertions, but do not make
         // the default suite red. The 2 MB returndata does amplify claim gas by over 100x, while
         // the stronger filed claim is refuted: the measured call is about 15.8M gas, below the
         // asserted 30M block budget. The audit historically counted five deliberate failures;

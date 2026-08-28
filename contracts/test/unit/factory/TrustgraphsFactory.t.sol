@@ -44,7 +44,7 @@ contract ProgramKeyedVerifier is IZkVerifier {
 }
 
 /// @title TrustgraphsFactoryTest
-/// @notice M1's core battery: the properties that make one transaction a whole, safe instance —
+/// @notice The factory's core battery: the properties that make one transaction a whole, safe instance —
 ///         the factory keeps nothing (ground rule 3), the `paramsHash` it computes is the golden
 ///         encoding, the event reconstructs the instance, the id cannot be squatted, and the epoch
 ///         floor is a raise rather than a rejection. Bounds live in `TrustgraphsFactoryBounds.t.sol`,
@@ -558,10 +558,10 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                     THE EVENT IS THE INTERFACE (M5)
+                       THE EVENT IS THE INTERFACE
     //////////////////////////////////////////////////////////////*/
 
-    /// THE property the whole M5 prover loop rests on: an instance reconstructed from
+    /// THE property the whole prover loop rests on: an instance reconstructed from
     /// `InstanceCreated` alone hashes to the `paramsHash` its snapshot enforces. If this can ever
     /// fail, a prover that trusts the event produces proofs that no snapshot will accept.
     function test_EventParamsHashToTheSnapshotsParamsHash() public {
@@ -675,7 +675,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REGISTRY RECORD (M2)
+                            REGISTRY RECORD
     //////////////////////////////////////////////////////////////*/
 
     /// The directory row is exactly the instance's contract set, labelled `keccak256("trust-graph")`

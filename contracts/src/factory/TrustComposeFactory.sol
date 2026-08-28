@@ -56,7 +56,7 @@ contract TrustComposeFactory is DistributorAttaching {
     event InstancePrepaid(bytes32 indexed instanceId, address indexed from, uint256 amount);
     /// @notice A fund distributor was attached to an existing instance after creation.
     ///         `distributorToken` is presentation only, exactly like the creation-time field.
-     uint256 public constant MAX_NAME_BYTES = 64;
+    uint256 public constant MAX_NAME_BYTES = 64;
 
     IZkVerifier public immutable VERIFIER;
     bytes32 public immutable PROGRAM_VKEY;
@@ -70,7 +70,7 @@ contract TrustComposeFactory is DistributorAttaching {
 
     /// @notice The one fund distributor this factory knows per instance: the creation-time one,
     ///         or the one `attachDistributor` deployed later. Zero means "none yet".
-     error ZeroEpochFloor();
+    error ZeroEpochFloor();
     error ZeroActivationDelay();
     error InvalidAdmin();
     error EmptyName();
@@ -80,7 +80,8 @@ contract TrustComposeFactory is DistributorAttaching {
     error InvalidCompositionVerifier();
     error ProgramVKeyMismatch(bytes32 expected, bytes32 actual);
     error SourceAdapterRegistryMismatch(address expected, address actual);
-     constructor(
+
+    constructor(
         IZkVerifier verifier,
         bytes32 programVKey,
         IInstanceRegistry instanceRegistry,
@@ -229,7 +230,7 @@ contract TrustComposeFactory is DistributorAttaching {
     ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
     ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
     ///         creation-time path: fee 0, `feeRecipient = owner`.
-      function validateCreation(TrustComposeParamsCodec.Params calldata params, bytes calldata manifest) external view {
+    function validateCreation(TrustComposeParamsCodec.Params calldata params, bytes calldata manifest) external view {
         if (block.chainid > type(uint64).max) revert ChainIdTooLarge(block.chainid);
         TrustComposeParamsCodec.Params memory paramsMemory = params;
         TrustComposeValidator.validateCreation(paramsMemory);

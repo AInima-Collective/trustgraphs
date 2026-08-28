@@ -197,7 +197,7 @@ contract ContributionsInstanceTest is Test {
         view
         returns (bytes32)
     {
-        // Journal v3, field order frozen: slot A (acc, leafCount) then slot B
+        // The journal, field order frozen: slot A (acc, leafCount) then slot B
         // (anchorAcc, anchorCount) — INTERFACES.md §4 — then the two v3 bindings.
         return keccak256(
             abi.encode(

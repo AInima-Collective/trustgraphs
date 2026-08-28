@@ -60,7 +60,7 @@ contract WeightedTrustgraphsFactory is DistributorAttaching {
     event SchemaAdopted(bytes32 indexed instanceId, bytes32 schemaUid);
     /// @notice A fund distributor was attached to an existing instance after creation.
     ///         `distributorToken` is presentation only, exactly like the creation-time field.
-     string public constant VOUCH_SCHEMA = "string comment,uint256 confidence";
+    string public constant VOUCH_SCHEMA = "string comment,uint256 confidence";
     uint256 public constant MAX_NAME_BYTES = 64;
 
     IEAS public immutable EAS;
@@ -74,7 +74,7 @@ contract WeightedTrustgraphsFactory is DistributorAttaching {
 
     /// @notice The one fund distributor this factory knows per instance: the creation-time one,
     ///         or the one `attachDistributor` deployed later. Zero means "none yet".
-     error ZeroEpochFloor();
+    error ZeroEpochFloor();
     error ZeroActivationDelay();
     error InvalidAdmin();
     error EmptyName();
@@ -82,7 +82,8 @@ contract WeightedTrustgraphsFactory is DistributorAttaching {
     error NoVaultConfigured();
     error ChainIdTooLarge(uint256 chainId);
     error SchemaUidMismatch(bytes32 registered, bytes32 expected);
-     constructor(
+
+    constructor(
         IEAS eas,
         SchemaRegistrar schemaRegistrar,
         IZkVerifier verifier,
@@ -227,7 +228,7 @@ contract WeightedTrustgraphsFactory is DistributorAttaching {
     ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
     ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
     ///         creation-time path: fee 0, `feeRecipient = owner`.
-      function validateCreation(WeightedPriorParamsCodec.Params calldata params, bytes calldata manifest) external view {
+    function validateCreation(WeightedPriorParamsCodec.Params calldata params, bytes calldata manifest) external view {
         if (block.chainid > type(uint64).max) revert ChainIdTooLarge(block.chainid);
         WeightedPriorParamsCodec.Params memory paramsMemory = params;
         WeightedPriorValidator.validateCreation(paramsMemory);

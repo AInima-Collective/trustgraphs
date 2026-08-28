@@ -127,7 +127,7 @@ contract CreateDevInstances is Common {
         vm.stopBroadcast();
     }
 
-    /// @dev Write the legacy per-network deploy file the local stack still reads.
+    /// @dev Write the per-network deploy file the local stack reads.
     function _writeNetworkDeployJson(
         string calldata env,
         uint256 index,

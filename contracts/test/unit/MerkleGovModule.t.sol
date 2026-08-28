@@ -564,7 +564,7 @@ contract MerkleGovModuleTest is Test {
     /// M-1: the quorum fraction is snapshotted per proposal at creation. A later `setQuorum` must not
     /// retroactively flip a decided proposal, and only affects proposals created after it.
     function test_QuorumIsSnapshottedPerProposal() public {
-        // P1 under the default 15% quorum (threshold 86.25e18); alice's 100e18 Yes clears it.
+        // Proposal 1 under the default 15% quorum (threshold 86.25e18); alice's 100e18 Yes clears it.
         uint256 p1 = _proposeEmpty();
         _rollToActive(p1);
         vm.prank(alice);
@@ -572,12 +572,12 @@ contract MerkleGovModuleTest is Test {
         _rollPastEnd(p1);
         assertEq(uint256(govModule.state(p1)), uint256(MerkleGovModule.ProposalState.Passed));
 
-        // Raising the quorum to 50% must NOT flip the already-decided P1 (its snapshot is honored).
+        // Raising the quorum to 50% must NOT flip already-decided proposal 1 (its snapshot is honored).
         vm.prank(address(safe));
         govModule.setQuorum(5e17); // 50%
         assertEq(uint256(govModule.state(p1)), uint256(MerkleGovModule.ProposalState.Passed));
 
-        // A NEW proposal P2 snapshots the new 50% quorum (threshold 287.5e18); 100e18 can't clear it.
+        // A NEW proposal 2 snapshots the new 50% quorum (threshold 287.5e18); 100e18 can't clear it.
         uint256 p2 = _proposeEmpty();
         _rollToActive(p2);
         vm.prank(alice);

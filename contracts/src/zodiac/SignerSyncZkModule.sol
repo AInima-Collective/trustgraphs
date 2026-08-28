@@ -36,15 +36,15 @@ interface ISignerActivitySource {
 ///         and commits the resulting `signerSetRoot` + `targetThreshold`. The guest proves the
 ///         selection is the correct deterministic function of those inputs; this contract does the
 ///         owner-set *diff* on-chain against the Safe's real linked list (so `prevOwner` pointers
-///         and the `1 <= threshold <= ownerCount` invariant are always correct — the two things the
-///         old off-chain WAVS component got wrong). See SIGNER_SYNC_ZK_PLAN.md.
+///         and the `1 <= threshold <= ownerCount` invariant are always correct). See
+///         research/SIGNER_SYNC_ZK_PLAN.md.
 /// @dev The signer journal (frozen, reproduced by `pagerank-core::encode::signer_journal_encoded`):
 ///      `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
 ///                  bytes32 activityAcc, uint64 activityCount, uint64 activityBlock,
 ///                  bool wasInitialized, bytes32 currentSignerSetRoot, uint256 currentThreshold,
 ///                  bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
 ///      `instanceDomain = keccak256(abi.encode(address(this), block.chainid))` is REBUILT here
-///      rather than accepted as an argument (audit M-3), so an owner-rotation proof made for one
+///      rather than accepted as an argument, so an owner-rotation proof made for one
 ///      module cannot be replayed against a same-params module sharing the accumulator, nor against
 ///      a mirrored deployment on another chain.
 contract SignerSyncZkModule is Module {
@@ -268,7 +268,7 @@ contract SignerSyncZkModule is Module {
 
         // Rebuild the signer journal digest from stored (governance-pinned) + submitted (proven)
         // fields; a mismatch on ANY field fails verification. The final word binds the proof to
-        // THIS module on THIS chain (audit M-3) — rebuilt, never submitted.
+        // THIS module on THIS chain — rebuilt, never submitted.
         bytes32 journalDigest = keccak256(
             abi.encode(
                 c.acc,

@@ -61,7 +61,7 @@ contract MerkleSnapshotTest is Test {
         id = ms.trigger();
     }
 
-    /// The full journal-v3 digest the contract will compute, for a lane-1-only instance.
+    /// The full journal digest the contract will compute, for a lane-1-only instance.
     function _digest(bytes32 acc, uint64 leafCount, bytes32 pinned, address recipient) internal view returns (bytes32) {
         return keccak256(
             abi.encode(
@@ -688,7 +688,7 @@ contract MerkleSnapshotTest is Test {
 
         (bytes32 storedAcc, uint64 storedCount) = ms.anchorCheckpoints(id);
         assertEq(storedAcc, bytes32(uint256(2)));
-        assertEq(storedCount, 9, "journal v3 remains raw anchor count");
+        assertEq(storedCount, 9, "the journal keeps the raw anchor count");
         assertEq(ms.checkpointWorkCount(id), 45, "pricing checkpoints authenticated work");
     }
 
@@ -732,7 +732,7 @@ contract MerkleSnapshotTest is Test {
         assertEq(storedAcc, anchorAcc);
         assertEq(storedCount, 9);
 
-        // The digest must bind both lanes AND the skippedDigest (journal v3, field order frozen).
+        // The digest must bind both lanes AND the skippedDigest (field order frozen).
         bytes32 skipped = keccak256("skip-set");
         bytes32 digest = keccak256(
             abi.encode(
@@ -849,7 +849,7 @@ contract MerkleSnapshotTest is Test {
         ms.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), mallory, hex"");
 
         // Copying it faithfully still works — and still pays alice. Front-running buys the copier
-        // nothing but the gas bill; the vault's split (M3) is what turns that into a refund.
+        // nothing but the gas bill; the vault's fee/gas split is what turns that into a refund.
         vm.prank(mallory);
         ms.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), alice, hex"");
         assertEq(ms.lastAppliedCheckpoint(), id);

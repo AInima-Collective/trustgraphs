@@ -206,7 +206,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Governance parameters
     uint256 public votingDelay = 1; // blocks
     uint256 public votingPeriod = 50400; // ~1 week at 12s blocks
-    uint256 public quorum = 15e16; // 15% of decisive voting power (M2 scenario table)
+    uint256 public quorum = 15e16; // 15% of decisive voting power
 
     /// @notice Blocks between a proposal passing (endBlock) and becoming executable (M-4,
     ///         2026-08-13 audit). The exit window: a passed-but-hostile proposal cannot reach the

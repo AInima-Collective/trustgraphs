@@ -6,8 +6,7 @@ pragma solidity ^0.8.22;
 ///
 /// The hosted operator proves a curated set on us. Everyone else either self-proves — permissionless,
 /// documented, free forever — or funds one of these, and the same loop pays whoever produces the
-/// root. Frozen at the proof-scheduler interface freeze so the vault, the indexer and the frontend
-/// can be built in parallel; the implementation lands at M3.
+/// root. The implementation is `src/vault/ProvingVault.sol`.
 ///
 /// Five things are load-bearing and none of them are conventions:
 ///

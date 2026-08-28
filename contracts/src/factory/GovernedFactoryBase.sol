@@ -32,10 +32,7 @@ interface IGovernableInstanceFactory {
     function EPOCH_FLOOR() external view returns (uint64);
     function PROGRAM() external view returns (bytes32);
     function INSTANCE_REGISTRY() external view returns (IInstanceRegistry);
-    function computeInstanceId(address creator, string calldata name, bytes32 salt)
-        external
-        view
-        returns (bytes32);
+    function computeInstanceId(address creator, string calldata name, bytes32 salt) external view returns (bytes32);
 }
 
 /// @title GovernedFactoryBase

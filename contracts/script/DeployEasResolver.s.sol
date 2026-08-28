@@ -28,9 +28,8 @@ contract AcceptAllVerifier is IZkVerifier {
 /// @notice The minimal deploy the input-exporter e2e needs: EAS + the `EASIndexerResolver` (which
 ///         is the AttestationAccumulator) + a `(string comment, uint256 confidence)` schema wired
 ///         to it + the `MerkleSnapshot` that owns its epochs.
-/// @dev    The snapshot is no longer optional here. `checkpoint()` used to be permissionless on the
-///         resolver (issue #10), so an exporter e2e could freeze inputs with one `cast send` and
-///         never deploy a snapshot at all. Now the accumulator is bound to exactly one snapshot and
+/// @dev    The snapshot is no longer optional here. an unbound accumulator would let an exporter e2e freeze
+///         inputs with one `cast send` and never deploy a snapshot at all. The accumulator is bound to exactly one snapshot and
 ///         only that snapshot's `trigger()` may mint — which is also what pins the checkpoint's
 ///         `paramsHash`, without which no proof can be submitted. So the e2e deploys the full
 ///         resolver → schema → paramsHash → snapshot → bind chain.

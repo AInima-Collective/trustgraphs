@@ -14,12 +14,17 @@ import {IAnchorWorkRegistry} from "interfaces/registry/IAnchorWorkRegistry.sol";
 /// @title MerkleSnapshot
 /// @notice Merkle-root snapshotter for trustgraphs. The `{account => score}` root is produced by a
 ///         permissionless zero-knowledge proof of correct fixed-point Trust-Aware PageRank
-///         (`submitProof`) instead of a WAVS operator quorum. A proof binds:
+///         (`submitProof`). A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint, and
 ///           (b) the governance-pinned `paramsHash`,
 ///         then writes through the same historical-state path every consumer already reads.
 /// @dev Two-tier authority (AccessControl + timelocks): CONSTITUTIONAL_ROLE owns the truth-defining
-///      knobs (`zkVerifier`, `accumulator`); OPERATIONAL_ROLE owns `paramsHash`. See ZK_ARCHITECTURE.md.
+///      knobs (`zkVerifier`, `accumulator`); OPERATIONAL_ROLE owns `paramsHash`.
+///
+///      An instance ingests up to two input lanes, frozen together by `trigger()`: lane 1 is the
+///      on-chain EAS attestation accumulator, and lane 2 is an optional anchored off-chain
+///      envelope log (`anchorRegistry`). See research/ZK_ARCHITECTURE.md and
+///      research/OFFCHAIN_ATTESTATIONS_ZK.md.
 contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessControl {
     /// @notice Owns `zkVerifier` and `accumulator` — changes what "correct PageRank" means.
     bytes32 public constant CONSTITUTIONAL_ROLE = keccak256("CONSTITUTIONAL_ROLE");
@@ -46,7 +51,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice The chained-hash accumulator over the attestation log (source of checkpoints).
     IAttestationAccumulator public accumulator;
 
-    /// @notice Lane-2 anchor log (OFFCHAIN doc §4). Zero address = lane-1-only instance: trigger
+    /// @notice Lane-2 anchor log. Zero address = lane-1-only instance: trigger
     ///         checkpoints the empty lane as the zero accumulator and the guest asserts the empty
     ///         fold (empty-lane-as-zero — one journal shape for every instance).
     IAnchorRegistry public anchorRegistry;
@@ -61,13 +66,13 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(uint256 checkpointId => AnchorCheckpoint) public anchorCheckpoints;
 
     /// @notice Checkpointed lane-2 work units used for operator admission and vault pricing.
-    /// @dev This is additive: `anchorCheckpoints` and journal v3 remain unchanged. Registries that
+    /// @dev `anchorCheckpoints` and the journal are unchanged by this record. Registries that
     ///      do not expose `IAnchorWorkRegistry.workCount()` checkpoint their raw anchor count.
     mapping(uint256 checkpointId => uint64 workCount) public checkpointWorkCount;
 
     /// @notice Contract-fixed epoch schedule in blocks; 0 = unscheduled (lane-1-only default).
     ///         A nonzero schedule is anchored when configured; callers consume its boundaries but
-    ///         cannot move the phase by triggering late (OFFCHAIN doc §4.1).
+    ///         cannot move the phase by triggering late (research/OFFCHAIN_ATTESTATIONS_ZK.md §4.1).
     uint64 public epochLength;
 
     /// @notice Origin of the current nonzero epoch schedule. Zero while unscheduled.
@@ -119,11 +124,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(uint256 stateIndex => MerkleState state) public states;
 
     /// @notice Proof/configuration provenance parallel to `states`.
-    /// @dev Added without changing `MerkleState`, preserving every existing consumer ABI.
+    /// @dev Kept beside `MerkleState` so consumers of the plain state tuple never decode it.
     mapping(uint256 stateIndex => StateProvenance provenance) private _stateProvenance;
 
-    /// @notice Append-only accepted checkpoint history for provenance consumers. The legacy
-    ///         block-indexed state view may replace a slot when two freezes share one block; this
+    /// @notice Append-only accepted checkpoint history for provenance consumers. The
+    ///         block-indexed `states` view may replace a slot when two freezes share one block; this
     ///         parallel record never does.
     mapping(uint256 checkpointId => MerkleState state) private _acceptedCheckpointStates;
     mapping(uint256 checkpointId => StateProvenance provenance) private _acceptedCheckpointProvenance;
@@ -300,8 +305,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Update the accumulator before this snapshot has frozen any checkpoints.
     /// @dev Post-checkpoint rotation is deliberately forbidden in v1. It could otherwise reuse
     ///      checkpoint ids and introduce lower freeze blocks, corrupting pinned commitments and
-    ///      binary-search history. Recover by deploying a new snapshot and migrating the vault
-    ///      binding; a future generation-aware migration can replace this fail-closed rule.
+    ///      binary-search history. Recovery is a fresh snapshot with a fresh vault binding.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
         if (_accumulator == accumulator) {
@@ -418,9 +422,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         //
         // Checking here rather than in each accumulator is what makes it total: `trigger()` is the
         // only minter (the accumulators are bound to their snapshot), and it is the only place that
-        // sees both lanes. "Nothing this instance reads has moved" is exactly the right condition,
-        // and it is also why the mirror's missing guard was correct — lane 1 alone was never the
-        // question.
+        // sees both lanes. "Nothing this instance reads has moved" is exactly the right condition:
+        // lane 1 alone was never the question.
         if (hasCheckpoints()) {
             IAttestationAccumulator.Checkpoint memory prev =
                 accumulator.getCheckpoint(accumulator.checkpointCount() - 1);
@@ -447,7 +450,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         checkpointParamsHash[checkpointId] = paramsHash;
         emit CheckpointParamsPinned(checkpointId, paramsHash);
 
-        // Checkpoint BOTH lanes at the same boundary (OFFCHAIN doc §4). No registry ⇒ the empty
+        // Checkpoint BOTH lanes at the same boundary. No registry ⇒ the empty
         // lane is the zero accumulator, which is exactly what the lane-1-only guest commits.
         {
             (bytes32 a, uint64 n) = _liveAnchors();
@@ -498,8 +501,9 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         bytes32 pinnedParamsHash = checkpointParamsHash[checkpointId];
         if (pinnedParamsHash == bytes32(0)) revert UnpinnedCheckpoint(checkpointId);
 
-        // The journal is the ENTIRE ABI between contract and guest (journal v3 — two-lane plus the
-        // two v3 bindings, field order FROZEN, golden-locked four ways). Bind all of it — including
+        // The journal is the ENTIRE ABI between contract and guest (both lanes plus the
+        // recipient and instance-domain bindings, field order FROZEN, golden-locked four ways).
+        // Bind all of it — including
         // the CID *string* consumers fetch by, whose 32-byte digest alone is otherwise unproven.
         // Checkpointed storage pins both lanes; skippedDigest is the guest's own
         // audited-discretion output. The last two words are what the SUBMITTER cannot forge:
@@ -518,8 +522,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
                 keccak256(bytes(ipfsHashCid)), // ...and the CID string that points at that blob
                 totalValue, // summed points
                 skippedDigest, // rule-Φ audit commitment
-                recipient, // v3: who the bounty is owed to
-                instanceDomain() // v3: which instance, derived not accepted
+                recipient, // who the bounty is owed to
+                instanceDomain() // which instance, derived not accepted
             )
         );
 
@@ -579,7 +583,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         return (anchorRegistry.anchorAcc(), anchorRegistry.anchorCount());
     }
 
-    /// The optional work-aware lane-2 size, safely falling back to raw anchors for legacy lanes.
+    /// The optional work-aware lane-2 size, falling back to raw anchors when the registry has no `workCount()`.
     function _liveAnchorWork(uint64 anchorCount_) internal view returns (uint64) {
         if (address(anchorRegistry) == address(0)) return 0;
         (bool ok, bytes memory returned) =
@@ -593,12 +597,12 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         return anchorCount_;
     }
 
-    /// @notice This instance's journal-v3 domain separator: `keccak256(abi.encode(address(this),
+    /// @notice This instance's journal domain separator: `keccak256(abi.encode(address(this),
     ///         block.chainid))`. Provers read it to fill the journal field; `submitProof` rebuilds
     ///         it rather than trusting an argument.
-    /// @dev Universal separation. Trust-graph's params-v2 `accumulator`/`chainId` fields are now
+    /// @dev Universal separation. The trust-graph params' `accumulator`/`chainId` fields are
     ///      belt-and-braces (kept: golden-locked and harmless); hypercerts, whose params carry no
-    ///      instance-unique field at all, gets separation here for the first time (issue #9).
+    ///      instance-unique field at all, gets separation here for the first time.
     function instanceDomain() public view returns (bytes32) {
         return keccak256(abi.encode(address(this), block.chainid));
     }

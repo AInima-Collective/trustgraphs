@@ -61,8 +61,8 @@ contract DeployZodiacSafes is Common {
     }
 
     /// @notice Deploy governance and complete the typed scoring-authority handoff in the same
-    ///         broadcast. Dev/factory instances use this overload; legacy snapshots without a
-    ///         typed controller retain the two-argument overload above.
+    ///         broadcast. Dev/factory instances use this overload; snapshots without a typed
+    ///         controller retain the two-argument overload above.
     function run(
         string calldata merkleSnapshotAddr,
         string calldata signerVerifierAddr,

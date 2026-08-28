@@ -33,8 +33,9 @@ library ParamsCodec {
         uint32 weightFieldIndex;
         /// Lane 2 (envelope 0): accepted EIP-712 domain separators; EMPTY = lane 2 disabled.
         bytes32[] envelope0DomainSeparators;
-        /// Reserved legacy staleness knob. Strict lane 2 fixes this to zero and checks future-time
-        /// against the first lane-1 anchor inside the guest.
+        /// Reserved; fixed to zero. Head freshness is checked against the first lane-1 anchor
+        /// inside the guest. The field stays in the hash preimage — removing it would rotate
+        /// every program's paramsHash.
         uint64 lane2MaxHeadAge;
         /// Domain separation (INSTANCE_FACTORY §6.1): the instance's `EASIndexerResolver`.
         address accumulator;

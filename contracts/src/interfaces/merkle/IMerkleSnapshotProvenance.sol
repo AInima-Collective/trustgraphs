@@ -4,7 +4,7 @@ pragma solidity ^0.8.22;
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 
 /// @title IMerkleSnapshotProvenance
-/// @notice Additive source-authentication seam kept separate from the legacy snapshot interface.
+/// @notice Source-authentication seam kept separate from the core snapshot interface.
 interface IMerkleSnapshotProvenance {
     error ProvenanceEnableAfterState(uint256 stateCount);
 
@@ -34,7 +34,7 @@ interface IMerkleSnapshotProvenance {
     function provenanceEnabled() external view returns (bool);
 
     /// @notice Recover an accepted state by its never-reused checkpoint, even if another accepted
-    ///         checkpoint later shared and replaced its legacy block-indexed state slot.
+    ///         checkpoint later shared and replaced its block-indexed state slot.
     function getAcceptedCheckpoint(uint256 checkpointId)
         external
         view

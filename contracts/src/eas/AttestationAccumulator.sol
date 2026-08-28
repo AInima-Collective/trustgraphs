@@ -25,15 +25,12 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
 
     /// @notice The only address allowed to mint checkpoints: the `MerkleSnapshot` whose
     ///         `trigger()` freezes this lane. Set once, via `bindSnapshot`.
-    /// @dev Before this existed, `checkpoint()` was open to anyone (issue #10), which broke two
-    ///      things the rest of the system asserts. First, `MerkleSnapshot`'s `epochLength` gate:
-    ///      a prover wanting a boundary at block N called `checkpoint()` at block N and proved
-    ///      against it, so "epoch boundaries are never prover-chosen"
-    ///      (`MerkleSnapshot.sol:44-46`) was false. Second, and worse for a two-lane instance, a
-    ///      directly-minted id was never seen by `trigger()`, so the snapshot's
-    ///      `anchorCheckpoints[id]` sat at `(0, 0)` and a proof over an EMPTY lane 2 verified
-    ///      against it — the research/audits/2026-07-M6.md M6-1 shape, which `TrustAccumulatorMirror` was already
-    ///      hardened against but this mix-in was not.
+    /// @dev Open minting would break two invariants the rest of the system asserts. First,
+    ///      `MerkleSnapshot`'s `epochLength` gate: a prover wanting a boundary at block N could
+    ///      mint a checkpoint at block N and prove against it, making epoch boundaries
+    ///      prover-chosen. Second, and worse for a two-lane instance, an id minted outside
+    ///      `trigger()` has no `anchorCheckpoints` entry, so a proof over an EMPTY lane 2 would
+    ///      verify against it (research/audits/2026-07-M6.md finding M6-1).
     address public snapshot;
 
     /// @notice The deployer, and the only address that may perform the one-shot `bindSnapshot`.

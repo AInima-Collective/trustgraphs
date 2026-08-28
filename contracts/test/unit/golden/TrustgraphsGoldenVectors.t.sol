@@ -57,7 +57,7 @@ contract TrustgraphsGoldenVectorsTest is Test {
         bytes memory expectedEncoded = json.readBytes(".journal.encoded");
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
-        // Journal v3 (two-lane + the two bindings), field order FROZEN — must match
+        // The journal (two lanes + the recipient/instance-domain bindings), field order FROZEN — must match
         // MerkleSnapshot.submitProof.
         bytes memory encoded = abi.encode(
             acc,

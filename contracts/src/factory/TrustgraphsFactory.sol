@@ -128,13 +128,13 @@ contract TrustgraphsFactory is DistributorAttaching {
     ///         `InstanceCreated` stays frozen; this event is the additive discovery source for
     ///         late-attached funds. `distributorToken` is presentation only, exactly like the
     ///         creation-time field: the distributor is multi-token.
-     /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
+    /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
     ///         creator-customizable schema would fork `weightFieldIndex` and multiply the surface
     ///         every consumer (guest, indexer, frontend) has to handle.
     string public constant VOUCH_SCHEMA = "string comment,uint256 confidence";
 
     /// @notice The registry `program` label for instances this factory creates.
-     /*//////////////////////////////////////////////////////////////
+    /*//////////////////////////////////////////////////////////////
                        CREATION-TIME PARAM BOUNDS
     //////////////////////////////////////////////////////////////*/
 
@@ -156,7 +156,7 @@ contract TrustgraphsFactory is DistributorAttaching {
     IZkVerifier public immutable VERIFIER;
     /// @notice The chain's instance directory. This factory holds `OPERATOR_ROLE` on it and nothing
     ///         else; `update()` stays timelock-only so a factory bug cannot rewrite history.
-     /// @notice The `ProvingVault` a creator's `msg.value` is forwarded into. Zero disables the
+    /// @notice The `ProvingVault` a creator's `msg.value` is forwarded into. Zero disables the
     ///         prepay path entirely (and makes a non-zero `msg.value` revert rather than being
     ///         silently kept).
     /// @dev The factory holds no role on the vault and never touches an existing account: it can
@@ -178,7 +178,7 @@ contract TrustgraphsFactory is DistributorAttaching {
 
     /// @notice The one fund distributor this factory knows per instance: the creation-time one,
     ///         or the one `attachDistributor` deployed later. Zero means "none yet".
-     /*//////////////////////////////////////////////////////////////
+    /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
@@ -233,7 +233,7 @@ contract TrustgraphsFactory is DistributorAttaching {
         }
         // A zero floor is not "no minimum", it is "no schedule": `setEpochLength(0)` disables the
         // boundary check entirely, which would hand epoch selection back to whoever proves first
-        // (OFFCHAIN §4.1 — boundaries are never prover-chosen). Every factory has a real floor.
+        // (research/OFFCHAIN_ATTESTATIONS_ZK.md §4.1 — boundaries are never prover-chosen).
         if (epochFloor == 0) revert ZeroEpochFloor();
         EAS = eas;
         SCHEMA_REGISTRAR = schemaRegistrar;
@@ -382,7 +382,7 @@ contract TrustgraphsFactory is DistributorAttaching {
 
         //        Bind the accumulator to that snapshot, in the same transaction. `trigger()` is
         //        then the ONLY way to mint a checkpoint here, which is what makes the epoch
-        //        schedule below binding rather than advisory (issue #10). This factory is the
+        //        schedule below binding rather than advisory. This factory is the
         //        resolver's deployer and therefore its `binder`; the window in which the
         //        accumulator is unbound never leaves this call.
         indexerResolver.bindSnapshot(snapshot);

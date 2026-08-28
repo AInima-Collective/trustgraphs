@@ -437,7 +437,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     /// The identity and size a checkpoint froze, and whether we actually know them.
-    /// @dev The flag is the whole point. An earlier version swallowed a failed read and left
+    /// @dev The flag is the whole point: a failed read must surface, not default to zero and leave
     ///      `leafCount = 0`, which `bandOf` maps to band 1 — the CHEAPEST PRICED band, the exact
     ///      opposite of the "unknown ⇒ unpriced" rule this file claims to follow. Now a failed
     ///      read pays no fee at all.
@@ -490,13 +490,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     ///      Band 0 is reserved as the "we do not price this" band and is never set.
     function bandOf(bytes32 program, uint64 leafCount, uint64 anchorCount) public pure returns (uint8) {
         // Size is the SUM of both lanes, for every program, because that is exactly what the
-        // operator's cycle estimate sums (`InstanceSize::estimated_cycles`). An earlier version
-        // used `max` for contributions and `leafCount` alone for trust-graph, which meant the
-        // shared `MAX_PRICED_INPUTS` boundary was off by up to 2x for any two-lane instance —
-        // priced here, refused there. Worse, a trust-graph instance with an anchor registry and
-        // 900 edges against 400k anchors priced at the CHEAPEST band for a proof far past the
-        // operator's limit. The "agreement" tests missed all of it because both sides only ever
-        // tested with the second lane at zero.
+        // operator's cycle estimate sums (`InstanceSize::estimated_cycles`). Any other size rule
+        // (`max`, or one lane alone) makes the shared `MAX_PRICED_INPUTS` boundary disagree with
+        // the operator's admission check for two-lane instances — priced here, refused there —
+        // and lets a small-edge, huge-anchor instance price at the cheapest band for a proof far
+        // past the operator's limit.
         //
         // Keeping a per-program `if` even though the arithmetic is now shared is deliberate: an
         // unrecognised program must fall through to the unpriced band, not inherit a default.
@@ -613,7 +611,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             revert InsufficientBalance(a.ethBalance, a.usdcBalance);
         }
 
-        // NOTE: requesting does NOT debit the balance. An earlier version did, and it handed the
+        // NOTE: requesting does NOT debit the balance. Debiting on request would hand the
         // community a free-roots machine: front-run a pending `submitAndClaim` with
         // `requestWithdrawal(everything)`, the root lands and `_claimed` is set while `_pay` finds
         // an empty tank, then `cancelWithdrawal` puts the money straight back. The prover has no
