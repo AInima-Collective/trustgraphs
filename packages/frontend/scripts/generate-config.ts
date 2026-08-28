@@ -262,10 +262,9 @@ try {
     // views + AnchorsCheckpointed/HeadAnchored events for journal-v2 verification.
     AnchorRegistry: '',
     // Contributions program (per-instance addresses live in networks.json): the three-schema
-    // resolver + accumulator, the trust-accumulator mirror, and the local pool token (6dp).
+    // resolver + accumulator and the trust-accumulator mirror.
     ContributionResolver: '',
     TrustAccumulatorMirror: '',
-    TestUSDC: '',
 
     // One per chain: communities fund this tank to pay whoever proves their next root. The
     // deployment summary carries it as a bare address rather than under `networks` because every
