@@ -44,7 +44,7 @@ on:
       - 'contracts/test/unit/factory/**'
       - 'contracts/test/unit/MerkleSnapshot.t.sol'
       - 'contracts/test/unit/vault/ProvingVault.t.sol'
-      - 'zk/trustgraph-program-v2/**'
+      - 'zk/trust-graph-program/**'
       - 'zk/prover/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
@@ -231,7 +231,7 @@ jobs:
       - name: Build pinned guest ELFs
         run: |
           (cd zk/program && cargo prove build)
-          (cd zk/trustgraph-program-v2 && cargo prove build)
+          (cd zk/trust-graph-program && cargo prove build)
           (cd zk/weighted-program && cargo prove build)
           (cd zk/composition-program && cargo prove build)
           (cd zk/nostr-program/program && cargo prove build)

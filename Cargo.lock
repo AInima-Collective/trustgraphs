@@ -1782,7 +1782,6 @@ name = "pagerank-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
- "envelopes",
  "hex",
  "k256",
  "proptest",

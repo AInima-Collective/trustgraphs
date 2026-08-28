@@ -33,7 +33,7 @@ jobs:
           cache-on-failure: true
           workspaces: |
             zk/program -> target
-            zk/trustgraph-program-v2 -> target
+            zk/trust-graph-program -> target
             zk/weighted-program -> target
             zk/composition-program -> target
             zk/nostr-program -> target

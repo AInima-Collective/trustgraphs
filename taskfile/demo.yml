@@ -101,7 +101,7 @@ tasks:
         # builds put the ELFs one directory deeper (`elf-compilation/docker/…`), and the nostr
         # guest's target directory belongs to the workspace one level above it.
         ELFS=$(sh scripts/guest-elf-dirs.sh --files 2>/dev/null || true)
-        for guest in trustgraph-signer-program trustgraph-program-v2 \
+        for guest in trustgraph-signer-program trust-graph-program \
                      trustgraph-weighted-program trustgraph-compose-program nostr-workspace; do
           printf '%s\n' "$ELFS" | grep -q "/$guest$" \
             || fail "the SP1 guest ELF $guest is not built — run: task zk:build"

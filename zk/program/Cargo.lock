@@ -2735,7 +2735,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "trustgraph-program"
+name = "trustgraph-guests"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",

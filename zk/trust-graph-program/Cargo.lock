@@ -2513,6 +2513,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "trust-graph-program"
+version = "0.1.0"
+dependencies = [
+ "pagerank-core",
+ "sp1-zkvm",
+ "trustgraph-core",
+]
+
+[[package]]
 name = "trustgraph-core"
 version = "0.9.3"
 dependencies = [
@@ -2521,15 +2530,6 @@ dependencies = [
  "pagerank-core",
  "serde",
  "zk-core",
-]
-
-[[package]]
-name = "trustgraph-program-v2"
-version = "0.1.0"
-dependencies = [
- "pagerank-core",
- "sp1-zkvm",
- "trustgraph-core",
 ]
 
 [[package]]

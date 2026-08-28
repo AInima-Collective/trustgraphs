@@ -14,7 +14,7 @@ use crate::common;
 /// The vkey it derives is the one the deployed `SP1JournalVerifier` must be pinned to; the daemon
 /// checks that at startup rather than discovering it on a failed submit.
 pub fn elf() -> Elf {
-    include_elf!("trustgraph-program-v2")
+    include_elf!("trust-graph-program")
 }
 
 fn scale() -> U256 {
