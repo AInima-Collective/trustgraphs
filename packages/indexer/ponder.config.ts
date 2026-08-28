@@ -4,7 +4,6 @@ import path from 'path'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
-import { anchorRegistryAbi } from './abis/anchorRegistry'
 import {
   compositionAccumulatorAbi,
   trustComposeFactoryAbi,
@@ -33,6 +32,7 @@ import {
 } from '../../contracts/deploy/release-manifest'
 import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
 import {
+  anchorRegistryAbi,
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
