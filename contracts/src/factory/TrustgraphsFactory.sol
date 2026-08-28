@@ -12,6 +12,7 @@ import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {TrustgraphsParamsValidator} from "src/params/TrustgraphsParamsValidator.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
 import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {EasOffchainAnchorRegistry} from "src/registry/EasOffchainAnchorRegistry.sol";
 import {EasOffchainAnchorRegistryDeployer} from "src/factory/HybridInstanceDeployers.sol";
 import {
@@ -48,7 +49,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 ///      3. **Permissionless is not unvalidated.** `paramsHash` is otherwise an opaque bytes32 that
 ///         accepts anything; creation-time bounds (below) keep every instance inside the envelope
 ///         the guest is proven safe over, and the epoch floor bounds what hosted proving costs.
-contract TrustgraphsFactory {
+contract TrustgraphsFactory is DistributorAttaching {
     /*//////////////////////////////////////////////////////////////
                           THE FROZEN INTERFACE
     //////////////////////////////////////////////////////////////*/
@@ -127,17 +128,13 @@ contract TrustgraphsFactory {
     ///         `InstanceCreated` stays frozen; this event is the additive discovery source for
     ///         late-attached funds. `distributorToken` is presentation only, exactly like the
     ///         creation-time field: the distributor is multi-token.
-    event DistributorAttached(bytes32 indexed instanceId, address distributor, address distributorToken);
-
-    /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
+     /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
     ///         creator-customizable schema would fork `weightFieldIndex` and multiply the surface
     ///         every consumer (guest, indexer, frontend) has to handle.
     string public constant VOUCH_SCHEMA = "string comment,uint256 confidence";
 
     /// @notice The registry `program` label for instances this factory creates.
-    bytes32 public constant PROGRAM = keccak256("trust-graph");
-
-    /*//////////////////////////////////////////////////////////////
+     /*//////////////////////////////////////////////////////////////
                        CREATION-TIME PARAM BOUNDS
     //////////////////////////////////////////////////////////////*/
 
@@ -159,9 +156,7 @@ contract TrustgraphsFactory {
     IZkVerifier public immutable VERIFIER;
     /// @notice The chain's instance directory. This factory holds `OPERATOR_ROLE` on it and nothing
     ///         else; `update()` stays timelock-only so a factory bug cannot rewrite history.
-    IInstanceRegistry public immutable INSTANCE_REGISTRY;
-
-    /// @notice The `ProvingVault` a creator's `msg.value` is forwarded into. Zero disables the
+     /// @notice The `ProvingVault` a creator's `msg.value` is forwarded into. Zero disables the
     ///         prepay path entirely (and makes a non-zero `msg.value` revert rather than being
     ///         silently kept).
     /// @dev The factory holds no role on the vault and never touches an existing account: it can
@@ -171,7 +166,6 @@ contract TrustgraphsFactory {
     IProvingVault public immutable VAULT;
     /// @notice Creation-code holders for the two large children (see `InstanceDeployers.sol`).
     MerkleSnapshotDeployer public immutable SNAPSHOT_DEPLOYER;
-    MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
     /// @notice Creation-code holder for the trust-graph-specific typed params controller.
     TrustgraphsParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
     /// @notice Inert creation-code holder for strict lane-2 registries.
@@ -184,13 +178,10 @@ contract TrustgraphsFactory {
 
     /// @notice The one fund distributor this factory knows per instance: the creation-time one,
     ///         or the one `attachDistributor` deployed later. Zero means "none yet".
-    mapping(bytes32 instanceId => address distributor) public distributorOf;
-
-    /*//////////////////////////////////////////////////////////////
+     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    error ZeroAddress();
     /// @notice `EPOCH_FLOOR` of zero would let a creator opt out of the schedule entirely.
     error ZeroEpochFloor();
     /// @notice The factory may not be an instance's admin (see `createInstance`).
@@ -207,13 +198,9 @@ contract TrustgraphsFactory {
     ///         necessarily the one we wanted), but worth being able to see from the outside.
     event SchemaAdopted(bytes32 indexed instanceId, bytes32 schemaUid);
     /// @notice `attachDistributor` was asked about an id this factory's program never registered.
-    error UnknownInstance(bytes32 instanceId);
     /// @notice The proposed fund owner does not hold the instance's constitutional role.
-    error NotInstanceAuthority(bytes32 instanceId, address owner);
     /// @notice The instance already has a factory-known fund distributor.
-    error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
     /// @notice Community funds must be controlled by an initialized Safe, never an EOA.
-    error InvalidDistributorSafe(address owner);
     error InvalidRelayerCount(uint256 supplied, uint256 minimum, uint256 maximum);
     error InvalidRelayer(address relayer);
 
@@ -235,7 +222,7 @@ contract TrustgraphsFactory {
         EasOffchainAnchorRegistryDeployer easRegistryDeployer,
         uint64 epochFloor,
         IProvingVault vault
-    ) {
+    ) DistributorAttaching(keccak256("trust-graph"), instanceRegistry, distributorDeployer) {
         if (
             address(eas) == address(0) || address(schemaRegistrar) == address(0) || address(verifier) == address(0)
                 || address(instanceRegistry) == address(0) || address(snapshotDeployer) == address(0)
@@ -254,9 +241,7 @@ contract TrustgraphsFactory {
         // Zero is allowed and means "no prepay path on this factory". Sending value to such a
         // factory reverts rather than being kept.
         VAULT = vault;
-        INSTANCE_REGISTRY = instanceRegistry;
         SNAPSHOT_DEPLOYER = snapshotDeployer;
-        DISTRIBUTOR_DEPLOYER = distributorDeployer;
         PARAMS_CONTROLLER_DEPLOYER = paramsControllerDeployer;
         EAS_REGISTRY_DEPLOYER = easRegistryDeployer;
         EPOCH_FLOOR = epochFloor;
@@ -478,42 +463,6 @@ contract TrustgraphsFactory {
         // the instance row when they attach its separately-discovered controller.
         emit ParamsControllerCreated(instanceId, address(controller));
         controller.publishInitialVersion();
-    }
-
-    /// @notice Attach a fund distributor to an instance created without one. Permissionless to
-    ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
-    ///         must hold the instance's constitutional role right now, so the caller can route
-    ///         value only to the instance's own live authority (for a governed instance that is
-    ///         its Safe). Same terms as the creation-time path: fee 0, `feeRecipient = owner`.
-    /// @param instanceId The instance to attach a fund to (this factory's program only).
-    /// @param owner The initialized Safe fund owner; also verified against CONSTITUTIONAL_ROLE.
-    /// @param distributorToken The token the community intends to distribute. Presentation only,
-    ///        recorded in the event exactly like `CreateArgs.distributorToken`.
-    function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
-        external
-        returns (address distributor)
-    {
-        // An unregistered id reverts inside the registry (`InstanceNotFound`); this factory only
-        // adds the program check so it never serves another program's instance.
-        IInstanceRegistry.Instance memory record = INSTANCE_REGISTRY.getInstance(instanceId);
-        if (record.program != PROGRAM) revert UnknownInstance(instanceId);
-        address existing = distributorOf[instanceId];
-        if (existing != address(0)) revert DistributorAlreadyAttached(instanceId, existing);
-        MerkleSnapshot snapshot = MerkleSnapshot(record.snapshot);
-        if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
-            revert NotInstanceAuthority(instanceId, owner);
-        }
-        if (!SafeOwnerPolicy.isSafe(owner)) revert InvalidDistributorSafe(owner);
-        distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
-        distributorOf[instanceId] = distributor;
-        emit DistributorAttached(instanceId, distributor, distributorToken);
-    }
-
-    /// @notice The directory key for a would-be instance. Mixing the creator in makes label
-    ///         squatting pointless (nobody can block "gitcoin" for anyone else) and `salt` lets one
-    ///         creator reuse a name.
-    function computeInstanceId(address creator, string calldata name, bytes32 salt) public pure returns (bytes32) {
-        return keccak256(abi.encode(creator, name, salt));
     }
 
     /// @notice Whether `createInstance` would accept these params (the same checks, as a view).

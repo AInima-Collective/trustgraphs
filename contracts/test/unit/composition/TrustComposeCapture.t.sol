@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {TrustComposeParamsController} from "src/factory/TrustComposeParamsController.sol";
 import {
     CompositionSourceAccumulatorDeployer,
@@ -408,19 +409,19 @@ contract TrustComposeCaptureTest is Test {
         assertEq(factory.distributorOf(instanceId), distributor);
 
         vm.expectRevert(
-            abi.encodeWithSelector(TrustComposeFactory.DistributorAlreadyAttached.selector, instanceId, distributor)
+            abi.encodeWithSelector(DistributorAttaching.DistributorAlreadyAttached.selector, instanceId, distributor)
         );
         factory.attachDistributor(instanceId, address(safe), address(0));
 
         // The authority gate, on an instance that has no fund yet.
         (bytes32 gatedInstanceId,,,) = _createComposition(2, MAX_AGE);
         vm.expectRevert(
-            abi.encodeWithSelector(TrustComposeFactory.NotInstanceAuthority.selector, gatedInstanceId, address(0x57AA))
+            abi.encodeWithSelector(DistributorAttaching.NotInstanceAuthority.selector, gatedInstanceId, address(0x57AA))
         );
         factory.attachDistributor(gatedInstanceId, address(0x57AA), address(0));
 
         // Wrong-program ids are refused: the source instances are weighted, not compose.
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.UnknownInstance.selector, bytes32(uint256(1))));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.UnknownInstance.selector, bytes32(uint256(1))));
         factory.attachDistributor(bytes32(uint256(1)), address(this), address(0));
     }
 

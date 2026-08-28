@@ -8,6 +8,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
 import {
     MerkleSnapshotDeployer,
@@ -293,7 +294,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         args.admin = alice;
         args.withDistributor = true;
 
-        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidDistributorSafe.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, alice));
         factory.createInstance(args);
     }
 
@@ -776,7 +777,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
             ];
             holes[i] = address(0);
 
-            vm.expectRevert(TrustgraphsFactory.ZeroAddress.selector);
+            vm.expectRevert(DistributorAttaching.ZeroAddress.selector);
             new TrustgraphsFactory(
                 IEAS(holes[0]),
                 SchemaRegistrar(holes[1]),
