@@ -287,7 +287,6 @@ contract GovernedTrustgraphsFactory {
                 IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator())),
                 ISignerSyncCheckpointSource(snapshot),
                 ISignerActivitySource(merkleGovModule),
-                MerkleSnapshot(snapshot).paramsHash(),
                 SIGNER_SYNC_PROGRAM_VKEY,
                 signerSync.topN,
                 signerSync.minThreshold,

@@ -103,7 +103,6 @@ contract QuillStateInv_SignerSyncAccumulatorRotation is Test {
             IAttestationAccumulator(address(accA)),
             scoreSnapshot,
             scoreSnapshot,
-            PARAMS_HASH,
             5,
             2,
             5_000,

@@ -210,7 +210,6 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         );
         address anchorRegistry = address(MerkleSnapshot(snapshot).anchorRegistry());
         IAttestationAccumulator accumulator = IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator()));
-        bytes32 paramsHash = MerkleSnapshot(snapshot).paramsHash();
         address activitySource = governedFactory.authorityOf(instanceId).governanceModule;
         vm.expectRevert(
             abi.encodeWithSelector(SignerSyncModuleDeployer.HybridScoreSnapshotUnsupported.selector, anchorRegistry)
@@ -222,7 +221,6 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             accumulator,
             ISignerSyncCheckpointSource(snapshot),
             ISignerActivitySource(activitySource),
-            paramsHash,
             bytes32(uint256(1)),
             2,
             2,
@@ -260,7 +258,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
         assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
         assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
-        assertEq(signer.paramsAuthority(), safe, "scoring mirror must be governed by the Safe");
+        assertEq(signer.owner(), safe, "signer module must be governed by the Safe");
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
         assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
         assertEq(address(signer.zkVerifier()), address(signerVerifier), "dedicated signer verifier");
@@ -688,7 +686,6 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             IAttestationAccumulator(created.resolver),
             ISignerSyncCheckpointSource(created.snapshot),
             ISignerActivitySource(address(gov)),
-            MerkleSnapshot(created.snapshot).paramsHash(),
             5,
             2,
             5_000,
@@ -711,7 +708,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         zodiacHarness.handoff(address(zodiacHarness), deployment, TrustgraphsParamsController(created.controller));
 
         assertEq(TrustgraphsParamsController(created.controller).owner(), address(demoSafe));
-        assertEq(signer.paramsAuthority(), address(demoSafe));
+        assertEq(signer.owner(), address(demoSafe));
         assertEq(gov.owner(), address(demoSafe));
         assertEq(signer.owner(), address(demoSafe));
     }

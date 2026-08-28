@@ -68,18 +68,6 @@ contract SignerSyncZkModule is Module {
     /// @notice The governed instance's authenticated direct-vote activity hash chain.
     ISignerActivitySource public activitySource;
 
-    /// @notice Governance's live PageRank params reference for status and coordinated rotations.
-    /// @dev Proofs bind `scoreSnapshot.checkpointParamsHash(checkpointId)` instead, so updating
-    ///      this reference while a proof is running cannot invalidate already-paid work.
-    bytes32 public paramsHash;
-
-    /// @notice Narrow authority over only the shared PageRank commitment.
-    /// @dev Begins as the module owner for backwards-compatible deployments, but can be handed to
-    ///      the same operational Safe/timelock that owns a trust-graph params controller without
-    ///      transferring the module's verifier, accumulator, or selection-policy authority.
-    address public paramsAuthority;
-    address public pendingParamsAuthority;
-
     /// @notice keccak256 of the selection parameters: `abi.encode(uint32 topN, uint32 minThreshold,
     ///         uint32 targetThresholdBps)`.
     bytes32 public selectionParamsHash;
@@ -95,13 +83,11 @@ contract SignerSyncZkModule is Module {
     ///         proof gate are separate, observable actions; either one stops owner rotation.
     bool public paused;
 
-    bool private _initialized;
-
     /*///////////////////////////////////////////////////////////////
                             ERRORS / EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    error AlreadyInitialized();
+    error ProxyDeploymentUnsupported();
     error ZeroAddress();
     error StaleCheckpoint(uint256 submitted, uint256 lastApplied);
     error EmptySignerSet();
@@ -110,8 +96,6 @@ contract SignerSyncZkModule is Module {
     error InvalidThreshold(uint256 threshold, uint256 ownerCount);
     error SafeCallFailed(bytes data);
     error OwnerNotFound(address owner);
-    error NotParamsAuthority(address caller);
-    error InvalidParamsAuthority(address authority);
     error UnpinnedCheckpoint(uint256 checkpointId);
     error SignerSyncPaused();
     error InvalidSelectionParams();
@@ -121,9 +105,6 @@ contract SignerSyncZkModule is Module {
 
     event ZkVerifierUpdated(address indexed zkVerifier);
     event AccumulatorUpdated(address indexed accumulator);
-    event ParamsHashUpdated(bytes32 paramsHash);
-    event ParamsAuthorityTransferStarted(address indexed currentAuthority, address indexed pendingAuthority);
-    event ParamsAuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
     event SelectionParamsHashUpdated(bytes32 selectionParamsHash);
     event ActivitySourceUpdated(address indexed activitySource);
     event SignerSyncPausedUpdated(bool paused);
@@ -145,7 +126,6 @@ contract SignerSyncZkModule is Module {
     /// @param _zkVerifier The proof verifier.
     /// @param _accumulator The attestation accumulator producing checkpoints.
     /// @param _scoreSnapshot The score snapshot that pins params per checkpoint.
-    /// @param _paramsHash The initial live PageRank params reference exposed for governance status.
     /// @param _activitySource The governed instance's direct-vote activity source.
     constructor(
         address _owner,
@@ -155,98 +135,12 @@ contract SignerSyncZkModule is Module {
         IAttestationAccumulator _accumulator,
         ISignerSyncCheckpointSource _scoreSnapshot,
         ISignerActivitySource _activitySource,
-        bytes32 _paramsHash,
         uint32 _topN,
         uint32 _minThreshold,
         uint32 _targetThresholdBps,
         uint64 _maxInactiveBlocks,
         uint32 _minActivityWitnesses
     ) {
-        _init(
-            _owner,
-            _avatar,
-            _target,
-            _zkVerifier,
-            _accumulator,
-            _scoreSnapshot,
-            _activitySource,
-            _paramsHash,
-            _topN,
-            _minThreshold,
-            _targetThresholdBps,
-            _maxInactiveBlocks,
-            _minActivityWitnesses
-        );
-    }
-
-    /// @notice Factory (proxy) setup.
-    function setUp(bytes memory initializeParams) public override {
-        (
-            address _owner,
-            address _avatar,
-            address _target,
-            IZkVerifier _zkVerifier,
-            IAttestationAccumulator _accumulator,
-            ISignerSyncCheckpointSource _scoreSnapshot,
-            ISignerActivitySource _activitySource,
-            bytes32 _paramsHash,
-            uint32 _topN,
-            uint32 _minThreshold,
-            uint32 _targetThresholdBps,
-            uint64 _maxInactiveBlocks,
-            uint32 _minActivityWitnesses
-        ) = abi.decode(
-            initializeParams,
-            (
-                address,
-                address,
-                address,
-                IZkVerifier,
-                IAttestationAccumulator,
-                ISignerSyncCheckpointSource,
-                ISignerActivitySource,
-                bytes32,
-                uint32,
-                uint32,
-                uint32,
-                uint64,
-                uint32
-            )
-        );
-        _init(
-            _owner,
-            _avatar,
-            _target,
-            _zkVerifier,
-            _accumulator,
-            _scoreSnapshot,
-            _activitySource,
-            _paramsHash,
-            _topN,
-            _minThreshold,
-            _targetThresholdBps,
-            _maxInactiveBlocks,
-            _minActivityWitnesses
-        );
-    }
-
-    function _init(
-        address _owner,
-        address _avatar,
-        address _target,
-        IZkVerifier _zkVerifier,
-        IAttestationAccumulator _accumulator,
-        ISignerSyncCheckpointSource _scoreSnapshot,
-        ISignerActivitySource _activitySource,
-        bytes32 _paramsHash,
-        uint32 _topN,
-        uint32 _minThreshold,
-        uint32 _targetThresholdBps,
-        uint64 _maxInactiveBlocks,
-        uint32 _minActivityWitnesses
-    ) internal {
-        if (_initialized) revert AlreadyInitialized();
-        _initialized = true;
         if (
             _avatar == address(0) || _target == address(0) || address(_zkVerifier) == address(0)
                 || address(_accumulator) == address(0) || address(_scoreSnapshot) == address(0)
@@ -262,9 +156,13 @@ contract SignerSyncZkModule is Module {
         accumulator = _accumulator;
         scoreSnapshot = _scoreSnapshot;
         activitySource = _activitySource;
-        paramsHash = _paramsHash;
-        paramsAuthority = _owner;
         _setSelectionParams(_topN, _minThreshold, _targetThresholdBps, _maxInactiveBlocks, _minActivityWitnesses);
+    }
+
+    /// @notice Zodiac proxy-factory deployment is unsupported: the module is always deployed via
+    ///         `new` with its full configuration in the constructor.
+    function setUp(bytes memory) public pure override {
+        revert ProxyDeploymentUnsupported();
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -296,30 +194,6 @@ contract SignerSyncZkModule is Module {
         lastAppliedCheckpoint = 0;
         hasAppliedCheckpoint = false;
         emit AccumulatorUpdated(address(_accumulator));
-    }
-
-    modifier onlyParamsAuthority() {
-        if (msg.sender != paramsAuthority) revert NotParamsAuthority(msg.sender);
-        _;
-    }
-
-    function transferParamsAuthority(address nextAuthority) external onlyOwner {
-        if (nextAuthority == address(0)) revert InvalidParamsAuthority(nextAuthority);
-        pendingParamsAuthority = nextAuthority;
-        emit ParamsAuthorityTransferStarted(paramsAuthority, nextAuthority);
-    }
-
-    function acceptParamsAuthority() external {
-        if (msg.sender != pendingParamsAuthority) revert NotParamsAuthority(msg.sender);
-        address previous = paramsAuthority;
-        paramsAuthority = msg.sender;
-        pendingParamsAuthority = address(0);
-        emit ParamsAuthorityTransferred(previous, msg.sender);
-    }
-
-    function setParamsHash(bytes32 _paramsHash) external onlyParamsAuthority {
-        paramsHash = _paramsHash;
-        emit ParamsHashUpdated(_paramsHash);
     }
 
     function setSelectionParams(
