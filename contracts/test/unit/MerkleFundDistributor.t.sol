@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {RoundPins} from "test/helpers/RoundPins.sol";
 import {MerkleFundDistributor} from "../../src/merkle/MerkleFundDistributor.sol";
 import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -97,7 +99,7 @@ contract MerkleFundDistributorTest is Test {
     }
 
     function test_Constructor_RevertsOnZeroOwner() public {
-        vm.expectRevert(IMerkleFundDistributor.InvalidAddress.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         new MerkleFundDistributor(address(0), address(mockMerkleSnapshot), feeRecipient, DEFAULT_FEE_PERCENTAGE, false);
     }
 
@@ -128,8 +130,8 @@ contract MerkleFundDistributorTest is Test {
 
     function test_TransferOwnership_SetsNewPendingOwner() public {
         vm.prank(owner);
-        vm.expectEmit(true, false, false, false);
-        emit IMerkleFundDistributor.OwnershipTransferStarted(alice);
+        vm.expectEmit(true, true, false, false);
+        emit Ownable2Step.OwnershipTransferStarted(owner, alice);
         distributor.transferOwnership(alice);
 
         assertEq(distributor.pendingOwner(), alice);
@@ -138,14 +140,23 @@ contract MerkleFundDistributorTest is Test {
 
     function test_TransferOwnership_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.transferOwnership(bob);
     }
 
-    function test_TransferOwnership_RevertsOnZeroAddress() public {
+    function test_TransferOwnership_ToZeroCancelsThePendingHandshake() public {
+        vm.prank(owner);
+        distributor.transferOwnership(alice);
+        vm.prank(owner);
+        distributor.transferOwnership(address(0));
+        assertEq(distributor.pendingOwner(), address(0));
+        assertEq(distributor.owner(), owner);
+    }
+
+    function test_RenounceOwnership_IsDisabled() public {
         vm.prank(owner);
         vm.expectRevert(IMerkleFundDistributor.InvalidAddress.selector);
-        distributor.transferOwnership(address(0));
+        distributor.renounceOwnership();
     }
 
     function test_AcceptOwnership_TransfersOwnership() public {
@@ -154,7 +165,7 @@ contract MerkleFundDistributorTest is Test {
 
         vm.prank(alice);
         vm.expectEmit(true, true, false, false);
-        emit IMerkleFundDistributor.OwnershipTransferred(owner, alice);
+        emit Ownable.OwnershipTransferred(owner, alice);
         distributor.acceptOwnership();
 
         assertEq(distributor.owner(), alice);
@@ -166,7 +177,7 @@ contract MerkleFundDistributorTest is Test {
         distributor.transferOwnership(alice);
 
         vm.prank(bob);
-        vm.expectRevert(IMerkleFundDistributor.NotPendingOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
         distributor.acceptOwnership();
     }
 
@@ -183,7 +194,7 @@ contract MerkleFundDistributorTest is Test {
 
     function test_SetFeeRecipient_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.setFeeRecipient(bob);
     }
 
@@ -359,7 +370,7 @@ contract MerkleFundDistributorTest is Test {
 
     function test_SetFeePercentage_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.setFeePercentage(5e16);
     }
 
@@ -389,7 +400,7 @@ contract MerkleFundDistributorTest is Test {
 
     function test_SetMerkleSnapshot_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.setMerkleSnapshot(address(0x999));
     }
 
@@ -410,7 +421,7 @@ contract MerkleFundDistributorTest is Test {
 
     function test_SetAllowlistEnabled_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.setAllowlistEnabled(true);
     }
 
@@ -440,7 +451,7 @@ contract MerkleFundDistributorTest is Test {
 
     function test_UpdateDistributorAllowance_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.updateDistributorAllowance(bob, true);
     }
 
@@ -455,7 +466,7 @@ contract MerkleFundDistributorTest is Test {
 
     function test_Pause_RevertsIfNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.pause();
     }
 
@@ -473,7 +484,7 @@ contract MerkleFundDistributorTest is Test {
         distributor.pause();
 
         vm.prank(alice);
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         distributor.unpause();
     }
 

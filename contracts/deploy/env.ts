@@ -736,7 +736,7 @@ export class DevEnv extends EnvBase {
         {
           name: 'Governed Weighted Factory',
           script:
-            'contracts/script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedWeightedTrustgraphsFactory',
           sig: 'run(string)',
           args: () => [
             readJsonKey(
@@ -749,7 +749,7 @@ export class DevEnv extends EnvBase {
         {
           name: 'Governed Compose Factory',
           script:
-            'contracts/script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedTrustComposeFactory',
           sig: 'run(string)',
           args: () => [
             readJsonKey(
@@ -1395,7 +1395,7 @@ export class SepoliaEnv extends EnvBase {
         {
           name: 'Governed Weighted Factory',
           script:
-            'contracts/script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedWeightedTrustgraphsFactory',
           sig: 'run(string,string)',
           args: () => [
             readJsonKey(
@@ -1444,7 +1444,7 @@ export class SepoliaEnv extends EnvBase {
         {
           name: 'Governed Compose Factory',
           script:
-            'contracts/script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedTrustComposeFactory',
           sig: 'run(string,string)',
           args: () => [
             readJsonKey(
