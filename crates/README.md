@@ -14,7 +14,7 @@ cargo fmt --all --check
 |---|---|
 | `composition-core` | Canonical score-composition model, encodings, and computation |
 | `contributions-core` | Contribution claims, reconciliation, funding allocation, and journal encodings |
-| `eas-offchain-v2` | Strict EAS offchain v2 payload and typed-head verification |
+| `eas-offchain` | Strict EAS offchain v2 payload and typed-head verification |
 | `envelopes` | Authenticated offchain envelope verification, including AT Protocol and Nostr |
 | `hypercerts-core` | Hypercert record semantics, trust-edge derivation, and journal encodings |
 | `input-exporter` | CLI and library for reconstructing proof inputs from onchain state |

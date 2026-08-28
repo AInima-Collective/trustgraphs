@@ -1,6 +1,6 @@
 [package]
 name = "envelopes"
-description = "Lane-2 envelope verification: per-identity completeness commitments decoded into authenticated edge sets, in-guest. Envelope 1 = atproto repo commit; the Nostr envelope lives in nostr-envelope, envelope 0 (EAS offchain) in eas-offchain-v2."
+description = "Lane-2 envelope verification: per-identity completeness commitments decoded into authenticated edge sets, in-guest. Envelope 1 = atproto repo commit; the Nostr envelope lives in nostr-envelope, envelope 0 (EAS offchain) in eas-offchain."
 edition.workspace = true
 version.workspace = true
 authors.workspace = true

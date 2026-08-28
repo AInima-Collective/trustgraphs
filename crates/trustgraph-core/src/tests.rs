@@ -29,7 +29,7 @@ pub(crate) fn default_params() -> Params {
 }
 use crate::lane2::{self, Lane2Error};
 use crate::{AnchorRecord, Envelope0AnchorAuthorization, Envelope0PayloadWitness, Lane2Witness};
-use eas_offchain_v2::{self as eas_offchain, eip712_digest, payload_v1};
+use eas_offchain::{eip712_digest, payload};
 use k256::ecdsa::SigningKey;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -132,7 +132,7 @@ fn resign_history(fixture: &mut Fixture) {
     let head_domain = fixture.params.envelope0_domain_separators[lane2::HEAD_DOMAIN_INDEX];
     let mut previous_head = B256::ZERO;
     for (fold_index, anchor) in fixture.witness.anchors.iter().enumerate() {
-        let message = payload_v1::AnchorMessage {
+        let message = payload::AnchorMessage {
             node_id: anchor.node_id,
             envelope_kind: anchor.envelope_kind,
             schema_uid: fixture.params.schema_uid,
@@ -141,7 +141,7 @@ fn resign_history(fixture: &mut Fixture) {
             count: anchor.count,
             data_commitment: anchor.data_commitment,
         };
-        let digest = eip712_digest(head_domain, payload_v1::anchor_struct_hash(&message));
+        let digest = eip712_digest(head_domain, payload::anchor_struct_hash(&message));
         fixture.witness.authorizations[fold_index].head_signature = sign_prehash(&key, &digest);
         previous_head = anchor.head;
     }
@@ -211,7 +211,7 @@ fn future_time_is_checked_against_the_first_committing_anchor() {
     fixture.witness.anchors[0].block_timestamp = 1;
     assert_eq!(
         lane2::process(&fixture.params, &fixture.witness).unwrap_err(),
-        Lane2Error::Payload(payload_v1::PayloadError::FutureTime)
+        Lane2Error::Payload(payload::PayloadError::FutureTime)
     );
 }
 

@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'packages/eas-offchain-client/**'
-      - 'crates/eas-offchain-v2/**'
+      - 'crates/eas-offchain/**'
       - 'crates/input-exporter/**'
       - 'crates/operator-core/**'
       - 'crates/trustgraph-core/**'
@@ -134,7 +134,7 @@ jobs:
           pnpm --dir packages/frontend exec tsc --noEmit
 
       - name: Guest and reader suites
-        run: cargo test -p eas-offchain-v2 -p trustgraph-core -p input-exporter
+        run: cargo test -p eas-offchain -p trustgraph-core -p input-exporter
 
       - name: Registry and factory suites
         env:

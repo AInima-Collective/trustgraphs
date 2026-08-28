@@ -1,7 +1,7 @@
 //! Envelope 0 — the strict EAS off-chain v2 append-only log.
 //!
 //! The production wire protocol, bounded decoder, typed head authorization, and verifier live in
-//! [`payload_v1`]. This parent module contains only the shared canonical primitives used by that
+//! [`payload`]. This parent module contains only the shared canonical primitives used by that
 //! codec and by fixture/debug tooling. The earlier JSON witness, portable EIP-191 head, live-set
 //! pruning, expiration, and Rule-Φ verifier were removed when M1 switched consensus ingestion.
 
@@ -11,7 +11,7 @@ use zk_core::fold::fold;
 use zk_core::words::{word_addr, word_u256, word_u64, word_u8};
 
 pub mod ecdsa;
-pub mod payload_v1;
+pub mod payload;
 
 /// The EIP-712 `Attest` type hash for EAS off-chain v2, locked to the official SDK corpus.
 pub fn attest_typehash() -> B256 {
