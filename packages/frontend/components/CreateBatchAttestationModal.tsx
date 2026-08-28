@@ -39,6 +39,7 @@ type BatchRecipient = {
   /** What the person entered. Retained so ENS can be checked again before signing. */
   identifier: string
   label?: string
+  confidence: number
 }
 
 const splitAccountIdentifiers = (input: string) =>
@@ -49,6 +50,16 @@ const splitAccountIdentifiers = (input: string) =>
 
 const shortAddress = (address: string) =>
   `${address.slice(0, 6)}…${address.slice(-4)}`
+
+const confidenceSummary = (recipients: BatchRecipient[]) => {
+  if (recipients.length === 0) return 'No confidence scores'
+  const scores = recipients.map(({ confidence }) => confidence)
+  const minimum = Math.min(...scores)
+  const maximum = Math.max(...scores)
+  return minimum === maximum
+    ? `${minimum}% confidence`
+    : `${minimum}–${maximum}% confidence range`
+}
 
 export function CreateBatchAttestationModal({
   className,
@@ -81,7 +92,7 @@ export function CreateBatchAttestationModal({
   const [recipientInput, setRecipientInput] = useState('')
   const [recipients, setRecipients] = useState<BatchRecipient[]>([])
   const [memberSearch, setMemberSearch] = useState('')
-  const [confidence, setConfidence] = useState(100)
+  const [batchConfidence, setBatchConfidence] = useState(100)
   const [comment, setComment] = useState('')
   const [endorsed, setEndorsed] = useState(false)
   const [isResolving, setIsResolving] = useState(false)
@@ -129,7 +140,7 @@ export function CreateBatchAttestationModal({
     setRecipientInput('')
     setRecipients([])
     setMemberSearch('')
-    setConfidence(100)
+    setBatchConfidence(100)
     setComment('')
     setEndorsed(false)
     setIsResolving(false)
@@ -205,6 +216,7 @@ export function CreateBatchAttestationModal({
           resolved.push({
             address,
             identifier,
+            confidence: batchConfidence,
             ...(parsed.kind === 'ens' ? { label: parsed.name } : {}),
           })
         } catch (resolveError) {
@@ -247,6 +259,7 @@ export function CreateBatchAttestationModal({
       {
         address: getAddress(address),
         identifier: address,
+        confidence: batchConfidence,
         ...(ensName ? { label: ensName } : {}),
       },
     ])
@@ -258,6 +271,24 @@ export function CreateBatchAttestationModal({
       current.filter(
         (recipient) => recipient.address.toLowerCase() !== address.toLowerCase()
       )
+    )
+  }
+
+  const setRecipientConfidence = (address: Address, confidence: number) => {
+    const nextConfidence = Math.min(100, Math.max(0, Math.round(confidence)))
+    setRecipients((current) =>
+      current.map((recipient) =>
+        recipient.address.toLowerCase() === address.toLowerCase()
+          ? { ...recipient, confidence: nextConfidence }
+          : recipient
+      )
+    )
+  }
+
+  const setEveryConfidence = (confidence: number) => {
+    setBatchConfidence(confidence)
+    setRecipients((current) =>
+      current.map((recipient) => ({ ...recipient, confidence }))
     )
   }
 
@@ -303,7 +334,7 @@ export function CreateBatchAttestationModal({
     setResolutionProgress('')
     try {
       await createAttestations(
-        recipients.map(({ address }) => ({
+        recipients.map(({ address, confidence }) => ({
           schema: vouchSchema.uid,
           recipient: address,
           data: {
@@ -358,11 +389,12 @@ export function CreateBatchAttestationModal({
         <div className="border-b border-hairline px-5 py-5 sm:px-7 sm:py-6">
           <p className="tg-label">Batch attestation · {network.name}</p>
           <h3 className="tg-display mt-2 max-w-2xl text-2xl text-text sm:text-3xl">
-            One considered statement, sent to every account you choose.
+            Distinct vouches, composed in one deliberate pass.
           </h3>
           <p className="mt-3 max-w-2xl text-sm text-text-muted">
-            Each recipient gets a separate, revocable vouch. The batch is
-            submitted together and either succeeds together or not at all.
+            Each recipient gets a separate confidence score and revocable vouch.
+            The batch is submitted together and either succeeds together or not
+            at all.
           </p>
         </div>
 
@@ -483,12 +515,13 @@ export function CreateBatchAttestationModal({
                 recipients={recipients}
                 existingRecipientAddresses={existingRecipientAddresses}
                 onRemove={removeRecipient}
+                onConfidenceChange={setRecipientConfidence}
               />
             </section>
 
             <section className="bg-surface p-5 sm:p-7">
-              <p className="tg-marker">02 / Shared statement</p>
-              <h4 className="mt-2 text-base text-text">Set the vouch</h4>
+              <p className="tg-marker">02 / Vouch settings</p>
+              <h4 className="mt-2 text-base text-text">Set the baseline</h4>
 
               <div className="mt-5 border border-hairline bg-surface-2 p-4">
                 <p className="tg-label">Network criteria</p>
@@ -512,18 +545,22 @@ export function CreateBatchAttestationModal({
 
               <div className="mt-5">
                 <div className="flex items-end justify-between gap-4">
-                  <span className="tg-label-strong">Confidence</span>
+                  <span className="tg-label-strong">Set every score</span>
                   <span className="tg-display text-3xl tabular-nums text-text">
-                    {confidence}%
+                    {batchConfidence}%
                   </span>
                 </div>
                 <Slider
-                  value={confidence}
-                  onValueChange={setConfidence}
-                  ariaLabel="Confidence for every vouch"
-                  ariaValueText={`${confidence}% confident`}
+                  value={batchConfidence}
+                  onValueChange={setEveryConfidence}
+                  ariaLabel="Set the confidence score for every vouch"
+                  ariaValueText={`${batchConfidence}% confident for every vouch`}
                   className="mt-2"
                 />
+                <p className="mt-1 text-[10px] leading-relaxed text-text-subtle">
+                  This sets the whole queue. Fine-tune individual scores beside
+                  each recipient.
+                </p>
               </div>
 
               <div className="mt-5">
@@ -583,7 +620,8 @@ export function CreateBatchAttestationModal({
               <section>
                 <p className="tg-marker">03 / Review</p>
                 <h4 className="tg-display mt-2 text-2xl text-text sm:text-3xl">
-                  {recipients.length} distinct edges. One shared judgment.
+                  {recipients.length} distinct edge
+                  {recipients.length === 1 ? '' : 's'}. Individually weighted.
                 </h4>
                 <p className="mt-3 max-w-2xl text-sm text-text-muted">
                   Check every destination. A new vouch replaces your current
@@ -615,7 +653,7 @@ export function CreateBatchAttestationModal({
                         )}
                       </span>
                       <span className="text-xs tabular-nums text-text-muted">
-                        {confidence}%
+                        {recipient.confidence}%
                       </span>
                     </div>
                   ))}
@@ -625,7 +663,7 @@ export function CreateBatchAttestationModal({
               <aside className="h-fit border border-hairline bg-surface-2 p-5">
                 <p className="tg-label">Statement</p>
                 <p className="tg-display mt-3 text-2xl text-text">
-                  {confidence}% confidence
+                  {confidenceSummary(recipients)}
                 </p>
                 <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-text-muted">
                   {comment || 'No additional comment.'}
@@ -765,10 +803,12 @@ function RecipientQueue({
   recipients,
   existingRecipientAddresses,
   onRemove,
+  onConfidenceChange,
 }: {
   recipients: BatchRecipient[]
   existingRecipientAddresses: Set<string>
   onRemove: (address: Address) => void
+  onConfidenceChange: (address: Address, confidence: number) => void
 }) {
   if (recipients.length === 0) {
     return (
@@ -783,7 +823,10 @@ function RecipientQueue({
 
   return (
     <div className="mt-7">
-      <p className="tg-label">Recipient queue</p>
+      <div className="flex items-end justify-between gap-3">
+        <p className="tg-label">Recipient queue</p>
+        <p className="text-[10px] text-text-subtle">Confidence / 0–100</p>
+      </div>
       <div className="mt-3 divide-y divide-hairline border-y border-hairline">
         {recipients.map((recipient, index) => {
           const updatesExisting = existingRecipientAddresses.has(
@@ -792,7 +835,7 @@ function RecipientQueue({
           return (
             <div
               key={recipient.address}
-              className="grid grid-cols-[2rem_minmax(0,1fr)_2.75rem] items-center gap-2 py-2"
+              className="grid grid-cols-[2rem_minmax(0,1fr)_4.75rem_2.75rem] items-center gap-2 py-2"
             >
               <span className="text-[10px] tabular-nums text-text-subtle">
                 {String(index + 1).padStart(2, '0')}
@@ -812,6 +855,27 @@ function RecipientQueue({
                   )}
                 </span>
               </span>
+              <label className="flex items-center justify-end gap-1 text-[10px] text-text-muted">
+                <span className="sr-only">
+                  Confidence for {recipient.label || recipient.address}
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  inputMode="numeric"
+                  value={recipient.confidence}
+                  onChange={(event) => {
+                    const nextConfidence = event.currentTarget.valueAsNumber
+                    if (Number.isFinite(nextConfidence)) {
+                      onConfidenceChange(recipient.address, nextConfidence)
+                    }
+                  }}
+                  className="h-8 w-14 px-2 text-right text-xs"
+                />
+                <span aria-hidden="true">%</span>
+              </label>
               <button
                 type="button"
                 aria-label={`Remove ${recipient.label || recipient.address}`}
