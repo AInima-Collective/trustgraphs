@@ -392,15 +392,6 @@ export function useGovernance() {
           proof: userVotingPower.proof,
         })
 
-        // Get current nonce
-        const nonce = await publicClient.getTransactionCount({
-          address: address,
-          blockTag: 'pending',
-        })
-
-        // Get gas price
-        const gasPrice = await publicClient.getGasPrice()
-
         const [receipt] =
           voteType === undefined || voteType === null
             ? await (async () => {
@@ -441,9 +432,6 @@ export function useGovernance() {
                       userVotingPower.proof as `0x${string}`[],
                     ],
                     gas: (gasEstimate * 120n) / 100n, // Add 20% buffer
-                    gasPrice,
-                    nonce,
-                    type: 'legacy',
                   },
                   successMessage: 'Proposal created!',
                 })
@@ -488,9 +476,6 @@ export function useGovernance() {
                       voteType,
                     ],
                     gas: (gasEstimate * 120n) / 100n, // Add 20% buffer
-                    gasPrice,
-                    nonce,
-                    type: 'legacy',
                   },
                   successMessage: 'Proposal created & vote cast!',
                 })
@@ -563,12 +548,6 @@ export function useGovernance() {
           proof: votingPower.proof,
         })
 
-        // Get current nonce
-        const nonce = await publicClient.getTransactionCount({
-          address: address,
-          blockTag: 'pending',
-        })
-
         // Estimate gas
         const gasEstimate = await publicClient.estimateContractGas({
           address: merkleGovModuleAddress,
@@ -583,9 +562,6 @@ export function useGovernance() {
           account: address,
         })
 
-        // Get gas price
-        const gasPrice = await publicClient.getGasPrice()
-
         const [receipt] = await txToast({
           tx: {
             address: merkleGovModuleAddress,
@@ -598,9 +574,6 @@ export function useGovernance() {
               votingPower.proof as `0x${string}`[],
             ],
             gas: (gasEstimate * 120n) / 100n,
-            gasPrice,
-            nonce,
-            type: 'legacy',
           },
           successMessage: 'Vote cast!',
         })
@@ -654,18 +627,10 @@ export function useGovernance() {
           account: address,
         }
         const gasEstimate = await publicClient.estimateContractGas(transaction)
-        const gasPrice = await publicClient.getGasPrice()
-        const nonce = await publicClient.getTransactionCount({
-          address,
-          blockTag: 'pending',
-        })
         const [receipt] = await txToast({
           tx: {
             ...transaction,
             gas: (gasEstimate * 120n) / 100n,
-            gasPrice,
-            nonce,
-            type: 'legacy',
           },
           successMessage:
             delegate === zeroAddress
@@ -715,12 +680,6 @@ export function useGovernance() {
 
         console.log('Executing proposal:', proposalId)
 
-        // Get current nonce
-        const nonce = await publicClient.getTransactionCount({
-          address: address,
-          blockTag: 'pending',
-        })
-
         // Estimate gas
         const gasEstimate = await publicClient.estimateContractGas({
           address: merkleGovModuleAddress,
@@ -730,9 +689,6 @@ export function useGovernance() {
           account: address,
         })
 
-        // Get gas price
-        const gasPrice = await publicClient.getGasPrice()
-
         const [receipt] = await txToast({
           tx: {
             address: merkleGovModuleAddress,
@@ -740,9 +696,6 @@ export function useGovernance() {
             functionName: 'execute',
             args: [BigInt(proposalId)],
             gas: (gasEstimate * 120n) / 100n,
-            gasPrice,
-            nonce,
-            type: 'legacy',
           },
           successMessage: 'Proposal executed!',
         })

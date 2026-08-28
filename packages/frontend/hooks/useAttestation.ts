@@ -25,7 +25,7 @@ import {
   easDelegationDomain,
   splitEasRelaySignature,
 } from '@/lib/eas-delegation'
-import { parseErrorMessage, shouldRetryTxError } from '@/lib/error'
+import { parseErrorMessage } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { txToast } from '@/lib/tx'
 import { usePonderQuery } from '@/lib/use-ponder-query'
@@ -215,81 +215,40 @@ export function useAttestation(uid?: Hex) {
       }
 
       const requestData = intoAttestationRequestData(attestationData)
-
-      // Helper function to execute transaction with fresh nonce
-      const executeTransaction = async (
-        retryCount = 0
-      ): Promise<WaitForTransactionReceiptReturnType> => {
-        const nonce = await publicClient!.getTransactionCount({
-          address: connectedAddress,
-          blockTag: retryCount === 0 ? 'pending' : 'latest',
-        })
-
-        const attestationRequest = {
-          schema: attestationData.schema,
-          data: requestData,
-        }
-
-        // Estimate gas and simulate
-        const gasEstimate = await publicClient!.estimateContractGas({
-          address: easAddress,
-          abi: easAbi,
-          functionName: 'attest',
-          args: [attestationRequest],
-          account: connectedAddress,
-        })
-
-        await publicClient!.simulateContract({
-          address: easAddress,
-          abi: easAbi,
-          functionName: 'attest',
-          args: [attestationRequest],
-          account: connectedAddress,
-        })
-
-        const gasPrice = await publicClient!.getGasPrice()
-
-        const [receipt] = await txToast({
-          tx: {
-            address: easAddress,
-            abi: easAbi,
-            functionName: 'attest',
-            args: [attestationRequest],
-            gas: (gasEstimate * 120n) / 100n,
-            gasPrice: gasPrice,
-            nonce,
-            type: 'legacy',
-          },
-          onTransactionSent: setHash,
-          // Saved-not-yet-counted, in one line: the attestation is durable now, the score effect
-          // arrives with the next verified update. Keeps a two-minute pipeline from reading as
-          // "nothing happened".
-          successMessage:
-            'Attestation saved. It counts toward the next score update.',
-        })
-
-        console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
-
-        setIsCreated(true)
-
-        // Invalidate queries to refresh the attestation data
-        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
-
-        return receipt
+      const attestationRequest = {
+        schema: attestationData.schema,
+        data: requestData,
+      }
+      const transaction = {
+        address: easAddress,
+        abi: easAbi,
+        functionName: 'attest' as const,
+        args: [attestationRequest] as const,
+        account: connectedAddress,
       }
 
-      // Execute transaction with retry logic
-      try {
-        return await executeTransaction()
-      } catch (error) {
-        if (shouldRetryTxError(error)) {
-          console.warn('Transaction failed, retrying with fresh nonce:', error)
-          // Retry once with fresh nonce
-          return await executeTransaction(1)
-        } else {
-          throw error
-        }
-      }
+      // Validate the call and retain a safety margin on the gas limit. Nonce and fee fields are
+      // intentionally omitted: the connected wallet owns its pending queue and must assign them.
+      const gasEstimate = await publicClient!.estimateContractGas(transaction)
+      await publicClient!.simulateContract(transaction)
+
+      const [receipt] = await txToast({
+        tx: {
+          ...transaction,
+          gas: (gasEstimate * 120n) / 100n,
+        },
+        onTransactionSent: setHash,
+        // Saved-not-yet-counted, in one line: the attestation is durable now, the score effect
+        // arrives with the next verified update. Keeps a two-minute pipeline from reading as
+        // "nothing happened".
+        successMessage:
+          'Attestation saved. It counts toward the next score update.',
+      })
+
+      console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
+      setIsCreated(true)
+      queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+      return receipt
     } catch (err) {
       console.error('Error creating attestation:', err)
       setError(parseErrorMessage(err))
@@ -335,50 +294,26 @@ export function useAttestation(uid?: Hex) {
         data,
       }))
 
-      const executeTransaction = async (retryCount = 0): Promise<void> => {
-        const nonce = await publicClient!.getTransactionCount({
-          address: connectedAddress,
-          blockTag: retryCount === 0 ? 'pending' : 'latest',
-        })
-        const transaction = {
-          address: easAddress,
-          abi: easAbi,
-          functionName: 'multiAttest' as const,
-          args: [multiRequests] as const,
-          account: connectedAddress,
-        }
-        const gasEstimate = await publicClient!.estimateContractGas(transaction)
-        await publicClient!.simulateContract(transaction)
-        const gasPrice = await publicClient!.getGasPrice()
-        const [receipt] = await txToast({
-          tx: {
-            ...transaction,
-            gas: (gasEstimate * 120n) / 100n,
-            gasPrice,
-            nonce,
-            type: 'legacy',
-          },
-          onTransactionSent: setHash,
-          successMessage: `${attestationsData.length} ratings saved. They count toward the next score update.`,
-        })
-        console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
-        setIsCreated(true)
-        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+      const transaction = {
+        address: easAddress,
+        abi: easAbi,
+        functionName: 'multiAttest' as const,
+        args: [multiRequests] as const,
+        account: connectedAddress,
       }
-
-      try {
-        await executeTransaction()
-      } catch (transactionError) {
-        if (shouldRetryTxError(transactionError)) {
-          console.warn(
-            'Transaction failed, retrying with fresh nonce:',
-            transactionError
-          )
-          await executeTransaction(1)
-        } else {
-          throw transactionError
-        }
-      }
+      const gasEstimate = await publicClient!.estimateContractGas(transaction)
+      await publicClient!.simulateContract(transaction)
+      const [receipt] = await txToast({
+        tx: {
+          ...transaction,
+          gas: (gasEstimate * 120n) / 100n,
+        },
+        onTransactionSent: setHash,
+        successMessage: `${attestationsData.length} ratings saved. They count toward the next score update.`,
+      })
+      console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
+      setIsCreated(true)
+      queryClient.invalidateQueries({ queryKey: attestationKeys.all })
     } catch (err) {
       console.error('Error creating attestations:', err)
       setError(parseErrorMessage(err))
@@ -414,76 +349,36 @@ export function useAttestation(uid?: Hex) {
         throw new Error(`Invalid schema UID format: ${schemaUid}`)
       }
 
-      // Helper function to execute transaction with fresh nonce
-      const executeTransaction = async (retryCount = 0): Promise<void> => {
-        const nonce = await publicClient!.getTransactionCount({
-          address: connectedAddress!,
-          blockTag: retryCount === 0 ? 'pending' : 'latest',
-        })
-
-        const revocationRequest = {
-          schema: schemaUid,
-          data: {
-            uid: uid,
-            value: 0n,
-          },
-        }
-
-        // Estimate gas and simulate
-        const gasEstimate = await publicClient!.estimateContractGas({
-          address: easAddress,
-          abi: easAbi,
-          functionName: 'revoke',
-          args: [revocationRequest],
-          account: connectedAddress,
-        })
-
-        await publicClient!.simulateContract({
-          address: easAddress,
-          abi: easAbi,
-          functionName: 'revoke',
-          args: [revocationRequest],
-          account: connectedAddress,
-        })
-
-        const gasPrice = await publicClient!.getGasPrice()
-
-        const [receipt] = await txToast({
-          tx: {
-            address: easAddress,
-            abi: easAbi,
-            functionName: 'revoke',
-            args: [revocationRequest],
-            gas: (gasEstimate * 120n) / 100n,
-            gasPrice: gasPrice,
-            nonce,
-            type: 'legacy',
-          },
-          onTransactionSent: setHash,
-          successMessage:
-            'Attestation revoked. The change counts toward the next score update.',
-        })
-
-        console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
-
-        setIsRevoked(true)
-
-        // Invalidate queries to refresh the attestation data
-        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+      const revocationRequest = {
+        schema: schemaUid,
+        data: {
+          uid,
+          value: 0n,
+        },
       }
-
-      // Execute transaction with retry logic
-      try {
-        await executeTransaction()
-      } catch (error) {
-        if (shouldRetryTxError(error)) {
-          console.warn('Transaction failed, retrying with fresh nonce:', error)
-          // Retry once with fresh nonce
-          await executeTransaction(1)
-        } else {
-          throw error
-        }
+      const transaction = {
+        address: easAddress,
+        abi: easAbi,
+        functionName: 'revoke' as const,
+        args: [revocationRequest] as const,
+        account: connectedAddress!,
       }
+      const gasEstimate = await publicClient!.estimateContractGas(transaction)
+      await publicClient!.simulateContract(transaction)
+
+      const [receipt] = await txToast({
+        tx: {
+          ...transaction,
+          gas: (gasEstimate * 120n) / 100n,
+        },
+        onTransactionSent: setHash,
+        successMessage:
+          'Attestation revoked. The change counts toward the next score update.',
+      })
+
+      console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
+      setIsRevoked(true)
+      queryClient.invalidateQueries({ queryKey: attestationKeys.all })
     } catch (err) {
       console.error('Error revoking attestation:', err)
       setError(parseErrorMessage(err))

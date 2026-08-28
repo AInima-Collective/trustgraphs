@@ -16,7 +16,7 @@ export const makeWalletConnectors = (): CreateConnectorFn[] => [
   metaMask(),
   coinbaseWallet(),
   walletConnect({
-    projectId: '842e3d38e32065c8b0ce2622ff296651',
+    projectId: '4d302a761ccdd58e0ec933cbc45c7280',
     metadata: {
       name: 'Trustgraphs',
       description:

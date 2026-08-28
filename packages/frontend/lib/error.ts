@@ -47,21 +47,3 @@ export const parseErrorMessage = (err: any) => {
 
   return err.message
 }
-
-/**
- * Whether to retry a transaction error.
- */
-export const shouldRetryTxError = (err: any) => {
-  const message = (
-    err instanceof Error ? err.message : String(err)
-  ).toLowerCase()
-
-  // Nonce conflicts or RPC errors.
-  return (
-    message.includes('nonce too low') ||
-    message.includes('nonce too high') ||
-    message.includes('transaction underpriced') ||
-    message.includes('internal json-rpc error') ||
-    message.includes('internal error')
-  )
-}
