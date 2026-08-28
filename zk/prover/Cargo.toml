@@ -76,18 +76,17 @@ hex = "0.4"
 bincode = "1"
 clap = { version = "4", features = ["derive"] }
 
-# --- witness-atproto feature only (host-side, heavy; kept out of default builds) ---
 # The envelope verifier crate (light; guest-grade deps) — reused verbatim on the host so the
 # assembled bundle is byte-checked against the SAME code the guest runs.
 envelopes = { path = "../../crates/envelopes" }
 zk-core = { path = "../../crates/zk-core" }
-# reqwest blocking follows the getRepo 302 → PDS host automatically (M1 finding). rustls to avoid
-# a system-OpenSSL build dependency.
+# reqwest blocking follows the getRepo 302 → PDS host automatically. rustls to avoid
+# a system-OpenSSL build dependency. Only the witness/fetch features need it.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"], optional = true }
 ipld-core = { version = "0.4" }
 serde_ipld_dagcbor = { version = "=0.6.4" }
 sha2 = { version = "0.10", default-features = false }
-chrono = { version = "0.4", default-features = false, features = ["std", "clock"], optional = false }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 postgres = { version = "0.19", features = ["with-chrono-0_4", "with-serde_json-1", "with-uuid-1"], optional = true }
 uuid = { version = "1", features = ["serde"], optional = true }
 k256 = { version = "0.13.4", features = ["ecdsa"], optional = true }

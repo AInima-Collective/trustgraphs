@@ -30,12 +30,3 @@ pub fn recover_address(prehash: &B256, sig65: &[u8]) -> Result<Address, Envelope
     let hash = keccak256(&uncompressed.as_bytes()[1..]);
     Ok(Address::from_slice(&hash[12..]))
 }
-
-/// The EIP-191 "personal sign" digest of a 32-byte payload:
-/// `keccak256("\x19Ethereum Signed Message:\n32" ‖ payload)`.
-pub fn eip191_digest32(payload: &B256) -> B256 {
-    let mut buf = Vec::with_capacity(28 + 32);
-    buf.extend_from_slice(b"\x19Ethereum Signed Message:\n32");
-    buf.extend_from_slice(payload.as_slice());
-    keccak256(&buf)
-}

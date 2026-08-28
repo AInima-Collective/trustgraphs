@@ -34,7 +34,6 @@ pub fn sample_signer_input() -> SignerInput {
     let g = sample_input();
     let scored = trustgraph_core::compute::compute(&g).scores;
     let current_signer = scored[0].0;
-    let one = g.params.precision_scale / g.params.precision_scale;
     let activity = vec![
         SignerActivity { account: scored[0].0, proposal_id: U256::from(1), block_number: 100 },
         SignerActivity { account: scored[1].0, proposal_id: U256::from(2), block_number: 101 },
@@ -57,7 +56,7 @@ pub fn sample_signer_input() -> SignerInput {
         activity_checkpoint: ActivityCheckpoint { acc: activity_acc, count: 2, block_number: 101 },
         activity_checkpoint_id: 1,
         current_signers: vec![current_signer],
-        current_threshold: one,
+        current_threshold: U256::from(1u8),
         was_initialized: false,
         instance_domain: Default::default(),
     }

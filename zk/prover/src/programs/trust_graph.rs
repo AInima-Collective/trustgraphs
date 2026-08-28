@@ -10,15 +10,10 @@ use trustgraph_core::{compute::compute, Binding, GuestInput, Params, RawEdge};
 
 use crate::common;
 
-/// The root-producer guest ELF, built by build.rs (`sp1_build::build_program`).
 /// This program's guest ELF, for callers that drive the prover as a library (`zk/operator`).
 /// The vkey it derives is the one the deployed `SP1JournalVerifier` must be pinned to; the daemon
 /// checks that at startup rather than discovering it on a failed submit.
 pub fn elf() -> Elf {
-    load_elf()
-}
-
-fn load_elf() -> Elf {
     include_elf!("trustgraph-program-v2")
 }
 
@@ -133,7 +128,7 @@ const OUT_DIR: &str = "trust-graph";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
-        Command::Vkey => common::print_vkey(load_elf()),
+        Command::Vkey => common::print_vkey(elf()),
         Command::Paramshash { input, params } => {
             let p: Params = match params {
                 Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
@@ -157,7 +152,7 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
     let native_pub = encode::journal_encoded(&native.journal);
 
-    common::execute_and_check(load_elf(), &input, &native_pub)?;
+    common::execute_and_check(elf(), &input, &native_pub)?;
 
     println!("journalDigest: 0x{}", hex::encode(encode::journal_digest(&native.journal)));
     println!("outputRoot:    0x{}", hex::encode(native.journal.output_root));
@@ -184,7 +179,7 @@ fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Resul
     // next to proof.bin (same bytes execute writes — its sha256 is the journal's ipfsHash).
     let native = compute(&input);
 
-    let (public_values, seal) = common::prove_and_verify(load_elf(), &input, groth16)?;
+    let (public_values, seal) = common::prove_and_verify(elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
     let proof_path = common::write_out(&out, "proof.bin", &blob)?;

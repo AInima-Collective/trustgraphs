@@ -4,7 +4,7 @@
 //! (`tests/fixtures/atproto/hypercerts`) so `execute`/`prove` run with no external witness.
 
 use alloy_primitives::{B256, U256};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Subcommand;
 use envelopes::atproto::{plc::PlcOpWitness, AtprotoWitness};
 use hypercerts_core::compute::{compute, params_hash, GuestInput, Params, ENVELOPE_ATPROTO};
@@ -22,10 +22,6 @@ use crate::common;
 /// The vkey it derives is the one the deployed `SP1JournalVerifier` must be pinned to; the daemon
 /// checks that at startup rather than discovering it on a failed submit.
 pub fn elf() -> Elf {
-    load_elf()
-}
-
-fn load_elf() -> Elf {
     include_elf!("trustgraph-hypercerts-program")
 }
 
@@ -147,9 +143,6 @@ pub enum Command {
     Vkey,
     /// Print keccak256 of the canonical params (17-word tuple, §6.1).
     Paramshash { input: Option<String> },
-    /// Assemble the atproto witness bundle for the seed DID (host-only, network). Not wired here:
-    /// witness fetching lives in the `witness fetch` group behind `--features witness-atproto`.
-    Fetch,
     /// Run the guest via the SP1 executor and assert it matches native `compute` (no proof).
     Execute {
         input: Option<String>,
@@ -207,17 +200,12 @@ const OUT_DIR: &str = "hypercerts";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
-        Command::Vkey => common::print_vkey(load_elf()),
+        Command::Vkey => common::print_vkey(elf()),
         Command::Paramshash { input } => {
             let input = load_input(input.as_ref())?;
             println!("0x{}", hex::encode(params_hash(&input.params)));
             Ok(())
         }
-        Command::Fetch => Err(anyhow!(
-            "hypercerts witness assembly is not part of this group; build the prover with \
-             `--features witness-atproto` and run `trustgraph-prover witness fetch --did <did>` \
-             to archive the CAR + PLC log, then pass the assembled bundle to `hypercerts execute`."
-        )),
         Command::Execute { input, out_dir } => {
             cmd_execute(load_input(input.as_ref())?, common::out_dir(out_dir.as_ref(), OUT_DIR)?)
         }
@@ -429,7 +417,7 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
     let native_pub = encode::journal_encoded(&native.journal);
 
-    common::execute_and_check(load_elf(), &input, &native_pub)?;
+    common::execute_and_check(elf(), &input, &native_pub)?;
 
     println!("journalDigest: 0x{}", hex::encode(encode::journal_digest(&native.journal)));
     println!("anchorAcc:     0x{}", hex::encode(native.journal.anchor_acc));
@@ -461,7 +449,7 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
 fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
 
-    let (public_values, seal) = common::prove_and_verify(load_elf(), &input, groth16)?;
+    let (public_values, seal) = common::prove_and_verify(elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
     let proof_path = common::write_out(&out, "hypercerts_proof.bin", &blob)?;

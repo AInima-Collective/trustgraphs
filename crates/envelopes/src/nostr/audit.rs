@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use super::event::lowercase_hex;
 use super::NostrError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,8 +185,4 @@ pub fn verify_prefix(
         previous = Some(computed);
     }
     Ok(previous.unwrap_or([0u8; 32]))
-}
-
-pub fn event_object_id(id: &[u8; 32]) -> String {
-    lowercase_hex(id)
 }

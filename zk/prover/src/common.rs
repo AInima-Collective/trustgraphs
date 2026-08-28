@@ -48,7 +48,7 @@ pub fn abi_encode_two_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
         let mut v = word(x.len()).to_vec();
         v.extend_from_slice(x);
         let pad = (32 - x.len() % 32) % 32;
-        v.extend(std::iter::repeat(0u8).take(pad));
+        v.extend(std::iter::repeat_n(0u8, pad));
         v
     }
     let a_enc = enc(a);
@@ -104,7 +104,7 @@ pub fn execute_values_untraced<T: Serialize>(
 ) -> Result<Execution> {
     use sp1_core_executor::{MinimalExecutorEnum, Program};
 
-    let program = Arc::new(Program::from(&*elf).map_err(|error| anyhow!("decode ELF: {error}"))?);
+    let program = Arc::new(Program::from(&elf).map_err(|error| anyhow!("decode ELF: {error}"))?);
     let mut executor = MinimalExecutorEnum::new(program, false, None);
     executor.with_input(&bincode::serialize(input)?);
     while executor
@@ -133,7 +133,7 @@ pub fn execute_values_untraced<T: Serialize>(
 pub fn execute_values_untraced_rejected<T: Serialize>(elf: Elf, input: &T) -> Result<u64> {
     use sp1_core_executor::{MinimalExecutorEnum, Program};
 
-    let program = Arc::new(Program::from(&*elf).map_err(|error| anyhow!("decode ELF: {error}"))?);
+    let program = Arc::new(Program::from(&elf).map_err(|error| anyhow!("decode ELF: {error}"))?);
     let mut executor = MinimalExecutorEnum::new(program, false, None);
     executor.with_input(&bincode::serialize(input)?);
     while executor
