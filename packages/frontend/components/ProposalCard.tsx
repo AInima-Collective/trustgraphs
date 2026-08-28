@@ -434,7 +434,7 @@ export function ProposalCard({
           <Button
             onClick={handleExecute}
             disabled={isLoading}
-            variant="brand"
+            variant="default"
             size="sm"
           >
             Execute proposal

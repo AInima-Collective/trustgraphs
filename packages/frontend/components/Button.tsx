@@ -13,12 +13,8 @@ import { cn } from '@/lib/utils'
  * CO-OP" reads as intentional); anything that genuinely must stay in sentence
  * case can pass `normal-case` through className.
  *
- * `brand` is kept as an alias of `default` rather than deleted, because the
- * blue it used to paint no longer exists and ~a dozen call-sites still ask for
- * it. Both now render ink.
- *
  * FOCUS IS AN OUTLINE, NOT A RING. The old `ring-1 ring-ring` resolved to
- * --accent, which is also what `default`, `brand` and `destructive` fill with:
+ * --accent, which is also what `default` and `destructive` fill with:
  * the indicator was painted in the button's own colour at 1.00:1, so focusing a
  * primary CTA looked like it had grown a pixel. An outline with an offset sits
  * on the page behind the control, where ink clears 15:1 in both themes.
@@ -29,8 +25,6 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'border-ink bg-ink text-ink-fg hover:opacity-90 active:opacity-80',
-        brand:
           'border-ink bg-ink text-ink-fg hover:opacity-90 active:opacity-80',
         destructive:
           'border-error bg-error text-ink-fg hover:opacity-90 active:opacity-80',

@@ -476,7 +476,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
         return (
           <Button
             size="xs"
-            variant="brand"
+            variant="default"
             onClick={(e) => {
               e.stopPropagation()
               handleClaim(row)
@@ -584,7 +584,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
           !isLoadingCurrentEntry &&
           !currentEntryFailed && (
             <Button
-              variant="brand"
+              variant="default"
               size="lg"
               className="w-full sm:w-auto"
               onClick={() => handleClaim(currentDistribution)}

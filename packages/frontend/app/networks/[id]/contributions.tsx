@@ -442,7 +442,7 @@ const ClaimCard = ({
             <div className="flex flex-col gap-2 min-[360px]:flex-row">
               <Button
                 type="button"
-                variant="brand"
+                variant="default"
                 size="lg"
                 onClick={() => onRespond('accept')}
                 disabled={responseBusy}
@@ -1025,7 +1025,7 @@ export const ContributionsNetworkPage = ({
             {phase === 'open' && (
               <Button
                 type="button"
-                variant="brand"
+                variant="default"
                 size="lg"
                 className="w-full sm:w-auto"
                 onClick={() => setSubmitOpen(true)}
@@ -1040,7 +1040,7 @@ export const ContributionsNetworkPage = ({
                     ? `/networks/${trustNetwork.id}/rewards`
                     : `/networks/${network.id}/claim`
                 }
-                variant="brand"
+                variant="default"
                 size="lg"
                 className="w-full sm:w-auto"
               >
@@ -1211,7 +1211,7 @@ export const ContributionsNetworkPage = ({
             {unsavedDirtyUids.length > 0 && (
               <Button
                 size="lg"
-                variant="brand"
+                variant="default"
                 onClick={saveRatings}
                 disabled={isCreating}
                 className="shrink-0"

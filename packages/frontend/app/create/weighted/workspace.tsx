@@ -643,11 +643,6 @@ export const WeightedPriorWorkspace = ({
       return
     }
     const params = new URLSearchParams(window.location.search)
-    const instance = params.get('instance')
-    if (instance && isHex(instance) && instance.length === 66) {
-      router.replace(`/networks/${instance}/settings?tab=scoring`)
-      return
-    }
     const accounts = (params.get('accounts') ?? '')
       .split(',')
       .map((value) => value.trim())
