@@ -769,7 +769,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
-name = "eas-offchain-v2"
+name = "eas-offchain"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
@@ -2091,6 +2091,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5d440709e79d88e51ac01c4b72fc6cb7314017bb7da9eeff678aa94c10e3ea8"
+dependencies = [
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2526,7 +2536,7 @@ name = "trustgraph-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
- "eas-offchain-v2",
+ "eas-offchain",
  "pagerank-core",
  "serde",
  "zk-core",
@@ -2805,6 +2815,7 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "serde",
+ "serde_bytes",
  "sha2",
 ]
 
