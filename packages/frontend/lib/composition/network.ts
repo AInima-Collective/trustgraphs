@@ -20,6 +20,14 @@ export const compositionAsNetwork = (
   epochLength: instance.epochLength,
   createdTimestamp: instance.createdTimestamp,
   name: text(instance.metadata?.name) || instance.name,
+  ...(text(instance.metadata?.image)
+    ? { image: text(instance.metadata?.image) }
+    : {}),
+  metadataURI: instance.metadataURI,
+  metadataURIHash: instance.metadataURIHash,
+  metadataRevision: instance.metadataRevision,
+  metadataStatus: instance.metadataStatus,
+  ...(instance.metadata ? { profile: instance.metadata } : {}),
   about: text(instance.metadata?.description),
   criteria: text(instance.metadata?.criteria),
   applicationUrl: text(instance.metadata?.applicationUrl) || undefined,
@@ -37,6 +45,12 @@ export const compositionAsNetwork = (
     // Compositions have no EAS vouch resolver. The accumulator is retained here as the closest
     // common provenance field; composition screens never invoke the vouching workflow.
     easIndexerResolver: instance.accumulator || zeroAddress,
+    ...(instance.governance
+      ? {
+          merkleGovModule: instance.governance.module,
+          safe: { proxy: instance.governance.safe },
+        }
+      : {}),
     ...(instance.distributor
       ? { merkleFundDistributor: instance.distributor }
       : {}),

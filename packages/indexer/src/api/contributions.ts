@@ -19,7 +19,7 @@
  *   GET /contributions/:snapshot/audit/:claimUID           audit view at the current root
  *   GET /contributions/:snapshot/:root/audit/:claimUID     …at an explicit root
  */
-import { asc, desc, eq, inArray } from 'drizzle-orm'
+import { asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
@@ -28,8 +28,10 @@ import {
   contributionResponse,
   contributionValuation,
   contributionsInstance,
+  merkleGovModule,
+  networkMetadataRevision,
 } from 'ponder:schema'
-import { type Hex } from 'viem'
+import { type Hex, isHex } from 'viem'
 
 import { offchainDb } from './db'
 import {
@@ -129,7 +131,15 @@ const latestRound = async (snapshot?: string) =>
  * `ContributionsFactory.ContributionsInstanceCreated`), serialized for the discovery route and
  * the internal lookups below.
  */
-const instanceRow = (row: typeof contributionsInstance.$inferSelect) => ({
+type GovernanceRow = Pick<
+  typeof merkleGovModule.$inferSelect,
+  'address' | 'merkleSnapshot' | 'target'
+>
+
+const instanceRow = (
+  row: typeof contributionsInstance.$inferSelect,
+  governance?: GovernanceRow
+) => ({
   id: row.id,
   chainId: row.chainId,
   factory: row.factory,
@@ -138,7 +148,18 @@ const instanceRow = (row: typeof contributionsInstance.$inferSelect) => ({
   admin: row.admin,
   name: row.name,
   metadataURI: row.metadataURI,
+  metadataURIHash: row.metadataURIHash,
+  metadataRevision: row.metadataRevision.toString(),
+  metadataStatus: row.metadataStatus,
+  metadataUpdated: {
+    block: row.metadataUpdatedBlock.toString(),
+    timestamp: row.metadataUpdatedTimestamp.toString(),
+    txHash: row.metadataUpdatedTxHash,
+  },
   metadata: row.metadata ?? null,
+  governance: governance
+    ? { module: governance.address, safe: governance.target }
+    : null,
   contracts: {
     merkleSnapshot: row.snapshot,
     contributionResolver: row.resolver,
@@ -162,6 +183,33 @@ const instanceRow = (row: typeof contributionsInstance.$inferSelect) => ({
   createdTimestamp: row.createdTimestamp,
   createdTxHash: row.createdTxHash,
 })
+
+/** Contribution snapshots are administered by the parent authority Safe, whose module is bound
+ * to the parent snapshot. Resolve governance by Safe target rather than the round snapshot. */
+const governanceFor = async (
+  rows: Array<typeof contributionsInstance.$inferSelect>
+) => {
+  if (rows.length === 0) return new Map<string, GovernanceRow>()
+  const governanceRows = await db
+    .select({
+      address: merkleGovModule.address,
+      merkleSnapshot: merkleGovModule.merkleSnapshot,
+      target: merkleGovModule.target,
+    })
+    .from(merkleGovModule)
+    .where(
+      inArray(
+        merkleGovModule.target,
+        rows.map((row) => row.admin)
+      )
+    )
+  return new Map(
+    governanceRows.map((governance) => [
+      governance.target.toLowerCase(),
+      governance,
+    ])
+  )
+}
 
 /** Every known round, newest first, optionally scoped to one parent instance id. */
 const listInstances = async (parent?: string) =>
@@ -254,7 +302,12 @@ const roundSummary = (round: ResolvedRound) => ({
 // frontend resolves rounds (and their parent link, by parentInstanceId) from here.
 app.get('/instances', async (c) => {
   const rows = await listInstances(c.req.query('parent'))
-  return c.json({ instances: rows.map(instanceRow) })
+  const governance = await governanceFor(rows)
+  return c.json({
+    instances: rows.map((row) =>
+      instanceRow(row, governance.get(row.admin.toLowerCase()))
+    ),
+  })
 })
 
 // GET /contributions/instances/:id — one round by instance id or snapshot address.
@@ -274,7 +327,55 @@ app.get('/instances/:id', async (c) => {
   if (!row) {
     return c.json({ error: 'No contributions instance with this id' }, 404)
   }
-  return c.json(instanceRow(row))
+  const governance = await governanceFor([row])
+  return c.json(instanceRow(row, governance.get(row.admin.toLowerCase())))
+})
+
+app.get('/instances/:id/metadata-revisions', async (c) => {
+  const { id } = c.req.param()
+  if (!isHex(id) || id.length !== 66) {
+    return c.json({ error: 'id must be a bytes32 instance id' }, 400)
+  }
+  const limitRaw = c.req.query('limit')
+  const offsetRaw = c.req.query('offset')
+  const limit = limitRaw === undefined ? 50 : Number(limitRaw)
+  const offset = offsetRaw === undefined ? 0 : Number(offsetRaw)
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 0 ||
+    limit > 200 ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0
+  ) {
+    return c.json(
+      { error: 'limit and offset must be non-negative integers' },
+      400
+    )
+  }
+  const instanceId = id as Hex
+  const where = eq(networkMetadataRevision.instanceId, instanceId)
+  const [rows, totals] = await Promise.all([
+    db
+      .select()
+      .from(networkMetadataRevision)
+      .where(where)
+      .orderBy(desc(networkMetadataRevision.revision))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ value: count(networkMetadataRevision.id) })
+      .from(networkMetadataRevision)
+      .where(where),
+  ])
+  return c.json({
+    revisions: rows.map((revision) => ({
+      ...revision,
+      revision: revision.revision.toString(),
+      blockNumber: revision.blockNumber.toString(),
+      timestamp: revision.timestamp.toString(),
+    })),
+    page: { limit, offset, total: totals[0]?.value ?? 0 },
+  })
 })
 
 // GET /contributions/:snapshot/round — the round summary at the current (or ?root=) root.

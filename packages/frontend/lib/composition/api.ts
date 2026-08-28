@@ -6,7 +6,6 @@ import {
   SCORE_OUTPUT_DOMAIN_IDS,
   SCORE_PROGRAM_IDS,
   type ScoreProgramName,
-  type ScoreProgramProvenance,
   parseScoreProgramProvenance,
 } from '../score-program'
 import {
@@ -433,13 +432,22 @@ export type CompositionInstance = {
   admin: Address
   name: string
   metadataURI: string
+  metadataURIHash: Hex
+  metadataRevision: string
+  metadataStatus: string
+  metadataUpdated: {
+    block: string
+    timestamp: string
+    txHash: Hex
+  }
   metadata?: {
-    name?: string
-    description?: string
-    criteria?: string
-    image?: string
-    applicationUrl?: string
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
   } | null
+  governance: { module: Address; safe: Address } | null
   accumulator: Address
   snapshot: Address
   distributor: Address | null

@@ -166,7 +166,16 @@ const artifactRow = (
     admin: zeroAddress,
     name: a.name ?? 'Contribution round',
     metadataURI: '',
+    metadataURIHash: `0x${'0'.repeat(64)}`,
+    metadataRevision: '0',
+    metadataStatus: 'unavailable-or-invalid',
+    metadataUpdated: {
+      block: '0',
+      timestamp: '0',
+      txHash: `0x${'0'.repeat(64)}`,
+    },
     metadata: null,
+    governance: null,
     contracts: {
       merkleSnapshot: a.merkle_snapshot,
       contributionResolver: a.contribution_resolver,

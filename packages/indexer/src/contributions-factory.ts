@@ -9,11 +9,15 @@
  * restart, and no redeploy — the `src/factory.ts` pattern, applied to the contributions program.
  */
 import { ponder } from 'ponder:registry'
-import { contributionsInstance, merkleFundDistributor } from 'ponder:schema'
-import { zeroAddress } from 'viem'
+import {
+  contributionsInstance,
+  merkleFundDistributor,
+  networkMetadataRevision,
+} from 'ponder:schema'
+import { keccak256, stringToHex, zeroAddress } from 'viem'
 
 import { paramsSnapshot } from './contributions-shared'
-import { fetchMetadata } from './factory'
+import { fetchNetworkMetadata } from './factory'
 import { revalidateNetwork } from './utils'
 import { paramsHash } from '../../frontend/lib/contributions'
 
@@ -42,7 +46,9 @@ ponder.on(
 
     const normalized = { ...params, trustedSeeds: [...params.trustedSeeds] }
     const hash = paramsHash(normalized)
-    const metadata = await fetchMetadata(metadataURI)
+    const { metadata, status: metadataStatus } =
+      await fetchNetworkMetadata(metadataURI)
+    const metadataURIHash = keccak256(stringToHex(metadataURI))
 
     console.log(
       `contributions-factory: ContributionsInstanceCreated ${instanceId} "${name}" @ block ${event.block.number} parent ${parentInstanceId} snapshot ${snapshot}`
@@ -57,6 +63,12 @@ ponder.on(
       admin,
       name,
       metadataURI,
+      metadataURIHash,
+      metadataRevision: 0n,
+      metadataStatus,
+      metadataUpdatedBlock: event.block.number,
+      metadataUpdatedTimestamp: event.block.timestamp,
+      metadataUpdatedTxHash: event.transaction.hash,
       metadata,
       trustAccumulator,
       mirror,
@@ -77,6 +89,22 @@ ponder.on(
       createdBlock: event.block.number,
       createdTimestamp: event.block.timestamp,
       createdTxHash: event.transaction.hash,
+    })
+
+    await context.db.insert(networkMetadataRevision).values({
+      id: `${snapshot.toLowerCase()}-0`,
+      instanceId,
+      snapshot,
+      revision: 0n,
+      authority: admin,
+      metadataURI,
+      metadataURIHash,
+      previousMetadataURIHash: null,
+      metadata,
+      status: metadataStatus,
+      blockNumber: event.block.number,
+      timestamp: event.block.timestamp,
+      txHash: event.transaction.hash,
     })
 
     // Seed the distributor's config row from its birth state instead of reading it back in a

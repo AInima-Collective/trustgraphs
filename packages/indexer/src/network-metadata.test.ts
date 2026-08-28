@@ -43,12 +43,16 @@ test('network metadata enforces UTF-8 byte caps and safe presentation URLs', () 
   )
 })
 
-test('standard and weighted snapshot events update current state and append history', () => {
+test('every snapshot-backed tier updates current state and appends history', () => {
   const handler = readFileSync(new URL('./merkle.ts', import.meta.url), 'utf8')
   assert.match(handler, /merkleSnapshot:MetadataURIUpdated/)
   assert.match(handler, /weightedMerkleSnapshot:MetadataURIUpdated/)
+  assert.match(handler, /compositionMerkleSnapshot:MetadataURIUpdated/)
+  assert.match(handler, /contributionsMerkleSnapshot:MetadataURIUpdated/)
   assert.match(handler, /update\(instance/)
   assert.match(handler, /update\(weightedPriorInstance/)
+  assert.match(handler, /update\(compositionInstance/)
+  assert.match(handler, /update\(contributionsInstance/)
   assert.match(handler, /insert\(networkMetadataRevision\)/)
 
   const schema = readFileSync(
@@ -58,4 +62,35 @@ test('standard and weighted snapshot events update current state and append hist
   assert.match(schema, /export const networkMetadataRevision/)
   assert.match(schema, /instanceRevisionIdx/)
   assert.match(schema, /snapshotRevisionIdx/)
+})
+
+test('composition and contributions creation seed revision zero', () => {
+  for (const file of ['./composition.ts', './contributions-factory.ts']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8')
+    assert.match(source, /fetchNetworkMetadata\(metadataURI\)/)
+    assert.match(source, /metadataRevision: 0n/)
+    assert.match(source, /insert\(networkMetadataRevision\)/)
+  }
+})
+
+test('composition and contributions APIs expose current metadata and history', () => {
+  const compositionApi = readFileSync(
+    new URL('./api/compositions.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(
+    compositionApi,
+    /metadataRevision: row\.metadataRevision\.toString\(\)/
+  )
+  assert.match(compositionApi, /\/:instanceId\/metadata-revisions/)
+
+  const contributionsApi = readFileSync(
+    new URL('./api/contributions.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(
+    contributionsApi,
+    /metadataRevision: row\.metadataRevision\.toString\(\)/
+  )
+  assert.match(contributionsApi, /\/instances\/:id\/metadata-revisions/)
 })

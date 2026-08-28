@@ -13,6 +13,7 @@ import { Card } from '@/components/Card'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Slider } from '@/components/Slider'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { useAttestation } from '@/hooks/useAttestation'
 import { actorKey, computeContributions } from '@/lib/contributions'
 import {
@@ -35,7 +36,6 @@ import {
   trustgraphsTabs,
 } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
-import { useNetworks } from '@/contexts/CatalogContext'
 import { cn } from '@/lib/utils'
 
 import {
@@ -1065,6 +1065,13 @@ export const ContributionsNetworkPage = ({
                   : 'Submission status is unavailable until the round service returns.'}
               </p>
             )}
+            <ButtonLink
+              href={`/networks/${network.id}/settings`}
+              variant="outline"
+              size="sm"
+            >
+              Manage round profile
+            </ButtonLink>
           </div>
 
           {round && claims.length > 0 && (

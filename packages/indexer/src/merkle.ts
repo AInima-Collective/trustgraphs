@@ -4,6 +4,7 @@ import { ponder } from 'ponder:registry'
 import {
   compositionInstance,
   compositionPolicyVersion,
+  contributionsInstance,
   instance,
   merkleFundDistribution,
   merkleFundDistributionClaim,
@@ -779,7 +780,23 @@ const onMetadataURIUpdated = async ({
         .from(weightedPriorInstance)
         .where(eq(weightedPriorInstance.snapshot, event.log.address))
         .limit(1)
-  const catalog = standard ?? weighted
+  const [composition] =
+    standard || weighted
+      ? [undefined]
+      : await context.db.sql
+          .select()
+          .from(compositionInstance)
+          .where(eq(compositionInstance.snapshot, event.log.address))
+          .limit(1)
+  const [contributions] =
+    standard || weighted || composition
+      ? [undefined]
+      : await context.db.sql
+          .select()
+          .from(contributionsInstance)
+          .where(eq(contributionsInstance.snapshot, event.log.address))
+          .limit(1)
+  const catalog = standard ?? weighted ?? composition ?? contributions
   if (!catalog) {
     console.warn(
       `merkle: MetadataURIUpdated from unknown snapshot ${event.log.address}`
@@ -802,9 +819,17 @@ const onMetadataURIUpdated = async ({
   }
   if (standard) {
     await context.db.update(instance, { id: standard.id }).set(update)
+  } else if (weighted) {
+    await context.db
+      .update(weightedPriorInstance, { id: weighted.id })
+      .set(update)
+  } else if (composition) {
+    await context.db
+      .update(compositionInstance, { id: composition.id })
+      .set(update)
   } else {
     await context.db
-      .update(weightedPriorInstance, { id: weighted!.id })
+      .update(contributionsInstance, { id: contributions!.id })
       .set(update)
   }
 
@@ -829,6 +854,11 @@ const onMetadataURIUpdated = async ({
 
 ponder.on('merkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
 ponder.on('weightedMerkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
+ponder.on('compositionMerkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
+ponder.on(
+  'contributionsMerkleSnapshot:MetadataURIUpdated',
+  onMetadataURIUpdated
+)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)

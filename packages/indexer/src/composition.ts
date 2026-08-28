@@ -4,12 +4,14 @@ import {
   compositionCapture,
   compositionInstance,
   compositionPolicyVersion,
+  networkMetadataRevision,
 } from 'ponder:schema'
 import {
   type Hex,
   encodeAbiParameters,
   keccak256,
   sha256,
+  stringToHex,
   zeroAddress,
 } from 'viem'
 
@@ -24,7 +26,8 @@ import {
   policyManifestFromCapture,
   verifyCompositionPolicy,
 } from './composition-shared'
-import { fetchMetadata } from './factory'
+import { fetchNetworkMetadata } from './factory'
+import { revalidateNetwork } from './utils'
 import {
   compositionAccumulatorAbi,
   compositionSourceAdapterAbi,
@@ -208,7 +211,9 @@ ponder.on(
     } = event.args
     const params = compositionParamsFromChain(eventParams)
     const normalized = normalizeCompositionParams(params)
-    const metadata = await fetchMetadata(metadataURI)
+    const { metadata, status: metadataStatus } =
+      await fetchNetworkMetadata(metadataURI)
+    const metadataURIHash = keccak256(stringToHex(metadataURI))
     await context.db
       .insert(compositionInstance)
       .values({
@@ -220,6 +225,12 @@ ponder.on(
         admin,
         name,
         metadataURI,
+        metadataURIHash,
+        metadataRevision: 0n,
+        metadataStatus,
+        metadataUpdatedBlock: event.block.number,
+        metadataUpdatedTimestamp: event.block.timestamp,
+        metadataUpdatedTxHash: event.transaction.hash,
         metadata,
         accumulator,
         snapshot,
@@ -237,6 +248,27 @@ ponder.on(
         createdTxHash: event.transaction.hash,
       })
       .onConflictDoNothing()
+
+    await context.db
+      .insert(networkMetadataRevision)
+      .values({
+        id: `${snapshot.toLowerCase()}-0`,
+        instanceId,
+        snapshot,
+        revision: 0n,
+        authority: admin,
+        metadataURI,
+        metadataURIHash,
+        previousMetadataURIHash: null,
+        metadata,
+        status: metadataStatus,
+        blockNumber: event.block.number,
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+      })
+      .onConflictDoNothing()
+
+    await revalidateNetwork(instanceId)
   }
 )
 

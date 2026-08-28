@@ -9,6 +9,12 @@ const networkDirectory = read('app/networks/page.tsx')
 const directoryServer = read('lib/directory.server.ts')
 const instance = read('app/compositions/[instanceId]/instance.tsx')
 const governance = read('app/compositions/[instanceId]/governance.tsx')
+const governanceLayout = read('app/networks/[id]/governance/layout.tsx')
+const settings = read('app/networks/[id]/settings/page.tsx')
+const profileSettings = read('app/networks/[id]/settings/profile.tsx')
+const contributionsPage = read('app/networks/[id]/contributions.tsx')
+const contributionsCatalog = read('lib/contributions-catalog.ts')
+const compositionNetwork = read('lib/composition/network.ts')
 const epoch = read(
   'app/compositions/[instanceId]/epochs/[checkpointId]/epoch.tsx'
 )
@@ -114,6 +120,20 @@ assert.match(workspace, /<NetworkProfileFields/)
 assert.match(workspace, /hasNetworkProfile\(profile\)/)
 assert.match(workspace, /await pinMetadata\(metadata\)/)
 assert.match(workspace, /metadataURI: await ensureMetadataURI\(\)/)
+assert.match(settings, /NetworkProfileSettings/)
+assert.match(settings, /SnapshotProfileSettings/)
+assert.match(settings, /governanceNetworkId: parentId/)
+assert.match(profileSettings, /target\.governanceNetworkId \?\? target\.id/)
+assert.match(governanceLayout, /compositionAsNetwork/)
+assert.match(governanceLayout, /NetworkProvider network=\{compositionNetwork\}/)
+assert.match(contributionsPage, /Manage round profile/)
+assert.match(contributionsCatalog, /BigInt\(row\.metadataRevision\) > 0n/)
+assert.match(contributionsCatalog, /governance: row\.governance/)
+assert.match(compositionNetwork, /metadataRevision: instance\.metadataRevision/)
+assert.match(
+  compositionNetwork,
+  /merkleGovModule: instance\.governance\.module/
+)
 
 // Receipt scanning is topic-keyed (parseEventLogs), never filtered by emitting address: under
 // the governed wrapper the base factory emits the creation event and the Safe is the creator.

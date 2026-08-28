@@ -63,23 +63,30 @@ const normalizedProfile = (profile: NetworkMetadata): NetworkMetadata => ({
   applicationUrl: profile.applicationUrl.trim(),
 })
 
-export const NetworkProfileSettings = ({
-  network,
-  instance,
+export type SnapshotProfileTarget = {
+  id: string
+  governanceNetworkId?: string
+  snapshot: Hex
+  governance?: { module: Hex; safe: Hex } | null
+  profile: NetworkMetadata
+  metadataURI?: string
+  metadataURIHash?: Hex
+  metadataRevision?: string
+  metadataStatus?: string
+}
+
+export const SnapshotProfileSettings = ({
+  target,
 }: {
-  network: Network
-  instance: InstanceRow | null
+  target: SnapshotProfileTarget
 }) => {
   const router = useRouter()
   const { address } = useAccount()
-  const snapshot = network.contracts.merkleSnapshot
-  const governance = network.contracts.merkleGovModule
-  const authoritySafe = network.contracts.safe?.proxy
+  const snapshot = target.snapshot
+  const governance = target.governance?.module
+  const authoritySafe = target.governance?.safe
   const governed = !!governance && !!authoritySafe
-  const initial = useMemo(
-    () => normalizedProfile(profileFrom(network, instance)),
-    [network, instance]
-  )
+  const initial = useMemo(() => normalizedProfile(target.profile), [target])
   const [profile, setProfile] = useState<NetworkMetadata>(initial)
   const [publishedFingerprint, setPublishedFingerprint] = useState(
     metadataFingerprint(initial)
@@ -116,18 +123,12 @@ export const NetworkProfileSettings = ({
   })
 
   const liveURI =
-    (readResult(reads, 0) as string | undefined) ??
-    instance?.metadataURI ??
-    network.metadataURI ??
-    ''
+    (readResult(reads, 0) as string | undefined) ?? target.metadataURI ?? ''
   const liveHash =
-    (readResult(reads, 1) as Hex | undefined) ??
-    instance?.metadataURIHash ??
-    network.metadataURIHash
+    (readResult(reads, 1) as Hex | undefined) ?? target.metadataURIHash
   const liveRevision =
     (readResult(reads, 2) as bigint | undefined)?.toString() ??
-    instance?.metadataRevision ??
-    network.metadataRevision ??
+    target.metadataRevision ??
     '0'
   const connectedIsConstitutional = connectedRole === true
   const exact = normalizedProfile(profile)
@@ -177,8 +178,9 @@ export const NetworkProfileSettings = ({
           args: [uri],
         })
         const actionFingerprint = keccak256(data)
+        const governanceNetworkId = target.governanceNetworkId ?? target.id
         saveGovernancePrefill({
-          networkId: network.id,
+          networkId: governanceNetworkId,
           fingerprint: actionFingerprint,
           parentHash: ZERO_HASH,
           proposedHash: ZERO_HASH,
@@ -198,7 +200,7 @@ export const NetworkProfileSettings = ({
           createdAt: Date.now(),
         })
         router.push(
-          `/networks/${network.id}/governance?new=1&actionDraft=${actionFingerprint}`
+          `/networks/${governanceNetworkId}/governance?new=1&actionDraft=${actionFingerprint}`
         )
         return
       }
@@ -324,13 +326,36 @@ export const NetworkProfileSettings = ({
           <dt className="text-muted-foreground">URI hash</dt>
           <dd className="break-all font-mono text-xs">{liveHash || '—'}</dd>
           <dt className="text-muted-foreground">Indexer status</dt>
-          <dd>
-            {instance?.metadataStatus ??
-              network.metadataStatus ??
-              'Not available'}
-          </dd>
+          <dd>{target.metadataStatus ?? 'Not available'}</dd>
         </dl>
       </Card>
     </div>
   )
 }
+
+export const NetworkProfileSettings = ({
+  network,
+  instance,
+}: {
+  network: Network
+  instance: InstanceRow | null
+}) => (
+  <SnapshotProfileSettings
+    target={{
+      id: network.id,
+      snapshot: network.contracts.merkleSnapshot,
+      governance:
+        network.contracts.merkleGovModule && network.contracts.safe?.proxy
+          ? {
+              module: network.contracts.merkleGovModule,
+              safe: network.contracts.safe.proxy,
+            }
+          : null,
+      profile: profileFrom(network, instance),
+      metadataURI: instance?.metadataURI ?? network.metadataURI,
+      metadataURIHash: instance?.metadataURIHash ?? network.metadataURIHash,
+      metadataRevision: instance?.metadataRevision ?? network.metadataRevision,
+      metadataStatus: instance?.metadataStatus ?? network.metadataStatus,
+    }}
+  />
+)

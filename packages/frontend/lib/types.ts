@@ -198,6 +198,20 @@ export type ContributionsNetwork = {
   roundEnd?: string
   totalPool?: string
   name: string
+  image?: string
+  metadataURI?: string
+  metadataURIHash?: Hex
+  metadataRevision?: string
+  metadataStatus?: string
+  profile?: {
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
+  }
+  /** Parent governance module/Safe when this round is governed by its parent authority. */
+  governance?: { module: Hex; safe: Hex } | null
   hidden?: boolean
   link?: {
     prefix: string
