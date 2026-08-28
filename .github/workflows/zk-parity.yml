@@ -128,3 +128,60 @@ jobs:
 
       - name: ZK parity (${{ matrix.program }})
         run: task --yes zk:parity PROGRAM=${{ matrix.program }}
+
+  host-lint:
+    name: Host lint + tests (prover, operator)
+    needs: guest-elfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "27.3"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: |
+            zk/prover -> target
+            zk/operator -> target
+
+      - name: Download pinned guest ELFs
+        uses: actions/download-artifact@v4
+        with:
+          name: sp1-guest-elfs
+
+      - name: Restore guest ELF paths
+        run: tar -xzf sp1-guest-elfs.tar.gz
+
+      # zk/prover and zk/operator are detached workspaces: the root workspace's
+      # clippy/fmt/test jobs never compile them, so they get their own pass here,
+      # against the same pinned guest ELFs the parity jobs use.
+      - name: clippy (prover)
+        run: cargo clippy --manifest-path zk/prover/Cargo.toml --all-targets -- -D warnings
+        env:
+          SP1_SKIP_PROGRAM_BUILD: "true"
+
+      - name: clippy (operator)
+        run: cargo clippy --manifest-path zk/operator/Cargo.toml --all-targets -- -D warnings
+        env:
+          SP1_SKIP_PROGRAM_BUILD: "true"
+
+      - name: fmt --check (prover + operator)
+        run: |
+          cargo fmt --manifest-path zk/prover/Cargo.toml --all --check
+          cargo fmt --manifest-path zk/operator/Cargo.toml --all --check
+
+      - name: cargo test (operator)
+        run: cargo test --manifest-path zk/operator/Cargo.toml
+        env:
+          SP1_SKIP_PROGRAM_BUILD: "true"
