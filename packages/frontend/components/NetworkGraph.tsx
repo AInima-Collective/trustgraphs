@@ -52,9 +52,6 @@ import { cn, formatBigNumber, isHexEqual } from '@/lib/utils'
 const forceAtlas2SettingsOverrides: ForceAtlas2Settings = {
   // Bind nodes more tightly together.
   gravity: 1,
-
-  // Push hubs outwards to highlight them (disrupts spatial balance)
-  // outboundAttractionDistribution: true,
 }
 const forceAtlas2Duration = 250
 
@@ -88,7 +85,6 @@ export interface NetworkGraphProps {
   onlyAddress?: Hex
   /** Induce the existing address graph on current ERC-8004 verified wallets. */
   agentsOnly?: boolean
-  className?: string
   /** Initial zoom level. > 1.0 zooms out, < 1.0 zooms in. Defaults to 1.25. */
   initialZoom?: number
   /**
@@ -126,7 +122,6 @@ export function NetworkGraph({
   title,
   onlyAddress,
   agentsOnly = false,
-  className,
   initialZoom = 1.25,
   chrome = true,
   inspector = chrome,
@@ -454,10 +449,7 @@ export function NetworkGraph({
 
   return (
     <div
-      className={cn(
-        'relative w-full h-full overflow-hidden isolate',
-        className
-      )}
+      className="relative w-full h-full overflow-hidden isolate"
       // The screenshot harness (packages/frontend/scripts/shots.mjs) waits for every
       // [data-settling] node to clear before it shoots, so a review matrix
       // never captures a spinner and calls it a design. Keep the attribute
@@ -515,7 +507,6 @@ export function NetworkGraph({
               title={title}
               graph={graph}
               setShowCursor={setShowCursor}
-              defaultLayout="forceatlas2"
               initialZoom={initialZoom}
               chrome={chrome}
               inspector={inspector}
@@ -534,7 +525,6 @@ const SigmaControls = ({
   title,
   graph,
   setShowCursor,
-  defaultLayout,
   initialZoom,
   chrome = true,
   inspector,
@@ -545,7 +535,6 @@ const SigmaControls = ({
   title?: string
   graph: MultiDirectedGraph<NetworkGraphNode, NetworkGraphEdge>
   setShowCursor: (hovering: boolean) => void
-  defaultLayout: 'circular' | 'forceatlas2'
   initialZoom?: number
   chrome?: boolean
   inspector: boolean
@@ -675,7 +664,9 @@ const SigmaControls = ({
       },
     })
 
-  const [layout, setLayout] = useState<typeof defaultLayout>(defaultLayout)
+  const [layout, setLayout] = useState<'circular' | 'forceatlas2'>(
+    'forceatlas2'
+  )
 
   const stopAnimationRef = useRef<() => void>(() => {})
 

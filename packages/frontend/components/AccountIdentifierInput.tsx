@@ -15,8 +15,6 @@ export interface AccountIdentifierInputProps
   extends Omit<React.ComponentProps<'input'>, 'value'> {
   value: string
   onResolvedAddressChange?: (address: Address | null) => void
-  wrapperClassName?: string
-  resolutionClassName?: string
 }
 
 /** A shared address/ENS input with an explicit destination preview. */
@@ -25,14 +23,7 @@ export const AccountIdentifierInput = React.forwardRef<
   AccountIdentifierInputProps
 >(
   (
-    {
-      value,
-      onResolvedAddressChange,
-      className,
-      wrapperClassName,
-      resolutionClassName,
-      ...props
-    },
+    { value, onResolvedAddressChange, className, ...props },
     ref
   ) => {
     const parsed = parseAccountIdentifier(value)
@@ -56,7 +47,7 @@ export const AccountIdentifierInput = React.forwardRef<
     const showEnsStatus = parsed.kind === 'ens' || invalidEnsCandidate
 
     return (
-      <div className={cn('w-full space-y-1.5', wrapperClassName)}>
+      <div className="w-full space-y-1.5">
         <div className="relative">
           <Input
             {...props}
@@ -80,13 +71,7 @@ export const AccountIdentifierInput = React.forwardRef<
         </div>
 
         {showEnsStatus && (
-          <div
-            className={cn(
-              'min-h-5 text-xs text-text-muted',
-              resolutionClassName
-            )}
-            aria-live="polite"
-          >
+          <div className="min-h-5 text-xs text-text-muted" aria-live="polite">
             {ens.status === 'loading' && 'Resolving ENS name…'}
             {ens.status === 'resolved' && (
               <span className="flex flex-wrap items-center gap-1.5">

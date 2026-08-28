@@ -66,10 +66,7 @@ export const Address = ({
     displayText = 'You'
   }
 
-  const { name: ensName } = useEns(address, {
-    enableName: showEns,
-    enableAvatar: false,
-  })
+  const { name: ensName } = useEns(address, { enableName: showEns })
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault()

@@ -9,14 +9,9 @@ import { Tooltip } from './Tooltip'
 interface InfoTooltipProps {
   title: string
   className?: string
-  iconClassName?: string
 }
 
-export const InfoTooltip = ({
-  title,
-  className,
-  iconClassName,
-}: InfoTooltipProps) => {
+export const InfoTooltip = ({ title, className }: InfoTooltipProps) => {
   return (
     <Tooltip
       title={title}
@@ -27,7 +22,7 @@ export const InfoTooltip = ({
         className
       )}
     >
-      <Info size={14} className={cn('shrink-0', iconClassName)} />
+      <Info size={14} className="shrink-0" />
     </Tooltip>
   )
 }
