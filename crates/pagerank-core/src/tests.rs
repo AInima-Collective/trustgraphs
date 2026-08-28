@@ -194,10 +194,11 @@ fn current_fixed_point_kernel_matches_frozen_pull_oracle() {
 }
 
 /// The retired floating-point implementation's deterministic seed-0 input remains frozen here.
-/// M2 intentionally rotates its output: seed-only starting mass and the reachability gate remove
-/// one disconnected account. Keep both expectations so that change remains explicit.
+/// Params schema v3 intentionally rotates its output: seed-only starting mass and the
+/// reachability gate remove one disconnected account. Keep both expectations so that change
+/// remains explicit.
 #[test]
-fn legacy_float_fixture_records_intentional_m2_rotation() {
+fn retired_float_fixture_records_the_intentional_schema_v3_rotation() {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self, bound: u64) -> u64 {
