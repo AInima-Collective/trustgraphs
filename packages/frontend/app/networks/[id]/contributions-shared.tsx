@@ -239,4 +239,3 @@ export const formatContributionScore = (score: string) => {
     ? `${whole.toLocaleString()}.${fraction}`
     : whole.toLocaleString()
 }
-

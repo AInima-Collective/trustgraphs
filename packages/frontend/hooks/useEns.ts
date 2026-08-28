@@ -285,4 +285,3 @@ export function useBatchEnsQuery(
     gcTime: ENS_DISPLAY_GC_TIME,
   })
 }
-

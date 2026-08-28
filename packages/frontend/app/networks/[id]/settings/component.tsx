@@ -2142,9 +2142,9 @@ export const SettingsPage = ({
                   size="md"
                   className="text-sm text-muted-foreground"
                 >
-                  This network has no factory instance ID, so it cannot
-                  have an instance-keyed proving tank. Contract settings remain
-                  visible below.
+                  This network has no factory instance ID, so it cannot have an
+                  instance-keyed proving tank. Contract settings remain visible
+                  below.
                 </Card>
               ) : !vaultAddress ? (
                 <Card

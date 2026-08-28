@@ -625,4 +625,3 @@ export const requireCompatibleCandidate = (
     )
   }
 }
-

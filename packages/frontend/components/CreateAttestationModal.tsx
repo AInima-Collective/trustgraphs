@@ -241,14 +241,7 @@ export const CreateAttestationModal = ({
       setIsOpen(false)
       form.reset()
     }
-  }, [
-    hash,
-    isCreated,
-    form,
-    currentSnapshot,
-    bumpPendingEcho,
-    useStrictLane,
-  ])
+  }, [hash, isCreated, form, currentSnapshot, bumpPendingEcho, useStrictLane])
 
   useEffect(() => {
     if (!strictVouches.audit) return

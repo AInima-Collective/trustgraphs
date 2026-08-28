@@ -21,77 +21,72 @@ export interface AccountIdentifierInputProps
 export const AccountIdentifierInput = React.forwardRef<
   HTMLInputElement,
   AccountIdentifierInputProps
->(
-  (
-    { value, onResolvedAddressChange, className, ...props },
-    ref
-  ) => {
-    const parsed = parseAccountIdentifier(value)
-    const ens = useResolveEnsName(parsed.kind === 'ens' ? parsed.name : '')
-    const callbackRef = useRef(onResolvedAddressChange)
-    callbackRef.current = onResolvedAddressChange
+>(({ value, onResolvedAddressChange, className, ...props }, ref) => {
+  const parsed = parseAccountIdentifier(value)
+  const ens = useResolveEnsName(parsed.kind === 'ens' ? parsed.name : '')
+  const callbackRef = useRef(onResolvedAddressChange)
+  callbackRef.current = onResolvedAddressChange
 
-    const resolvedAddress =
-      parsed.kind === 'address'
-        ? parsed.address
-        : ens.status === 'resolved'
-          ? (ens.address as Address)
-          : null
+  const resolvedAddress =
+    parsed.kind === 'address'
+      ? parsed.address
+      : ens.status === 'resolved'
+        ? (ens.address as Address)
+        : null
 
-    useEffect(() => {
-      callbackRef.current?.(resolvedAddress)
-    }, [resolvedAddress])
+  useEffect(() => {
+    callbackRef.current?.(resolvedAddress)
+  }, [resolvedAddress])
 
-    const invalidEnsCandidate =
-      parsed.kind === 'invalid' && isPotentialEnsName(value)
-    const showEnsStatus = parsed.kind === 'ens' || invalidEnsCandidate
+  const invalidEnsCandidate =
+    parsed.kind === 'invalid' && isPotentialEnsName(value)
+  const showEnsStatus = parsed.kind === 'ens' || invalidEnsCandidate
 
-    return (
-      <div className="w-full space-y-1.5">
-        <div className="relative">
-          <Input
-            {...props}
-            ref={ref}
-            value={value}
-            className={cn(showEnsStatus && 'pr-9', className)}
-          />
-          {showEnsStatus && (
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-              {ens.status === 'loading' ? (
-                <LoaderCircle className="h-4 w-4 animate-spin text-text-muted" />
-              ) : ens.status === 'resolved' ? (
-                <Check className="h-4 w-4 text-success" />
-              ) : ens.status === 'not-found' || ens.status === 'error' ? (
-                <X className="h-4 w-4 text-destructive" />
-              ) : invalidEnsCandidate ? (
-                <X className="h-4 w-4 text-destructive" />
-              ) : null}
-            </span>
-          )}
-        </div>
-
+  return (
+    <div className="w-full space-y-1.5">
+      <div className="relative">
+        <Input
+          {...props}
+          ref={ref}
+          value={value}
+          className={cn(showEnsStatus && 'pr-9', className)}
+        />
         {showEnsStatus && (
-          <div className="min-h-5 text-xs text-text-muted" aria-live="polite">
-            {ens.status === 'loading' && 'Resolving ENS name…'}
-            {ens.status === 'resolved' && (
-              <span className="flex flex-wrap items-center gap-1.5">
-                <span>{getTargetChainConfig().name} address:</span>
-                <CopyableText
-                  text={ens.address}
-                  truncateOnMobile={false}
-                  alwaysShowCopyIcon
-                />
-              </span>
-            )}
-            {ens.status === 'not-found' &&
-              `No ${getTargetChainConfig().name} address is set for this name.`}
-            {ens.status === 'error' &&
-              'ENS is temporarily unavailable. Please try again.'}
-            {invalidEnsCandidate && 'This is not a valid ENS name.'}
-          </div>
+          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+            {ens.status === 'loading' ? (
+              <LoaderCircle className="h-4 w-4 animate-spin text-text-muted" />
+            ) : ens.status === 'resolved' ? (
+              <Check className="h-4 w-4 text-success" />
+            ) : ens.status === 'not-found' || ens.status === 'error' ? (
+              <X className="h-4 w-4 text-destructive" />
+            ) : invalidEnsCandidate ? (
+              <X className="h-4 w-4 text-destructive" />
+            ) : null}
+          </span>
         )}
       </div>
-    )
-  }
-)
+
+      {showEnsStatus && (
+        <div className="min-h-5 text-xs text-text-muted" aria-live="polite">
+          {ens.status === 'loading' && 'Resolving ENS name…'}
+          {ens.status === 'resolved' && (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span>{getTargetChainConfig().name} address:</span>
+              <CopyableText
+                text={ens.address}
+                truncateOnMobile={false}
+                alwaysShowCopyIcon
+              />
+            </span>
+          )}
+          {ens.status === 'not-found' &&
+            `No ${getTargetChainConfig().name} address is set for this name.`}
+          {ens.status === 'error' &&
+            'ENS is temporarily unavailable. Please try again.'}
+          {invalidEnsCandidate && 'This is not a valid ENS name.'}
+        </div>
+      )}
+    </div>
+  )
+})
 AccountIdentifierInput.displayName = 'AccountIdentifierInput'

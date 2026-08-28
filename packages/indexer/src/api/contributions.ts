@@ -170,7 +170,10 @@ const listInstances = async (parent?: string) =>
     .from(contributionsInstance)
     .where(
       parent
-        ? eq(lower(contributionsInstance.parentInstanceId), parent.toLowerCase())
+        ? eq(
+            lower(contributionsInstance.parentInstanceId),
+            parent.toLowerCase()
+          )
         : undefined
     )
     .orderBy(desc(contributionsInstance.createdTimestamp))
