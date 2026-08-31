@@ -449,7 +449,17 @@ const main = async () => {
       waitUntil: 'domcontentloaded',
       timeout: 90_000,
     })
-    await page.getByText(networkName, { exact: true }).first().waitFor()
+    const detailReady = await page
+      .getByRole('button', { name: /^Make attestation$/i })
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!detailReady) {
+      throw new Error(
+        `network detail did not become interactive; visible page: ${(await page.locator('body').innerText()).slice(0, 8_000)}`
+      )
+    }
     if (phase !== 'render-final') await connect(page)
 
     if (phase === 'onchain-create') {
