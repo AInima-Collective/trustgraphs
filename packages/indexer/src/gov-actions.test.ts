@@ -49,3 +49,19 @@ test('setup recovery and the live handler share the complete action formatter', 
     'both proposal ingestion paths must preserve the full action tuple'
   )
 })
+
+test('proposal action formatting rejects operations outside the canonical Safe tuple', () => {
+  assert.throws(
+    () =>
+      formatProposalActions([
+        {
+          target: '0x1111111111111111111111111111111111111111',
+          value: 0n,
+          data: '0x',
+          operation: 2,
+          description: '',
+        },
+      ]),
+    /Unsupported Safe operation 2/
+  )
+})

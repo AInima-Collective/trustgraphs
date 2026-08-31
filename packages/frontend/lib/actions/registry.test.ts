@@ -6,8 +6,10 @@ import { paramsHash } from '../pagerank/encode'
 import type { Params } from '../pagerank/types'
 import { PARAMS_SCALE, serializeParams } from '../scoring-params'
 import { customAction } from './custom'
+import { governanceActionContextFor } from './network'
 import { walkGovernanceActions } from './registry'
 import { scoringParamsAction, signerParamsAction } from './scoring'
+import { selectProposalBaselineVersion } from './scoring-history'
 import { ethTransferAction } from './transfer'
 import type { GovernanceActionContext, SafeAction } from './types'
 
@@ -37,6 +39,21 @@ const context: GovernanceActionContext = {
   paramsController: address('4'),
   signerSyncModule: address('5'),
 }
+
+assert.deepEqual(
+  governanceActionContextFor({
+    contracts: {
+      merkleSnapshot: address('1'),
+      easIndexerResolver: address('2'),
+      trustgraphsParamsController: context.paramsController,
+      safe: {
+        proxy: address('3'),
+        signerSyncManager: context.signerSyncModule,
+      },
+    },
+  }),
+  context
+)
 
 const encoded = scoringParamsAction.encode(
   { proposed, evidenceURI: 'ipfs://evidence', syncSigner: true },
@@ -147,6 +164,44 @@ assert.throws(
       },
     ]),
   /No governance action matched/
+)
+
+const baseline = selectProposalBaselineVersion(
+  [
+    { version: '4', executedAtBlock: '40', valid: true },
+    { version: '3', executedAtBlock: '30', valid: false },
+    { version: '2', executedAtBlock: '20', valid: true },
+    { version: '1', executedAtBlock: '10', valid: true },
+  ],
+  35n
+)
+assert.equal(baseline?.version, '2')
+assert.equal(
+  selectProposalBaselineVersion(
+    [
+      { version: '1', executedAtBlock: '10', valid: true },
+      { version: '2', executedAtBlock: '10', valid: true },
+    ],
+    10n
+  )?.version,
+  '2'
+)
+assert.equal(
+  selectProposalBaselineVersion(
+    [{ version: '1', executedAtBlock: '10', valid: true }],
+    9n
+  ),
+  undefined
+)
+assert.equal(
+  selectProposalBaselineVersion(
+    [
+      { version: '1', executedAtBlock: 'not-a-block', valid: true },
+      { version: 'invalid', executedAtBlock: '10', valid: true },
+    ],
+    10n
+  ),
+  undefined
 )
 
 console.log('governance action registry matching and target verification: ok')

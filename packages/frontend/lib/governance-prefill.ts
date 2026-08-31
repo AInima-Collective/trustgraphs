@@ -1,11 +1,8 @@
 import type { Hex } from 'viem'
 
-export type GovernancePrefillAction = {
-  target: string
-  value: string
-  data: string
-  operation: number
-  description?: string
+import type { SafeAction } from './actions'
+
+export type GovernancePrefillAction = SafeAction & {
   contractName?: string
   functionSignature?: string
 }
