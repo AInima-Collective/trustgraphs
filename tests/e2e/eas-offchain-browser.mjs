@@ -324,7 +324,7 @@ const createHybridNetwork = async (page) => {
     waitUntil: 'domcontentloaded',
     timeout: 90_000,
   })
-  await page.getByRole('button', { name: 'Start a standard network' }).click()
+  await page.getByRole('link', { name: 'Start a standard network' }).click()
   await connect(page)
 
   await page.getByLabel('Name').fill(networkName)
