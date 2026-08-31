@@ -450,7 +450,10 @@ const main = async () => {
       timeout: 90_000,
     })
     const detailReady = await page
-      .getByRole('button', { name: /^Make attestation$/i })
+      // Before the wallet connects, the disabled trigger's tooltip supplies an
+      // accessible name explaining why it is disabled. Its visible label is
+      // still the stable signal that the interactive detail view has mounted.
+      .getByText('Make attestation', { exact: true })
       .first()
       .waitFor({ timeout: 30_000 })
       .then(() => true)
