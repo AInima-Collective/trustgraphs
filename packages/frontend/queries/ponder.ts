@@ -792,13 +792,22 @@ export const ponderQueryFns = {
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,
       }),
-  getProofSubmission:
-    (options: { snapshot: Hex; root: Hex }) =>
+  getProofSubmissionsBefore:
+    (options: { snapshot: Hex; root: Hex; proposalBlock: bigint }) =>
     (db: Client<ResolvedSchema>['db']) =>
-      db.query.proofSubmission.findFirst({
-        where: (t, { and, eq }) =>
-          and(eq(t.snapshot, options.snapshot), eq(t.root, options.root)),
+      db.query.proofSubmission.findMany({
+        where: (t, { and, eq, lt }) =>
+          and(
+            eq(t.snapshot, options.snapshot),
+            eq(t.root, options.root),
+            // Without transaction/log positions, a proof submitted in the proposal's block cannot
+            // be ordered safely against ProposalCreated.
+            lt(t.blockNumber, options.proposalBlock)
+          ),
         orderBy: (t, { desc }) => desc(t.blockNumber),
+        // The newest earlier block is authoritative. A second row detects an unorderable tie when
+        // two matching proofs landed in that block (proof rows do not retain transaction index).
+        limit: 2,
       }),
   getGnosisSafe: (address: Hex) => (db: Client<ResolvedSchema>['db']) =>
     db.query.gnosisSafe.findFirst({

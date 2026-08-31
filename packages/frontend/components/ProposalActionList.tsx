@@ -7,6 +7,7 @@ import { formatEther } from 'viem'
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
   governanceActionContextFor,
+  normalizeSafeActions,
   walkGovernanceActions,
 } from '@/lib/actions'
 import type {
@@ -297,8 +298,37 @@ export function ProposalActionList({
   className?: string
 }) {
   const { network } = useNetwork()
+  const normalized = normalizeSafeActions(actions)
+  if (!normalized.ok) {
+    return (
+      <div
+        className={cn(
+          'border border-destructive/50 bg-destructive/10 p-4 text-sm',
+          className
+        )}
+        role="alert"
+      >
+        <p className="font-medium text-foreground">
+          Action details unavailable
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {normalized.reason} No transaction details were inferred from the
+          malformed payload.
+        </p>
+      </div>
+    )
+  }
+  const displayActions = normalized.actions.map((action, index) => ({
+    ...action,
+    ...(actions[index]?.contractName
+      ? { contractName: actions[index].contractName }
+      : {}),
+    ...(actions[index]?.functionSignature
+      ? { functionSignature: actions[index].functionSignature }
+      : {}),
+  }))
   const context = governanceActionContextFor(network)
-  const matched = walkGovernanceActions(actions, context)
+  const matched = walkGovernanceActions(displayActions, context)
   const coordinatedScoringUpdate = matched.some(
     (entry) => presentAction(entry).coordinated
   )
@@ -322,7 +352,7 @@ export function ProposalActionList({
           <li key={`${entry.definition.key}:${entry.startIndex}`}>
             <ProposalActionCard
               matched={entry}
-              actions={actions.slice(
+              actions={displayActions.slice(
                 entry.startIndex,
                 entry.startIndex + entry.consumed
               )}

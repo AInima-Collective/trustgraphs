@@ -1,5 +1,6 @@
 export * from './custom'
 export * from './network'
+export * from './normalize'
 export * from './registry'
 export * from './scoring'
 export * from './scoring-history'
