@@ -1,53 +1,47 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import type { Hex } from 'viem'
 
 import { useNetwork } from '@/contexts/NetworkContext'
-import type { ProposalAction } from '@/hooks/useGovernance'
-import type { RawEdge } from '@/lib/pagerank/types'
 import {
-  decodeParameterUpdateAction,
-  paramsFromJson,
-} from '@/lib/scoring-params'
+  governanceActionContextFor,
+  selectProposalBaselineVersion,
+  walkGovernanceActions,
+} from '@/lib/actions'
+import type { SafeAction, ScoringParamsActionValues } from '@/lib/actions'
+import type { RawEdge } from '@/lib/pagerank/types'
+import { diffParams, paramsFromJson } from '@/lib/scoring-params'
 import { previewScoringChange } from '@/lib/scoring-preview'
 import { usePonderQuery } from '@/lib/use-ponder-query'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 import { ScoringGraphPreview } from './ScoringGraphPreview'
 
-const parentHashFromDescription = (description: string): Hex | undefined => {
-  const match = description.match(/Parent hash:\s*(0x[0-9a-fA-F]{64})/i)
-  return match?.[1] as Hex | undefined
-}
-
 const instanceIdFor = (id: string, instanceId?: Hex): Hex | undefined =>
   instanceId ?? (/^0x[0-9a-fA-F]{64}$/.test(id) ? (id as Hex) : undefined)
 
 export function ProposalScoringSimulation({
   actions,
-  description,
   merkleRoot,
   proposalBlock,
 }: {
-  actions: ProposalAction[]
-  description: string
+  actions: readonly SafeAction[]
   merkleRoot: string
   proposalBlock: bigint
 }) {
   const { network } = useNetwork()
-  const update = useMemo(
-    () =>
-      actions
-        .map((action) => decodeParameterUpdateAction(action.data))
-        .find((candidate) => candidate !== null),
-    [actions]
-  )
+  const update = useMemo(() => {
+    const context = governanceActionContextFor(network)
+    const matched = walkGovernanceActions(actions, context).find(
+      (entry) => entry.definition.key === 'update-scoring-params'
+    )
+    return matched?.values as ScoringParamsActionValues | undefined
+  }, [actions, network])
   const snapshot = network.contracts.merkleSnapshot
   const root = merkleRoot as Hex
   const instanceId = instanceIdFor(network.id, network.instanceId)
-  const parentHash = parentHashFromDescription(description)
 
   const proof = usePonderQuery({
     queryFn: ponderQueryFns.getProofSubmission({ snapshot, root }),
@@ -63,22 +57,29 @@ export function ProposalScoringSimulation({
     enabled: !!update && !!instanceId,
   })
 
-  const baselineVersion = useMemo(() => {
-    const versions = history.data?.versions.filter((version) => version.valid)
-    if (!versions) return undefined
-    if (parentHash) {
-      return versions.find(
-        (version) =>
-          version.paramsHash.toLowerCase() === parentHash.toLowerCase()
-      )
+  const baselineVersion = useMemo(
+    () => selectProposalBaselineVersion(history.data?.versions, proposalBlock),
+    [history.data?.versions, proposalBlock]
+  )
+  const baselineParams = useMemo(() => {
+    if (!baselineVersion) return undefined
+    try {
+      return paramsFromJson(baselineVersion.params)
+    } catch (error) {
+      console.error('Proposal scoring baseline is invalid', error)
+      return undefined
     }
-    return [...versions]
-      .filter((version) => BigInt(version.executedAtBlock) <= proposalBlock)
-      .sort((a, b) => Number(BigInt(b.version) - BigInt(a.version)))[0]
-  }, [history.data?.versions, parentHash, proposalBlock])
+  }, [baselineVersion])
+  const parameterDiffs = useMemo(
+    () =>
+      update && baselineParams
+        ? diffParams(baselineParams, update.proposed)
+        : [],
+    [baselineParams, update]
+  )
 
   const simulation = useMemo(() => {
-    if (!update || !baselineVersion || !inputs.data) return undefined
+    if (!update || !baselineParams || !inputs.data) return undefined
     const edges: RawEdge[] = inputs.data.inputs.map((input) => ({
       kind: input.kind,
       attester: input.attester,
@@ -88,42 +89,62 @@ export function ProposalScoringSimulation({
       blockTimestamp: BigInt(input.blockTimestamp),
     }))
     try {
-      const current = paramsFromJson(baselineVersion.params)
       const preview = previewScoringChange({
         edges,
-        current,
+        current: baselineParams,
         proposed: update.proposed,
       })
       if (preview.currentRoot.toLowerCase() !== merkleRoot.toLowerCase()) {
         return { mismatch: true as const }
       }
-      return { mismatch: false as const, preview, current }
+      return { mismatch: false as const, preview }
     } catch (error) {
       console.error('Proposal scoring simulation failed', error)
       return { mismatch: true as const }
     }
-  }, [baselineVersion, inputs.data, merkleRoot, update])
+  }, [baselineParams, inputs.data, merkleRoot, update])
 
   if (!update) return null
 
+  const verifiedDiffs = parameterDiffs.length > 0 && (
+    <div className="border-l-2 border-foreground/30 bg-surface px-3 py-2">
+      <p className="text-xs font-medium text-foreground">
+        Settings changed from the proposal baseline
+      </p>
+      <ul className="mt-2 space-y-1 text-sm text-foreground/80">
+        {parameterDiffs.map((diff) => (
+          <li key={diff.field}>
+            {diff.label}: {diff.before} → {diff.after}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
   if (proof.isLoading || inputs.isLoading || history.isLoading) {
     return (
-      <div
-        className="border border-border bg-surface-2 p-4 text-sm text-muted-foreground"
-        data-settling="true"
-      >
-        Recomputing proposal impact from its checkpoint…
-      </div>
+      <Fragment>
+        {verifiedDiffs}
+        <div
+          className="border border-border bg-surface-2 p-4 text-sm text-muted-foreground"
+          data-settling="true"
+        >
+          Recomputing proposal impact from its checkpoint…
+        </div>
+      </Fragment>
     )
   }
 
   if (simulation && !simulation.mismatch) {
     return (
-      <ScoringGraphPreview
-        preview={simulation.preview}
-        currentSeeds={simulation.current.trustedSeeds}
-        proposedSeeds={update.proposed.trustedSeeds}
-      />
+      <Fragment>
+        {verifiedDiffs}
+        <ScoringGraphPreview
+          preview={simulation.preview}
+          currentSeeds={baselineParams!.trustedSeeds}
+          proposedSeeds={update.proposed.trustedSeeds}
+        />
+      </Fragment>
     )
   }
 
@@ -132,18 +153,23 @@ export function ProposalScoringSimulation({
     : !proof.data
       ? 'The checkpoint that produced this proposal’s voting root is not indexed.'
       : !baselineVersion
-        ? 'The proposal’s parent parameter version is not indexed.'
-        : simulation?.mismatch
-          ? 'The recomputed current root does not match the proposal’s voting root.'
-          : 'The checkpoint evidence is temporarily unavailable.'
+        ? 'The proposal’s baseline parameter version is not indexed.'
+        : !baselineParams
+          ? 'The proposal’s baseline parameter version is invalid.'
+          : simulation?.mismatch
+            ? 'The recomputed current root does not match the proposal’s voting root.'
+            : 'The checkpoint evidence is temporarily unavailable.'
 
   return (
-    <div className="border border-border bg-surface-2 p-4 text-sm">
-      <p className="font-medium">Impact simulation unavailable</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {reason} The decoded parameter changes above remain available for
-        review; no graph estimate is shown without reproducible evidence.
-      </p>
-    </div>
+    <Fragment>
+      {verifiedDiffs}
+      <div className="border border-border bg-surface-2 p-4 text-sm">
+        <p className="font-medium">Impact simulation unavailable</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {reason} The calldata-decoded parameter changes above remain available
+          for review; no graph estimate is shown without reproducible evidence.
+        </p>
+      </div>
+    </Fragment>
   )
 }

@@ -1356,9 +1356,7 @@ const LiveScoringSettings = ({
     [controller.params, proposed]
   )
   const proposalTitle = `Update ${network.name} scoring parameters`
-  const proposalDescription = `${rationale.trim()}\n\nParent hash: ${parentHash ?? 'Unavailable'}\nProposed hash: ${proposedHash ?? 'Unavailable'}\n\n${proposedDiffs
-    .map((diff) => `${diff.label}: ${diff.before} → ${diff.after}`)
-    .join('\n')}`
+  const proposalDescription = rationale.trim()
   const proposalActions = useMemo(
     () =>
       actions.map((action) => ({
@@ -2207,11 +2205,7 @@ const LiveScoringSettings = ({
                       is synchronized first; the controller publishes the new
                       version last.
                     </p>
-                    <ProposalActionList
-                      actions={actions}
-                      proposalDescription={proposalDescription}
-                      className="mt-4"
-                    />
+                    <ProposalActionList actions={actions} className="mt-4" />
                     {parentHash && proposedHash && (
                       <Button
                         type="button"

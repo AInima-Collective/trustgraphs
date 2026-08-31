@@ -211,13 +211,9 @@ export function ProposalCard({
           <h3 className="text-sm font-bold text-foreground">
             What passes if this passes
           </h3>
-          <ProposalActionList
-            actions={actions}
-            proposalDescription={proposal.description}
-          />
+          <ProposalActionList actions={actions} />
           <ProposalScoringSimulation
             actions={actions}
-            description={proposal.description}
             merkleRoot={proposal.merkleRoot}
             proposalBlock={proposal.blockNumber}
           />

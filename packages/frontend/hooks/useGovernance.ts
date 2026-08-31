@@ -2,10 +2,11 @@
 
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
-import { Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
+import { type Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
 
 import { useNetwork } from '@/contexts/NetworkContext'
+import type { SafeAction } from '@/lib/actions'
 import { merkleGovModuleAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
@@ -18,14 +19,7 @@ import {
 } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
-// Types matching the MerkleGovModule contract structs
-export interface ProposalAction {
-  target: string
-  value: string
-  data: string
-  operation: number // Operation enum (0 = Call, 1 = DelegateCall)
-  description?: string // For UI purposes
-}
+export type ProposalAction = SafeAction
 
 export interface ProposalCore {
   id: bigint

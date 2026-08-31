@@ -2,7 +2,7 @@
 
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import { type Address, formatEther, isAddress, parseEther } from 'viem'
+import { type Address, formatEther, isAddress, isHex, parseEther } from 'viem'
 
 import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
@@ -11,6 +11,7 @@ import { ProposalActionList } from '@/components/ProposalActionList'
 import { VoteButtons } from '@/components/VoteButtons'
 import { useEnsResolver } from '@/hooks/useEns'
 import { ProposalAction, VoteType } from '@/hooks/useGovernance'
+import type { SafeOperation } from '@/lib/actions'
 import { parseAccountIdentifier } from '@/lib/ens'
 import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 import type { GovernancePrefillAction } from '@/lib/governance-prefill'
@@ -37,7 +38,7 @@ type DraftAction =
       target: string
       valueEth: string
       data: string
-      operation: number
+      operation: SafeOperation
       description: string
     }
 
@@ -199,6 +200,10 @@ export function CreateProposalForm({
         if (!draft.description.trim()) {
           return { error: `${label}: describe what this call does` }
         }
+        const data = draft.data || '0x'
+        if (!isHex(data)) {
+          return { error: `${label}: enter valid hex calldata` }
+        }
         let wei: bigint
         try {
           wei = parseEther(draft.valueEth || '0')
@@ -208,7 +213,7 @@ export function CreateProposalForm({
         actions.push({
           target: draft.target,
           value: wei.toString(),
-          data: draft.data || '0x',
+          data,
           operation: draft.operation,
           description: draft.description,
         })
@@ -343,10 +348,7 @@ export function CreateProposalForm({
                   order; no calldata needs to be reconstructed by hand.
                 </p>
               </div>
-              <ProposalActionList
-                actions={prefill.actions}
-                proposalDescription={prefill.description}
-              />
+              <ProposalActionList actions={prefill.actions} />
               <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   Return to Settings to change the tuple. This proposal JSON is
@@ -462,11 +464,12 @@ export function CreateProposalForm({
                         </div>
                         <select
                           value={draft.operation}
-                          onChange={(e) =>
-                            updateDraft(index, {
-                              operation: Number(e.target.value),
-                            })
-                          }
+                          onChange={(e) => {
+                            const operation = Number(e.target.value)
+                            if (operation === 0 || operation === 1) {
+                              updateDraft(index, { operation })
+                            }
+                          }}
                           className={inputClassName}
                         >
                           <option value={0}>Call</option>

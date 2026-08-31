@@ -4,22 +4,26 @@ import { Code2, Send, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { formatEther } from 'viem'
 
+import { useNetwork } from '@/contexts/NetworkContext'
 import {
-  decodeParameterUpdateAction,
-  decodeSignerParamsHashAction,
-  formatFixed,
-} from '@/lib/scoring-params'
+  governanceActionContextFor,
+  walkGovernanceActions,
+} from '@/lib/actions'
+import type {
+  EthTransferActionValues,
+  MatchedGovernanceAction,
+  SafeAction,
+  ScoringParamsActionValues,
+  SignerParamsActionValues,
+} from '@/lib/actions'
+import { paramsHash } from '@/lib/pagerank/encode'
+import { formatFixed } from '@/lib/scoring-params'
 import { cn } from '@/lib/utils'
 
 import { Card } from './Card'
 import { CopyableText } from './CopyableText'
 
-export type DisplayProposalAction = {
-  target: string
-  value: string
-  data: string
-  operation?: number
-  description?: string
+export type DisplayProposalAction = SafeAction & {
   contractName?: string
   functionSignature?: string
 }
@@ -35,89 +39,169 @@ type ActionPresentation = {
   hash?: string
   evidenceURI?: string
   resultingSettings?: string[]
+  coordinated?: boolean
 }
 
-const proposalDiffLines = (description?: string) =>
-  (description ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.includes(' → '))
-
-const presentAction = (action: DisplayProposalAction): ActionPresentation => {
-  const signerHash = decodeSignerParamsHashAction(action.data)
-  if (signerHash) {
-    return {
-      kind: 'signer-sync',
-      title: 'Synchronize signer rules',
-      summary:
-        'Point the signer-selection module at the new scoring configuration.',
-      badge: 'Signer rules',
-      icon: ShieldCheck,
-      hash: signerHash,
+const presentAction = (
+  matched: MatchedGovernanceAction
+): ActionPresentation => {
+  switch (matched.definition.key) {
+    case 'update-scoring-params': {
+      const values = matched.values as ScoringParamsActionValues
+      return {
+        kind: 'scoring-update',
+        title: 'Publish the new scoring configuration',
+        summary: values.syncSigner
+          ? 'Synchronize signer selection and publish these settings together as the network’s next version.'
+          : 'Make these settings the network’s current, versioned scoring configuration.',
+        badge: 'Scoring settings',
+        icon: SlidersHorizontal,
+        hash: paramsHash(values.proposed),
+        evidenceURI: values.evidenceURI,
+        resultingSettings: [
+          `Damping: ${formatFixed(values.proposed.dampingFp)}`,
+          `Trusted accounts: ${values.proposed.trustedSeeds.length}`,
+          `Maximum iterations: ${values.proposed.maxIterations}`,
+        ],
+        coordinated: values.syncSigner,
+      }
     }
-  }
-
-  const update = decodeParameterUpdateAction(action.data)
-  if (update) {
-    return {
-      kind: 'scoring-update',
-      title: 'Publish the new scoring configuration',
-      summary:
-        'Make these settings the network’s current, versioned scoring configuration.',
-      badge: 'Scoring settings',
-      icon: SlidersHorizontal,
-      hash: update.proposedHash,
-      evidenceURI: update.evidenceURI,
-      resultingSettings: [
-        `Damping: ${formatFixed(update.proposed.dampingFp)}`,
-        `Trusted accounts: ${update.proposed.trustedSeeds.length}`,
-        `Maximum iterations: ${update.proposed.maxIterations}`,
-      ],
+    case 'set-signer-params-hash': {
+      const values = matched.values as SignerParamsActionValues
+      return {
+        kind: 'signer-sync',
+        title: 'Synchronize signer rules',
+        summary:
+          'Point the signer-selection module at the new scoring configuration.',
+        badge: 'Signer rules',
+        icon: ShieldCheck,
+        hash: values.paramsHash,
+      }
     }
-  }
-
-  if (action.data === '0x' && BigInt(action.value || '0') > 0n) {
-    return {
-      kind: 'transfer',
-      title: `Send ${formatEther(BigInt(action.value))} ETH`,
-      summary: action.description || 'Transfer ETH from the DAO treasury.',
-      badge: 'Treasury transfer',
-      icon: Send,
+    case 'send-eth': {
+      const values = matched.values as EthTransferActionValues
+      return {
+        kind: 'transfer',
+        title: `Send ${formatEther(BigInt(values.value))} ETH`,
+        summary: 'Transfer ETH from the DAO treasury.',
+        badge: 'Treasury transfer',
+        icon: Send,
+      }
     }
-  }
-
-  return {
-    kind: 'custom',
-    title: action.description || 'Execute a contract call',
-    summary: action.description
-      ? 'Execute this custom contract call from the DAO.'
-      : 'This action is not yet recognized by trustgraphs.',
-    badge: action.operation === 1 ? 'Delegate call' : 'Contract call',
-    icon: Code2,
+    default: {
+      const action = matched.actions[0]
+      return {
+        kind: 'custom',
+        title: 'Execute a contract call',
+        summary:
+          'This action is not recognized by trustgraphs. Review its raw target, value, operation, and calldata.',
+        badge: action?.operation === 1 ? 'Delegate call' : 'Contract call',
+        icon: Code2,
+      }
+    }
   }
 }
 
-const formatOperation = (operation = 0) =>
+const formatOperation = (operation: SafeAction['operation']) =>
   operation === 1 ? 'DELEGATECALL' : 'CALL'
 
+const actionValue = (value: string) => {
+  try {
+    return BigInt(value)
+  } catch {
+    return 0n
+  }
+}
+
+function TechnicalActionDetails({
+  actions,
+}: {
+  actions: readonly DisplayProposalAction[]
+}) {
+  return (
+    <details className="border-t border-border pt-1">
+      <summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-muted-foreground hover:text-foreground">
+        Technical transaction details
+      </summary>
+      <div className="space-y-4 border-t border-border pt-3 text-xs">
+        {actions.map((action, index) => {
+          const value = actionValue(action.value)
+          const contractCall =
+            action.contractName && action.functionSignature
+              ? `${action.contractName}.${action.functionSignature}`
+              : null
+          return (
+            <div
+              key={`${action.target}:${index}`}
+              className="space-y-3 border-b border-border pb-4 last:border-0 last:pb-0"
+            >
+              {actions.length > 1 && (
+                <p className="font-medium text-foreground">
+                  Transaction {index + 1} of {actions.length}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground">
+                <span>{formatOperation(action.operation)}</span>
+                <span>
+                  {value === 0n ? '0 ETH' : `${formatEther(value)} ETH`}
+                </span>
+              </div>
+              {contractCall && (
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Contract function</p>
+                  <p className="break-words font-mono text-foreground">
+                    {contractCall}
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1">
+                <p className="text-muted-foreground">Target contract</p>
+                <CopyableText
+                  text={action.target}
+                  truncate
+                  alwaysShowCopyIcon
+                  className="max-w-full"
+                />
+              </div>
+              {action.data !== '0x' && (
+                <div className="space-y-2">
+                  <p className="text-muted-foreground">Encoded calldata</p>
+                  <CopyableText
+                    text={action.data}
+                    displayText="Copy full calldata"
+                    truncate={false}
+                    truncateOnMobile={false}
+                    alwaysShowCopyIcon
+                  />
+                  <p className="max-h-32 overflow-auto break-all font-mono text-muted-foreground">
+                    {action.data}
+                  </p>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </details>
+  )
+}
+
 function ProposalActionCard({
-  action,
+  matched,
+  actions,
   index,
   total,
-  diffLines,
 }: {
-  action: DisplayProposalAction
+  matched: MatchedGovernanceAction
+  actions: readonly DisplayProposalAction[]
   index: number
   total: number
-  diffLines: string[]
 }) {
-  const presentation = presentAction(action)
+  const presentation = presentAction(matched)
   const Icon = presentation.icon
-  const value = BigInt(action.value || '0')
-  const contractCall =
-    action.contractName && action.functionSignature
-      ? `${action.contractName}.${action.functionSignature}`
-      : null
+  const annotations = actions
+    .map((action) => action.description?.trim())
+    .filter((description): description is string => !!description)
 
   return (
     <Card type="accent" size="md" className="min-w-0 space-y-4">
@@ -128,7 +212,7 @@ function ProposalActionCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="tg-label">
-              Step {index + 1} of {total}
+              Action {index + 1} of {total}
             </p>
             <span className="border border-border bg-surface px-2 py-1 text-xs text-muted-foreground">
               {presentation.badge}
@@ -143,33 +227,18 @@ function ProposalActionCard({
         </div>
       </div>
 
-      {presentation.kind === 'scoring-update' && diffLines.length > 0 && (
+      {presentation.resultingSettings && (
         <div className="border-l-2 border-foreground/30 bg-surface px-3 py-2">
           <p className="text-xs font-medium text-foreground">
-            Settings changed
+            Resulting settings
           </p>
-          <ul className="mt-2 space-y-1 text-sm text-foreground/80">
-            {diffLines.map((line) => (
-              <li key={line}>{line}</li>
+          <ul className="mt-2 grid gap-1 text-sm text-foreground/80 sm:grid-cols-2">
+            {presentation.resultingSettings.map((setting) => (
+              <li key={setting}>{setting}</li>
             ))}
           </ul>
         </div>
       )}
-
-      {presentation.kind === 'scoring-update' &&
-        diffLines.length === 0 &&
-        presentation.resultingSettings && (
-          <div className="border-l-2 border-foreground/30 bg-surface px-3 py-2">
-            <p className="text-xs font-medium text-foreground">
-              Resulting settings
-            </p>
-            <ul className="mt-2 grid gap-1 text-sm text-foreground/80 sm:grid-cols-2">
-              {presentation.resultingSettings.map((setting) => (
-                <li key={setting}>{setting}</li>
-              ))}
-            </ul>
-          </div>
-        )}
 
       {presentation.hash && (
         <div className="space-y-1">
@@ -199,72 +268,40 @@ function ProposalActionCard({
         </div>
       )}
 
-      <details className="border-t border-border pt-1">
-        <summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-muted-foreground hover:text-foreground">
-          Technical transaction details
-        </summary>
-        <div className="space-y-3 border-t border-border pt-3 text-xs">
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground">
-            <span>{formatOperation(action.operation)}</span>
-            <span>{value === 0n ? '0 ETH' : `${formatEther(value)} ETH`}</span>
-          </div>
-          {contractCall && (
-            <div className="space-y-1">
-              <p className="text-muted-foreground">Contract function</p>
-              <p className="break-words font-mono text-foreground">
-                {contractCall}
-              </p>
-            </div>
-          )}
-          <div className="space-y-1">
-            <p className="text-muted-foreground">Target contract</p>
-            <CopyableText
-              text={action.target}
-              truncate
-              alwaysShowCopyIcon
-              className="max-w-full"
-            />
-          </div>
-          {action.data !== '0x' && (
-            <div className="space-y-2">
-              <p className="text-muted-foreground">Encoded calldata</p>
-              <CopyableText
-                text={action.data}
-                displayText="Copy full calldata"
-                truncate={false}
-                truncateOnMobile={false}
-                alwaysShowCopyIcon
-              />
-              <p className="max-h-32 overflow-auto break-all font-mono text-muted-foreground">
-                {action.data}
-              </p>
-            </div>
-          )}
+      {annotations.length > 0 && (
+        <div className="border border-border bg-surface-2 px-3 py-2">
+          <p className="text-xs font-medium text-foreground">
+            Proposer annotation
+          </p>
+          {annotations.map((annotation, annotationIndex) => (
+            <p
+              key={`${annotation}:${annotationIndex}`}
+              className="mt-1 break-words text-xs text-muted-foreground"
+            >
+              {annotation}
+            </p>
+          ))}
         </div>
-      </details>
+      )}
+
+      <TechnicalActionDetails actions={actions} />
     </Card>
   )
 }
 
 export function ProposalActionList({
   actions,
-  proposalDescription,
   className,
 }: {
-  actions: DisplayProposalAction[]
-  proposalDescription?: string
+  actions: readonly DisplayProposalAction[]
   className?: string
 }) {
-  const presentations = actions.map(presentAction)
-  const signer = presentations.find((action) => action.kind === 'signer-sync')
-  const update = presentations.find(
-    (action) => action.kind === 'scoring-update'
+  const { network } = useNetwork()
+  const context = governanceActionContextFor(network)
+  const matched = walkGovernanceActions(actions, context)
+  const coordinatedScoringUpdate = matched.some(
+    (entry) => presentAction(entry).coordinated
   )
-  const coordinatedScoringUpdate =
-    !!signer?.hash &&
-    !!update?.hash &&
-    signer.hash.toLowerCase() === update.hash.toLowerCase()
-  const diffLines = proposalDiffLines(proposalDescription)
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -274,20 +311,23 @@ export function ProposalActionList({
             One coordinated scoring update
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            These calls use the same configuration ID and execute together. The
-            signer rules are synchronized and the complete settings are
-            published as the next version.
+            These consecutive calls use the same configuration ID and execute
+            together. The signer rules are synchronized before the complete
+            settings are published as the next version.
           </p>
         </div>
       )}
       <ol className="space-y-3">
-        {actions.map((action, index) => (
-          <li key={`${action.target}:${index}`}>
+        {matched.map((entry, index) => (
+          <li key={`${entry.definition.key}:${entry.startIndex}`}>
             <ProposalActionCard
-              action={action}
+              matched={entry}
+              actions={actions.slice(
+                entry.startIndex,
+                entry.startIndex + entry.consumed
+              )}
               index={index}
-              total={actions.length}
-              diffLines={diffLines}
+              total={matched.length}
             />
           </li>
         ))}
