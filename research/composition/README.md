@@ -6,6 +6,10 @@ Issue #64 adds the atomic onchain capture, authenticated source provenance, time
 lifecycle, and factory/deployment wiring described below. Operator/indexer integration and product
 UI remain separate child issues.
 
+The side-by-side design for mixing standard and weighted TrustGraph sources is frozen in
+[`MIXED_COMPOSITION_V2.md`](../MIXED_COMPOSITION_V2.md). It preserves every V1 byte and deployment
+surface described here; no V2 production implementation lives in this directory yet.
+
 ## Production V1 implementation
 
 The implementation deliberately isolates the new program from every legacy guest:
