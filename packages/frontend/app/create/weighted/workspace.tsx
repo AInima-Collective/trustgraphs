@@ -848,21 +848,19 @@ export const WeightedPriorWorkspace = ({
           const fingerprint = keccak256(data)
           const nextParamsHash = rotatedParamsHash(rotationInstance, exact)
           saveGovernancePrefill({
+            version: 2,
             networkId: rotationInstance.id,
             fingerprint,
-            parentHash: active.commitments.paramsHash,
-            proposedHash: nextParamsHash,
             title: 'Change weighted starting shares',
             description: `Replace the network's persistent starting-share distribution with the reviewed ${exact.priorCount}-account manifest. Vouches and ordinary score updates do not require this action.\n\nCurrent params hash: ${active.commitments.paramsHash}\nProposed params hash: ${nextParamsHash}\nPrior root: ${exact.priorRoot}\nManifest SHA-256: ${exact.manifestSha256}\n\nIf this proposal passes and the Safe executes it, the controller's separate activation delay must still elapse before anyone can activate the new version.`,
             actions: [
               {
-                target: active.controller,
-                value: '0',
-                data,
-                operation: 0,
-                description: 'Propose the reviewed weighted starting shares',
-                contractName: 'WeightedPriorParamsController',
-                functionSignature: 'proposePrior(bytes,bytes32)',
+                actionKey: 'rotate-weighted-prior',
+                values: {
+                  controller: active.controller,
+                  manifest: exact.manifest,
+                  metadataDigest: exact.metadataDigest,
+                },
               },
             ],
             createdAt: Date.now(),

@@ -1497,13 +1497,21 @@ const LiveScoringSettings = ({
     if (!proposedHash || !parentHash) return
     const fingerprint = paramsFingerprint(proposed!)
     saveGovernancePrefill({
+      version: 2,
       networkId: network.id,
       fingerprint,
-      parentHash,
-      proposedHash,
       title: proposalTitle,
       description: proposalDescription,
-      actions: proposalActions,
+      actions: [
+        {
+          actionKey: 'update-scoring-params',
+          values: {
+            proposed: paramsToJson(proposed!),
+            evidenceURI,
+            syncSigner: !!companionAddress,
+          },
+        },
+      ],
       createdAt: Date.now(),
     })
     router.push(

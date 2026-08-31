@@ -1,4 +1,6 @@
 import { customAction } from './custom'
+import { networkProfileAction } from './profile'
+import { signerPauseAction } from './safety'
 import { scoringParamsAction, signerParamsAction } from './scoring'
 import { ethTransferAction } from './transfer'
 import type {
@@ -7,11 +9,15 @@ import type {
   MatchedGovernanceAction,
   SafeAction,
 } from './types'
+import { weightedPriorRotationAction } from './weighted'
 
 /** Specific matchers precede the raw escape hatch. First valid match wins. */
 export const governanceActionRegistry: readonly MatchableGovernanceAction[] = [
   scoringParamsAction,
   signerParamsAction,
+  networkProfileAction,
+  signerPauseAction,
+  weightedPriorRotationAction,
   ethTransferAction,
   customAction,
 ]

@@ -8,7 +8,9 @@ import { PARAMS_SCALE, serializeParams } from '../scoring-params'
 import { customAction } from './custom'
 import { governanceActionContextFor } from './network'
 import { normalizeSafeActions } from './normalize'
+import { networkProfileAction } from './profile'
 import { walkGovernanceActions } from './registry'
+import { signerPauseAction } from './safety'
 import { scoringParamsAction, signerParamsAction } from './scoring'
 import {
   reconstructProposalBaseline,
@@ -16,6 +18,7 @@ import {
 } from './scoring-history'
 import { ethTransferAction } from './transfer'
 import type { GovernanceActionContext, SafeAction } from './types'
+import { weightedPriorRotationAction } from './weighted'
 
 const address = (byte: string) => `0x${byte.repeat(40)}` as Address
 const bytes32 = (byte: string) => `0x${byte.repeat(64)}` as Hex
@@ -40,6 +43,7 @@ const proposed: Params = {
 }
 
 const context: GovernanceActionContext = {
+  snapshot: address('1'),
   paramsController: address('4'),
   signerSyncModule: address('5'),
 }
@@ -144,6 +148,55 @@ assert.deepEqual(decodedTransfer.values, {
   value: '1000000000000000000',
   description: undefined,
 })
+
+const profile = networkProfileAction.encode(
+  { metadataURI: 'ipfs://profile-v2' },
+  context
+)
+assert.deepEqual(walkGovernanceActions(profile, context)[0]!.values, {
+  snapshot: context.snapshot,
+  metadataURI: 'ipfs://profile-v2',
+})
+assert.equal(
+  walkGovernanceActions([{ ...profile[0]!, target: address('9') }], context)[0]!
+    .definition.key,
+  'custom'
+)
+
+const paused = signerPauseAction.encode({ paused: true }, context)
+assert.deepEqual(walkGovernanceActions(paused, context)[0]!.values, {
+  paused: true,
+})
+assert.equal(
+  walkGovernanceActions([{ ...paused[0]!, target: address('9') }], context)[0]!
+    .definition.key,
+  'custom'
+)
+
+const weightedContext: GovernanceActionContext = {
+  ...context,
+  weightedParamsController: address('6'),
+}
+const weighted = weightedPriorRotationAction.encode(
+  {
+    controller: address('6'),
+    manifest: '0x1234',
+    metadataDigest: bytes32('d'),
+  },
+  weightedContext
+)
+assert.deepEqual(walkGovernanceActions(weighted, weightedContext)[0]!.values, {
+  controller: address('6'),
+  manifest: '0x1234',
+  metadataDigest: bytes32('d'),
+})
+assert.equal(
+  walkGovernanceActions(
+    [{ ...weighted[0]!, target: address('9') }],
+    weightedContext
+  )[0]!.definition.key,
+  'custom'
+)
 
 const raw: SafeAction = {
   target: address('7'),

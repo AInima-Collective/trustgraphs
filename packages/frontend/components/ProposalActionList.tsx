@@ -1,6 +1,13 @@
 'use client'
 
-import { Code2, Send, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import {
+  Code2,
+  FilePenLine,
+  PauseCircle,
+  Send,
+  ShieldCheck,
+  SlidersHorizontal,
+} from 'lucide-react'
 import type { ComponentType } from 'react'
 import { formatEther } from 'viem'
 
@@ -13,9 +20,12 @@ import {
 import type {
   EthTransferActionValues,
   MatchedGovernanceAction,
+  NetworkProfileActionValues,
   SafeAction,
   ScoringParamsActionValues,
   SignerParamsActionValues,
+  SignerPauseActionValues,
+  WeightedPriorRotationActionValues,
 } from '@/lib/actions'
 import { paramsHash } from '@/lib/pagerank/encode'
 import { formatFixed } from '@/lib/scoring-params'
@@ -29,7 +39,14 @@ export type DisplayProposalAction = SafeAction & {
   functionSignature?: string
 }
 
-type ActionKind = 'signer-sync' | 'scoring-update' | 'transfer' | 'custom'
+type ActionKind =
+  | 'signer-sync'
+  | 'signer-pause'
+  | 'scoring-update'
+  | 'weighted-prior'
+  | 'network-profile'
+  | 'transfer'
+  | 'custom'
 
 type ActionPresentation = {
   kind: ActionKind
@@ -41,6 +58,8 @@ type ActionPresentation = {
   evidenceURI?: string
   resultingSettings?: string[]
   coordinated?: boolean
+  detailLabel?: string
+  detailValue?: string
 }
 
 const presentAction = (
@@ -87,6 +106,44 @@ const presentAction = (
         summary: 'Transfer ETH from the DAO treasury.',
         badge: 'Treasury transfer',
         icon: Send,
+      }
+    }
+    case 'update-network-profile': {
+      const values = matched.values as NetworkProfileActionValues
+      return {
+        kind: 'network-profile',
+        title: 'Publish a new network profile',
+        summary:
+          'Point the network snapshot at the reviewed metadata revision.',
+        badge: 'Network profile',
+        icon: FilePenLine,
+        detailLabel: 'New metadata URI',
+        detailValue: values.metadataURI,
+      }
+    }
+    case 'set-signer-sync-paused': {
+      const values = matched.values as SignerPauseActionValues
+      return {
+        kind: 'signer-pause',
+        title: `${values.paused ? 'Pause' : 'Resume'} signer synchronization`,
+        summary: values.paused
+          ? 'Stop new score-selected signer proofs while retaining the current Safe owners.'
+          : 'Allow new score-selected signer proofs to update the Safe owners again.',
+        badge: 'Safety control',
+        icon: PauseCircle,
+      }
+    }
+    case 'rotate-weighted-prior': {
+      const values = matched.values as WeightedPriorRotationActionValues
+      return {
+        kind: 'weighted-prior',
+        title: 'Change weighted starting shares',
+        summary:
+          'Propose a reviewed weighted-prior manifest for delayed activation.',
+        badge: 'Scoring settings',
+        icon: SlidersHorizontal,
+        detailLabel: 'Manifest metadata digest',
+        detailValue: values.metadataDigest,
       }
     }
     default: {
@@ -262,6 +319,20 @@ function ProposalActionCard({
           <p className="text-xs text-muted-foreground">Supporting evidence</p>
           <CopyableText
             text={presentation.evidenceURI}
+            truncate
+            alwaysShowCopyIcon
+            className="max-w-full"
+          />
+        </div>
+      )}
+
+      {presentation.detailValue && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            {presentation.detailLabel}
+          </p>
+          <CopyableText
+            text={presentation.detailValue}
             truncate
             alwaysShowCopyIcon
             className="max-w-full"

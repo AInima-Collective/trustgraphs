@@ -35,7 +35,12 @@ assert.match(scoring, /const proposalDescription = rationale\.trim\(\)/)
 
 assert.match(governance, /export type ProposalAction = SafeAction/)
 assert.match(governance, /normalizeSafeActions\(proposal\.actions\)/)
-assert.match(prefill, /export type GovernancePrefillAction = SafeAction &/)
+assert.match(
+  prefill,
+  /export type GovernancePrefillAction = GovernanceActionDraft/
+)
+assert.match(prefill, /const parseV2Actions/)
+assert.match(prefill, /const migrateLegacyActions/)
 assert.match(prefill, /parseGovernancePrefill\(raw, networkId, fingerprint\)/)
 assert.match(queries, /getProofSubmissionsBefore:/)
 assert.match(queries, /lt\(t\.blockNumber, options\.proposalBlock\)/)

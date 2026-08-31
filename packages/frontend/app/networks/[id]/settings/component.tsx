@@ -106,7 +106,6 @@ const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
 const SAFE_GUARD_STORAGE_SLOT =
   0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8n
 const SAFE_SENTINEL = '0x0000000000000000000000000000000000000001' as Hex
-const ZERO_HASH = `0x${'0'.repeat(64)}` as Hex
 const strictWorkCountAbi = [
   {
     type: 'function',
@@ -1689,23 +1688,17 @@ export const SettingsPage = ({
     })
     const fingerprint = keccak256(data)
     saveGovernancePrefill({
+      version: 2,
       networkId: network.id,
       fingerprint,
-      parentHash: ZERO_HASH,
-      proposedHash: ZERO_HASH,
       title: `${nextPaused ? 'Pause' : 'Resume'} score-selected Safe signer updates`,
       description: nextPaused
         ? 'Pause new signer-sync proofs while retaining the last recorded Safe owner set.'
         : 'Resume application of ZK-proven signer sets for new score checkpoints.',
       actions: [
         {
-          target: authoritySignerSync,
-          value: '0',
-          data,
-          operation: 0,
-          description: `${nextPaused ? 'Pause' : 'Resume'} signer synchronization`,
-          contractName: 'SignerSyncZkModule',
-          functionSignature: 'setPaused(bool)',
+          actionKey: 'set-signer-sync-paused',
+          values: { paused: nextPaused },
         },
       ],
       createdAt: Date.now(),

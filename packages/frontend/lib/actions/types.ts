@@ -16,6 +16,7 @@ export type SafeAction = {
 export type GovernanceActionCategory =
   | 'treasury'
   | 'scoring'
+  | 'network'
   | 'membership'
   | 'governance'
   | 'safety'
@@ -28,8 +29,10 @@ export type GovernanceActionCategory =
  * action targets with this context before assigning a friendly presentation to calldata.
  */
 export type GovernanceActionContext = {
+  snapshot?: Address
   paramsController?: Address
   signerSyncModule?: Address
+  weightedParamsController?: Address
 }
 
 export type GovernanceActionMatch<Values = unknown> = {
@@ -77,6 +80,21 @@ export type EthTransferActionValues = {
 }
 
 export type CustomActionValues = SafeAction
+
+export type NetworkProfileActionValues = {
+  snapshot?: Address
+  metadataURI: string
+}
+
+export type SignerPauseActionValues = {
+  paused: boolean
+}
+
+export type WeightedPriorRotationActionValues = {
+  controller: Address
+  manifest: Hex
+  metadataDigest: Hex
+}
 
 export type MatchedGovernanceAction = {
   definition: MatchableGovernanceAction

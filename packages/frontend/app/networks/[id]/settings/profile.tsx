@@ -35,7 +35,6 @@ import { txToast } from '@/lib/tx'
 import type { Network } from '@/lib/types'
 
 const CONSTITUTIONAL_ROLE = keccak256(stringToBytes('CONSTITUTIONAL_ROLE'))
-const ZERO_HASH = `0x${'0'.repeat(64)}` as Hex
 
 type ReadResult = { status?: string; result?: unknown }
 const readResult = (reads: readonly ReadResult[] | undefined, index: number) =>
@@ -180,21 +179,15 @@ export const SnapshotProfileSettings = ({
         const actionFingerprint = keccak256(data)
         const governanceNetworkId = target.governanceNetworkId ?? target.id
         saveGovernancePrefill({
+          version: 2,
           networkId: governanceNetworkId,
           fingerprint: actionFingerprint,
-          parentHash: ZERO_HASH,
-          proposedHash: ZERO_HASH,
           title: `Update the ${exact.name} network profile`,
           description: `Publish a new network profile pointer through the governance Safe.\n\nNew metadata URI: ${uri}`,
           actions: [
             {
-              target: snapshot,
-              value: '0',
-              data,
-              operation: 0,
-              description: 'Set the network metadata URI',
-              contractName: 'MerkleSnapshot',
-              functionSignature: 'setMetadataURI(string)',
+              actionKey: 'update-network-profile',
+              values: { snapshot, metadataURI: uri },
             },
           ],
           createdAt: Date.now(),

@@ -13,6 +13,7 @@ const contractAddress = (value: string | undefined): Address | undefined => {
 export const governanceActionContextFor = (
   network: Pick<Network, 'contracts'>
 ): GovernanceActionContext => ({
+  snapshot: contractAddress(network.contracts.merkleSnapshot),
   paramsController: contractAddress(
     network.contracts.trustgraphsParamsController
   ),
