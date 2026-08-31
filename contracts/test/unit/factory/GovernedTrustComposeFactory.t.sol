@@ -318,9 +318,8 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
-        GovernedFactoryBase.SignerSyncConfig memory signerConfig = GovernedFactoryBase.SignerSyncConfig({
-            enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
-        });
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig =
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000});
 
         TrustComposeFactory.CreateArgs memory args = _args("compose signer sync");
         vm.prank(creator);
@@ -419,9 +418,8 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
-        GovernedFactoryBase.SignerSyncConfig memory signerConfig = GovernedFactoryBase.SignerSyncConfig({
-            enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
-        });
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig =
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000});
 
         TrustComposeFactory.CreateArgs memory args = _args("unsafe compose selection");
         GovernedFactoryBase.InitialPolicy memory policy = _unpaidPolicy();
@@ -639,9 +637,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         );
 
         uint96 maximum = governedFactory.MAX_INITIAL_MAX_PER_ROOT_USD();
-        vm.expectRevert(
-            abi.encodeWithSelector(GovernedFactoryBase.InitialCapTooHigh.selector, maximum + 1, maximum)
-        );
+        vm.expectRevert(abi.encodeWithSelector(GovernedFactoryBase.InitialCapTooHigh.selector, maximum + 1, maximum));
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
             GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1}),
@@ -668,10 +664,7 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
-        return
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-            });
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     function _createGoverned(

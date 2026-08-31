@@ -545,7 +545,9 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     ) public {
         ParamsCodec.Params memory p = _baseParams();
         p.dampingFp = bound(dampingFp, 1, TrustgraphsParamsValidator.PRECISION_SCALE - 1);
-        p.toleranceFp = bound(toleranceFp, TrustgraphsParamsValidator.MIN_TOLERANCE_FP, TrustgraphsParamsValidator.MAX_TOLERANCE_FP);
+        p.toleranceFp = bound(
+            toleranceFp, TrustgraphsParamsValidator.MIN_TOLERANCE_FP, TrustgraphsParamsValidator.MAX_TOLERANCE_FP
+        );
         p.maxIterations = uint32(bound(uint256(maxIterations), 1, TrustgraphsParamsValidator.MAX_ITERATIONS));
         p.totalPool = bound(totalPool, 1, type(uint128).max);
         Created memory c = _create(_args("fuzz-params", p));

@@ -68,7 +68,9 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     /// The golden vector itself carries all three derived fields, so submitting it verbatim — the
     /// most likely copy-paste a creator would attempt — is refused.
     function test_RejectsTheGoldenParamsVerbatim() public {
-        _expectRejected(_goldenParams(), abi.encodeWithSelector(TrustgraphsParamsValidator.DerivedFieldNotZero.selector));
+        _expectRejected(
+            _goldenParams(), abi.encodeWithSelector(TrustgraphsParamsValidator.DerivedFieldNotZero.selector)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

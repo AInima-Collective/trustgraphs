@@ -62,9 +62,7 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
             GovernedFactoryBase.InitialPolicy(0, 0),
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
 
         GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
@@ -131,9 +129,7 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
             GovernedFactoryBase.InitialPolicy(0, 0),
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
         GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
         GnosisSafe safe = GnosisSafe(payable(safeAddr));

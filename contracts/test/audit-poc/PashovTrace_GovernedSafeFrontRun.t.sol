@@ -61,10 +61,7 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
     }
 
     function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
-        return
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-            });
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     /// The wrapper's bootstrap initializer, byte-for-byte (`_createBootstrapSafe`).

@@ -64,9 +64,7 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
         (bytes32 instanceId, address safe,,) = governedFactory.createGovernedInstance(
             args,
             GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
 
         GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);

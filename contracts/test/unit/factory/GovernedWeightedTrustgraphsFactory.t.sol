@@ -309,9 +309,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
         GovernedFactoryBase.SignerSyncConfig memory signerConfig =
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
-            });
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000});
 
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted signer sync", 2);
         vm.prank(creator);
@@ -416,9 +414,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
         GovernedFactoryBase.SignerSyncConfig memory signerConfig =
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
-            });
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000});
 
         vm.prank(creator);
         vm.expectRevert(
@@ -612,9 +608,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         vm.deal(creator, 1 ether);
         vm.prank(creator);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                GovernedFactoryBase.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(1)
-            )
+            abi.encodeWithSelector(GovernedFactoryBase.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(1))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             _args("weighted unpriced prepay", 2),
@@ -636,28 +630,20 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedFactoryBase.InitialPolicy({
-                minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8
-            }),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8}),
             _noSigner()
         );
 
         uint96 maximum = governedFactory.MAX_INITIAL_MAX_PER_ROOT_USD();
-        vm.expectRevert(
-            abi.encodeWithSelector(GovernedFactoryBase.InitialCapTooHigh.selector, maximum + 1, maximum)
-        );
+        vm.expectRevert(abi.encodeWithSelector(GovernedFactoryBase.InitialCapTooHigh.selector, maximum + 1, maximum));
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedFactoryBase.InitialPolicy({
-                minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1
-            }),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1}),
             _noSigner()
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                GovernedFactoryBase.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8)
-            )
+            abi.encodeWithSelector(GovernedFactoryBase.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
@@ -676,9 +662,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     }
 
     function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
-        return GovernedFactoryBase.SignerSyncConfig({
-            enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-        });
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     function _createGoverned(

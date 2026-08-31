@@ -78,8 +78,7 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
 
         uint256 g1 = gasleft();
         vm.prank(victim);
-        (, address safe,,) =
-            gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
+        (, address safe,,) = gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
         uint256 victimGas = g1 - gasleft();
 
         emit log_named_uint("attacker squat gas", squatGas);
@@ -89,8 +88,7 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
         // Same name, brand-new salt -> succeeds if the squatter does not front-run again.
         args.salt = bytes32(uint256(8));
         vm.prank(victim);
-        (, address freshSafe,,) =
-            gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
+        (, address freshSafe,,) = gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
         assertTrue(freshSafe != address(0), "a fresh salt succeeds when not front-run");
     }
 }

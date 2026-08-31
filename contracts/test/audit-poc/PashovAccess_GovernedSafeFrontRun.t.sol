@@ -54,10 +54,7 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
     }
 
     function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
-        return
-            GovernedFactoryBase.SignerSyncConfig({
-                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-            });
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     /// @dev The exact bytes `_createBootstrapSafe` builds — reproduced from public information.

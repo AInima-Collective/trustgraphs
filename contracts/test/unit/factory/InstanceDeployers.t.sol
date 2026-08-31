@@ -182,18 +182,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             )
         );
         directDeployer.deploy(
-            instanceId,
-            SAFE,
-            signerVerifier,
-            accumulator,
-            scoreSource,
-            activitySource,
-            vkey,
-            1,
-            1,
-            0,
-            151_200,
-            1
+            instanceId, SAFE, signerVerifier, accumulator, scoreSource, activitySource, vkey, 1, 1, 0, 151_200, 1
         );
     }
 }

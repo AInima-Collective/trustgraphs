@@ -66,9 +66,8 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
     function test_CallerCannotInstallAnAttackerSuppliedSignerVerifier() public {
         AlwaysAcceptSignerVerifier fake = new AlwaysAcceptSignerVerifier();
 
-        GovernedFactoryBase.SignerSyncConfig memory signerConfig = GovernedFactoryBase.SignerSyncConfig({
-            enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
-        });
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig =
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000});
 
         TrustgraphsFactory.CreateArgs memory args = _args("looks-governed");
         vm.prank(creator);
