@@ -9,7 +9,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { formatEther } from 'viem'
+import { formatEther, formatUnits, isAddressEqual, zeroAddress } from 'viem'
 
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
@@ -18,9 +18,22 @@ import {
   walkGovernanceActions,
 } from '@/lib/actions'
 import type {
+  ConstitutionalTransferActionValues,
+  Erc20TransferActionValues,
   EthTransferActionValues,
+  GovernanceCancelProposalActionValues,
+  GovernanceDelayActionValues,
+  GovernanceDelegateCallTargetActionValues,
+  GovernanceQuorumActionValues,
   MatchedGovernanceAction,
   NetworkProfileActionValues,
+  OperationalRoleActionValues,
+  RewardDistributionActionValues,
+  RewardsAllowlistActionValues,
+  RewardsDistributorAllowanceActionValues,
+  RewardsFeePercentageActionValues,
+  RewardsFeeRecipientActionValues,
+  RewardsPauseActionValues,
   SafeAction,
   ScoringParamsActionValues,
   SignerParamsActionValues,
@@ -46,6 +59,9 @@ type ActionKind =
   | 'weighted-prior'
   | 'network-profile'
   | 'transfer'
+  | 'treasury'
+  | 'governance'
+  | 'membership'
   | 'custom'
 
 type ActionPresentation = {
@@ -108,6 +124,102 @@ const presentAction = (
         icon: Send,
       }
     }
+    case 'send-erc20': {
+      const values = matched.values as Erc20TransferActionValues
+      return {
+        kind: 'transfer',
+        title: `Send ${values.amount} token base units`,
+        summary: `Call transfer to ${values.recipient} on the explicitly shown token contract.`,
+        badge: 'Treasury transfer',
+        icon: Send,
+        detailLabel: 'Token contract',
+        detailValue: values.token,
+      }
+    }
+    case 'fund-rewards': {
+      const values = matched.values as RewardDistributionActionValues
+      const asset = isAddressEqual(values.token, zeroAddress)
+        ? 'native ETH wei'
+        : 'token base units'
+      return {
+        kind: 'treasury',
+        title: `Fund rewards with ${values.amount} ${asset}`,
+        summary:
+          'Create a reward pool bound to one exact proven score root and fee quote.',
+        badge: 'Rewards funding',
+        icon: Send,
+        detailLabel: 'Expected score root',
+        detailValue: values.expectedRoot,
+        resultingSettings: [
+          `Token: ${values.token}`,
+          `Expected total score: ${values.expectedTotalMerkleValue}`,
+          `Maximum fee: ${values.maxFeeAmount} base units`,
+          `Claim deadline: ${values.claimDeadline === '0' ? 'No expiry' : values.claimDeadline}`,
+          `Expected fee recipient: ${values.expectedFeeRecipient}`,
+        ],
+      }
+    }
+    case 'set-rewards-paused': {
+      const values = matched.values as RewardsPauseActionValues
+      return {
+        kind: 'treasury',
+        title: `${values.paused ? 'Pause' : 'Resume'} reward funding and claims`,
+        summary: values.paused
+          ? 'Stop new distributions and claims while preserving expired sweep access.'
+          : 'Allow reward distributions and claims again.',
+        badge: 'Rewards control',
+        icon: PauseCircle,
+      }
+    }
+    case 'set-rewards-fee-recipient': {
+      const values = matched.values as RewardsFeeRecipientActionValues
+      return {
+        kind: 'treasury',
+        title: 'Change the rewards fee recipient',
+        summary: 'Route future distributor fees to a new address.',
+        badge: 'Rewards control',
+        icon: SlidersHorizontal,
+        detailLabel: 'New fee recipient',
+        detailValue: values.recipient,
+      }
+    }
+    case 'set-rewards-fee-percentage': {
+      const values = matched.values as RewardsFeePercentageActionValues
+      return {
+        kind: 'treasury',
+        title: `Set rewards fee to ${formatUnits(BigInt(values.feePercentage), 16)}%`,
+        summary:
+          'A decrease applies immediately; an increase enters the distributor’s delayed schedule.',
+        badge: 'Rewards control',
+        icon: SlidersHorizontal,
+      }
+    }
+    case 'set-rewards-allowlist-enabled': {
+      const values = matched.values as RewardsAllowlistActionValues
+      return {
+        kind: 'treasury',
+        title: `${values.enabled ? 'Enable' : 'Disable'} the rewards funder allowlist`,
+        summary: values.enabled
+          ? 'Only individually allowed addresses may create reward pools.'
+          : 'Any address may create a reward pool.',
+        badge: 'Rewards control',
+        icon: ShieldCheck,
+      }
+    }
+    case 'set-rewards-distributor-allowance': {
+      const values = matched.values as RewardsDistributorAllowanceActionValues
+      return {
+        kind: 'treasury',
+        title: `${values.allowed ? 'Allow' : 'Remove'} a rewards funder`,
+        summary: values.allowed
+          ? 'Permit this address to fund rewards while the allowlist is enabled.'
+          : 'Remove this address from the rewards funder allowlist.',
+        badge: 'Rewards control',
+        icon: ShieldCheck,
+        detailLabel: 'Funder address',
+        detailValue: values.distributor,
+      }
+    }
     case 'update-network-profile': {
       const values = matched.values as NetworkProfileActionValues
       return {
@@ -119,6 +231,94 @@ const presentAction = (
         icon: FilePenLine,
         detailLabel: 'New metadata URI',
         detailValue: values.metadataURI,
+      }
+    }
+    case 'set-operational-role': {
+      const values = matched.values as OperationalRoleActionValues
+      return {
+        kind: 'membership',
+        title: `${values.granted ? 'Grant' : 'Revoke'} operational role`,
+        summary: values.granted
+          ? 'Allow this account to publish operational parameter hashes.'
+          : 'Remove this account’s operational parameter authority.',
+        badge: 'Membership',
+        icon: ShieldCheck,
+        detailLabel: 'Account',
+        detailValue: values.account,
+      }
+    }
+    case 'propose-constitutional-transfer': {
+      const values = matched.values as ConstitutionalTransferActionValues
+      return {
+        kind: 'membership',
+        title: 'Propose a constitutional authority transfer',
+        summary:
+          'Begin a two-step handoff. Acceptance gives the successor constitutional control and removes this Safe’s role.',
+        badge: 'Constitutional authority',
+        icon: ShieldCheck,
+        detailLabel: 'Proposed successor',
+        detailValue: values.successor,
+      }
+    }
+    case 'cancel-constitutional-transfer':
+      return {
+        kind: 'membership',
+        title: 'Cancel the constitutional authority transfer',
+        summary: 'Stop the snapshot’s currently pending two-step handoff.',
+        badge: 'Constitutional authority',
+        icon: ShieldCheck,
+      }
+    case 'set-governance-quorum': {
+      const values = matched.values as GovernanceQuorumActionValues
+      return {
+        kind: 'governance',
+        title: `Set quorum to ${formatUnits(BigInt(values.quorum), 16)}%`,
+        summary:
+          'Set the share of decisive voting power required for future proposals.',
+        badge: 'Governance settings',
+        icon: SlidersHorizontal,
+      }
+    }
+    case 'set-governance-voting-delay':
+    case 'set-governance-voting-period':
+    case 'set-governance-execution-delay': {
+      const values = matched.values as GovernanceDelayActionValues
+      const labels = {
+        'set-governance-voting-delay': 'voting delay',
+        'set-governance-voting-period': 'voting period',
+        'set-governance-execution-delay': 'execution delay',
+      } as const
+      const label = labels[matched.definition.key as keyof typeof labels]
+      return {
+        kind: 'governance',
+        title: `Set ${label} to ${values.blocks} blocks`,
+        summary: `Change the network’s ${label} for future proposals.`,
+        badge: 'Governance settings',
+        icon: SlidersHorizontal,
+      }
+    }
+    case 'set-governance-delegatecall-target': {
+      const values = matched.values as GovernanceDelegateCallTargetActionValues
+      return {
+        kind: 'governance',
+        title: `${values.allowed ? 'Allow' : 'Revoke'} a delegatecall target`,
+        summary: values.allowed
+          ? 'Permit proposal code at this address to execute inside the Safe’s storage context.'
+          : 'Prevent future proposals from delegatecalling this target.',
+        badge: 'Execution safety',
+        icon: ShieldCheck,
+        detailLabel: 'Delegatecall target',
+        detailValue: values.target,
+      }
+    }
+    case 'cancel-governance-proposal': {
+      const values = matched.values as GovernanceCancelProposalActionValues
+      return {
+        kind: 'governance',
+        title: `Cancel governance proposal ${values.proposalId}`,
+        summary: 'Mark the referenced, unexecuted proposal as cancelled.',
+        badge: 'Governance control',
+        icon: PauseCircle,
       }
     }
     case 'set-signer-sync-paused': {
@@ -262,7 +462,25 @@ function ProposalActionCard({
     .filter((description): description is string => !!description)
 
   return (
-    <Card type="accent" size="md" className="min-w-0 space-y-4">
+    <Card
+      type="accent"
+      size="md"
+      className={cn(
+        'min-w-0 space-y-4',
+        matched.definition.danger && 'border-destructive/60'
+      )}
+    >
+      {matched.definition.danger && (
+        <div className="border border-destructive/50 bg-destructive/10 p-3 text-xs">
+          <p className="font-medium text-foreground">
+            High-impact governance action
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            This changes an authority or execution safety boundary. Verify the
+            decoded target and outcome carefully.
+          </p>
+        </div>
+      )}
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border bg-surface text-foreground">
           <Icon className="h-4 w-4" />

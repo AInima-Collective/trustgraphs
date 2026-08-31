@@ -38,7 +38,11 @@ const categoryLabels: Record<string, string> = {
   treasury: 'Treasury',
   scoring: 'Scoring',
   network: 'Network',
+  membership: 'Membership',
+  governance: 'Governance',
   safety: 'Safety',
+  vault: 'Proving vault',
+  programs: 'Programs',
   custom: 'Custom',
 }
 
@@ -385,6 +389,15 @@ export function CreateProposalForm({
                     </Button>
                   </div>
                 </div>
+                {definition?.danger && (
+                  <div className="border border-destructive/50 bg-destructive/10 p-3 text-xs text-foreground">
+                    <p className="font-medium">High-impact governance action</p>
+                    <p className="mt-1 text-muted-foreground">
+                      This changes an authority or an execution safety boundary.
+                      Verify every address and consequence before submitting.
+                    </p>
+                  </div>
+                )}
                 <GovernanceActionEditor
                   draft={draft}
                   onChange={(values) => updateDraft(index, values)}

@@ -1,8 +1,30 @@
 import { customAction } from './custom'
+import {
+  governanceCancelProposalAction,
+  governanceDelegateCallTargetAction,
+  governanceExecutionDelayAction,
+  governanceQuorumAction,
+  governanceVotingDelayAction,
+  governanceVotingPeriodAction,
+} from './governance'
+import {
+  cancelConstitutionalTransferAction,
+  constitutionalTransferAction,
+  operationalRoleAction,
+} from './membership'
 import { networkProfileAction } from './profile'
 import { signerPauseAction } from './safety'
 import { scoringParamsAction, signerParamsAction } from './scoring'
 import { ethTransferAction } from './transfer'
+import {
+  erc20TransferAction,
+  rewardDistributionAction,
+  rewardsAllowlistAction,
+  rewardsDistributorAllowanceAction,
+  rewardsFeePercentageAction,
+  rewardsFeeRecipientAction,
+  rewardsPauseAction,
+} from './treasury'
 import type {
   GovernanceActionContext,
   MatchableGovernanceAction,
@@ -18,6 +40,22 @@ export const governanceActionRegistry: readonly MatchableGovernanceAction[] = [
   networkProfileAction,
   signerPauseAction,
   weightedPriorRotationAction,
+  rewardDistributionAction,
+  rewardsPauseAction,
+  rewardsFeeRecipientAction,
+  rewardsFeePercentageAction,
+  rewardsAllowlistAction,
+  rewardsDistributorAllowanceAction,
+  governanceQuorumAction,
+  governanceVotingDelayAction,
+  governanceVotingPeriodAction,
+  governanceExecutionDelayAction,
+  governanceDelegateCallTargetAction,
+  governanceCancelProposalAction,
+  operationalRoleAction,
+  constitutionalTransferAction,
+  cancelConstitutionalTransferAction,
+  erc20TransferAction,
   ethTransferAction,
   customAction,
 ]

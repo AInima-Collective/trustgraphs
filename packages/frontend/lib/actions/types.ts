@@ -33,6 +33,9 @@ export type GovernanceActionContext = {
   paramsController?: Address
   signerSyncModule?: Address
   weightedParamsController?: Address
+  treasurySafe?: Address
+  fundDistributor?: Address
+  governanceModule?: Address
 }
 
 export type GovernanceActionMatch<Values = unknown> = {
@@ -94,6 +97,69 @@ export type WeightedPriorRotationActionValues = {
   controller: Address
   manifest: Hex
   metadataDigest: Hex
+}
+
+export type Erc20TransferActionValues = {
+  token: Address
+  recipient: Address
+  amount: string
+}
+
+export type RewardDistributionActionValues = {
+  token: Address
+  amount: string
+  expectedRoot: Hex
+  expectedTotalMerkleValue: string
+  claimDeadline: string
+  maxFeeAmount: string
+  expectedFeeRecipient: Address
+}
+
+export type RewardsPauseActionValues = {
+  paused: boolean
+}
+
+export type RewardsFeeRecipientActionValues = {
+  recipient: Address
+}
+
+export type RewardsFeePercentageActionValues = {
+  feePercentage: string
+}
+
+export type RewardsAllowlistActionValues = {
+  enabled: boolean
+}
+
+export type RewardsDistributorAllowanceActionValues = {
+  distributor: Address
+  allowed: boolean
+}
+
+export type GovernanceQuorumActionValues = {
+  quorum: string
+}
+
+export type GovernanceDelayActionValues = {
+  blocks: string
+}
+
+export type GovernanceDelegateCallTargetActionValues = {
+  target: Address
+  allowed: boolean
+}
+
+export type GovernanceCancelProposalActionValues = {
+  proposalId: string
+}
+
+export type OperationalRoleActionValues = {
+  account: Address
+  granted: boolean
+}
+
+export type ConstitutionalTransferActionValues = {
+  successor: Address
 }
 
 export type MatchedGovernanceAction = {

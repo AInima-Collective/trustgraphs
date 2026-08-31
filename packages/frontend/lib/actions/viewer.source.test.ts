@@ -20,6 +20,10 @@ assert.match(viewer, /normalizeSafeActions\(actions\)/)
 assert.doesNotMatch(viewer, /decodeParameterUpdateAction/)
 assert.doesNotMatch(viewer, /proposalDiffLines/)
 assert.doesNotMatch(viewer, /proposalDescription/)
+assert.match(viewer, /case 'fund-rewards'/)
+assert.match(viewer, /case 'set-operational-role'/)
+assert.match(viewer, /case 'set-governance-quorum'/)
+assert.match(viewer, /matched\.definition\.danger/)
 
 assert.match(
   simulation,

@@ -23,6 +23,12 @@ assert.match(editor, /case 'update-scoring-params'/)
 assert.match(editor, /case 'update-network-profile'/)
 assert.match(editor, /case 'set-signer-sync-paused'/)
 assert.match(editor, /case 'rotate-weighted-prior'/)
+assert.match(editor, /case 'send-erc20'/)
+assert.match(editor, /case 'fund-rewards'/)
+assert.match(editor, /case 'set-operational-role'/)
+assert.match(editor, /case 'set-governance-quorum'/)
+assert.match(editor, /case 'set-governance-delegatecall-target'/)
+assert.match(form, /High-impact governance action/)
 
 for (const producer of [profile, scoring, settings, weighted]) {
   assert.match(producer, /version: 2/)

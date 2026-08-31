@@ -18,4 +18,7 @@ export const governanceActionContextFor = (
     network.contracts.trustgraphsParamsController
   ),
   signerSyncModule: contractAddress(network.contracts.safe?.signerSyncManager),
+  treasurySafe: contractAddress(network.contracts.safe?.proxy),
+  fundDistributor: contractAddress(network.contracts.merkleFundDistributor),
+  governanceModule: contractAddress(network.contracts.merkleGovModule),
 })

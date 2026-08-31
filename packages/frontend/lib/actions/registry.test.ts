@@ -46,6 +46,9 @@ const context: GovernanceActionContext = {
   snapshot: address('1'),
   paramsController: address('4'),
   signerSyncModule: address('5'),
+  treasurySafe: address('3'),
+  fundDistributor: address('6'),
+  governanceModule: address('7'),
 }
 
 assert.deepEqual(
@@ -54,6 +57,8 @@ assert.deepEqual(
       merkleSnapshot: address('1'),
       easIndexerResolver: address('2'),
       trustgraphsParamsController: context.paramsController,
+      merkleFundDistributor: context.fundDistributor,
+      merkleGovModule: context.governanceModule,
       safe: {
         proxy: address('3'),
         signerSyncManager: context.signerSyncModule,
@@ -175,18 +180,18 @@ assert.equal(
 
 const weightedContext: GovernanceActionContext = {
   ...context,
-  weightedParamsController: address('6'),
+  weightedParamsController: address('8'),
 }
 const weighted = weightedPriorRotationAction.encode(
   {
-    controller: address('6'),
+    controller: address('8'),
     manifest: '0x1234',
     metadataDigest: bytes32('d'),
   },
   weightedContext
 )
 assert.deepEqual(walkGovernanceActions(weighted, weightedContext)[0]!.values, {
-  controller: address('6'),
+  controller: address('8'),
   manifest: '0x1234',
   metadataDigest: bytes32('d'),
 })
