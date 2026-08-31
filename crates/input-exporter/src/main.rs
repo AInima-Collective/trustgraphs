@@ -1,8 +1,9 @@
 //! input-exporter — reconstruct `input.json` (a `GuestInput`/`SignerInput`) from on-chain state.
 //!
-//! Reads the accumulator's `EdgeFolded` events + EAS attestations up to a checkpoint, reassembles the
-//! exact ordered edge set, self-verifies it re-folds to the checkpoint's `acc`, and writes the JSON
-//! the prover consumes. See `research/operations/trust-graph/runbook.md`.
+//! Reads the accumulator's `EdgeFolded` and attestation-marker events up to a checkpoint, resolves
+//! those exact UIDs from EAS storage, self-verifies the reconstructed edge set against the
+//! checkpointed `acc`, and writes the JSON the prover consumes. See
+//! `research/operations/trust-graph/runbook.md`.
 
 use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
@@ -33,7 +34,7 @@ sol! {
     function getAttestation(bytes32 uid) external view returns (Attestation);
 
     event EdgeFolded(uint64 indexed index, bytes32 leaf, bytes32 acc);
-    event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID);
+    event AttestationAttested(address indexed eas, bytes32 indexed uid);
 
     event HeadAnchored(
         uint64 indexed foldIndex, bytes32 indexed nodeId, address indexed owner,
@@ -56,6 +57,40 @@ sol! {
         uint64 indexed sequence, address indexed account, uint256 indexed proposalId,
         uint64 blockNumber, bytes32 acc
     );
+}
+
+async fn marked_attestation_uids(
+    rpc: &Rpc,
+    accumulator: Address,
+    eas: Address,
+    from_block: u64,
+    to_block: u64,
+    chunk: u64,
+) -> Result<BTreeSet<B256>> {
+    let logs = rpc
+        .get_logs(
+            accumulator,
+            &[Some(AttestationAttested::SIGNATURE_HASH)],
+            from_block,
+            to_block,
+            chunk,
+        )
+        .await
+        .context("querying accumulator AttestationAttested markers")?;
+    let mut uids = BTreeSet::new();
+    for log in &logs {
+        let marker = AttestationAttested::decode_raw_log(log.topics.iter().copied(), &log.data)
+            .context("decoding accumulator AttestationAttested marker")?;
+        if marker.eas != eas {
+            bail!(
+                "accumulator {accumulator:#x} marked UID {:#x} from EAS {:#x}, not configured EAS {eas:#x}",
+                marker.uid,
+                marker.eas
+            );
+        }
+        uids.insert(marker.uid);
+    }
+    Ok(uids)
 }
 
 #[derive(Parser, Debug)]
@@ -427,35 +462,20 @@ async fn main() -> Result<()> {
     let ordered_leaves: Vec<B256> = indexed.into_iter().map(|(_, leaf)| leaf).collect();
     eprintln!("collected {} ordered fold leaves", ordered_leaves.len());
 
-    // 3. Candidate edges from EAS attestations to the pinned schema.
-    let attested = rpc
-        .get_logs(
-            eas,
-            &[
-                Some(Attested::SIGNATURE_HASH),
-                None,
-                None,
-                Some(
-                    params
-                        .as_ref()
-                        .map(|params| params.schema_uid)
-                        .or_else(|| weighted_params.as_ref().map(|params| params.schema_uid))
-                        .expect("one params shape"),
-                ),
-            ],
-            args.from_block,
-            to_block,
-            args.chunk,
-        )
-        .await
-        .context("querying EAS Attested logs")?;
-    let mut uids: BTreeSet<B256> = BTreeSet::new();
-    for log in &attested {
-        let ev = Attested::decode_raw_log(log.topics.iter().copied(), &log.data)
-            .context("decoding Attested")?;
-        uids.insert(ev.uid);
-    }
-    eprintln!("found {} attestations for the schema; fetching records...", uids.len());
+    // 3. Candidate edges from this accumulator's own UID markers. Scanning EAS from the
+    // accumulator's deploy block loses legacy attestations imported after deployment; their EAS
+    // `Attested` logs are older than the scan range. The marker is emitted at import time and the
+    // full record remains authenticated by the configured EAS contract's storage.
+    let uids =
+        marked_attestation_uids(&rpc, accumulator, eas, args.from_block, to_block, args.chunk)
+            .await?;
+    eprintln!("found {} accumulator-marked attestations; fetching EAS records...", uids.len());
+
+    let expected_schema = params
+        .as_ref()
+        .map(|params| params.schema_uid)
+        .or_else(|| weighted_params.as_ref().map(|params| params.schema_uid))
+        .expect("one params shape");
 
     let mut candidates: Vec<RawEdge> = Vec::new();
     for uid in &uids {
@@ -464,6 +484,15 @@ async fn main() -> Result<()> {
             .await
             .with_context(|| format!("getAttestation({uid:#x}) failed"))?;
         let a = Attestation::abi_decode(&ret).context("decoding Attestation")?;
+        if a.uid != *uid {
+            bail!("EAS returned UID {:#x} for accumulator marker {uid:#x}", a.uid);
+        }
+        if a.schema != expected_schema {
+            bail!(
+                "accumulator marker {uid:#x} resolves to schema {:#x}, not pinned schema {expected_schema:#x}",
+                a.schema
+            );
+        }
         let data = a.data.to_vec();
         // Attest edge (folded in onAttest at attestation.time).
         candidates.push(RawEdge {
@@ -474,6 +503,20 @@ async fn main() -> Result<()> {
             block_timestamp: a.time,
             data: data.clone(),
         });
+        // Importer instances may fold expiration as a revoke-kind leaf at the immutable EAS
+        // expiration timestamp without changing EAS.revocationTime. Always include that authentic
+        // candidate when present; leaf matching ignores it for native resolvers and checkpoints
+        // where no expiration was imported.
+        if a.expirationTime != 0 {
+            candidates.push(RawEdge {
+                kind: 1,
+                attester: a.attester,
+                recipient: a.recipient,
+                uid: *uid,
+                block_timestamp: a.expirationTime,
+                data: data.clone(),
+            });
+        }
         // Revoke edge (folded in onRevoke at revocationTime), if revoked. Reconstruction includes
         // it only when its fold leaf is inside this checkpoint; reconciliation then clears the
         // pair only if this UID is still current.
@@ -764,4 +807,109 @@ async fn main() -> Result<()> {
     std::fs::write(&out_path, out_json)?;
     eprintln!("wrote {} ({} edges)", out_path.display(), cp.leafCount);
     Ok(())
+}
+
+#[cfg(test)]
+mod importer_marker_tests {
+    use super::{marked_attestation_uids, AttestationAttested};
+    use alloy_primitives::{hex, Address, B256};
+    use alloy_sol_types::SolEvent;
+    use input_exporter::rpc::Rpc;
+    use serde_json::{json, Value};
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    fn read_request(stream: &mut std::net::TcpStream) -> String {
+        stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let mut bytes = Vec::new();
+        let mut content_length = None;
+        loop {
+            let mut chunk = [0u8; 4096];
+            let read = stream.read(&mut chunk).unwrap();
+            assert!(read > 0, "client closed before sending a complete request");
+            bytes.extend_from_slice(&chunk[..read]);
+            if content_length.is_none() {
+                if let Some(header_end) = bytes.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                    content_length = headers.lines().find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .map(|length| (header_end + 4, length))
+                    });
+                }
+            }
+            if let Some((body_start, body_length)) = content_length {
+                if bytes.len() >= body_start + body_length {
+                    return String::from_utf8(bytes[body_start..body_start + body_length].to_vec())
+                        .unwrap();
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn discovers_import_marker_when_original_eas_log_predates_scan_range() {
+        let accumulator: Address = "0x1111111111111111111111111111111111111111".parse().unwrap();
+        let eas: Address = "0x2222222222222222222222222222222222222222".parse().unwrap();
+        let uid = B256::repeat_byte(0x33);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_tx, request_rx) = mpsc::channel();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            request_tx.send(read_request(&mut stream)).unwrap();
+            let indexed_eas = format!("0x{:0>64}", hex::encode(eas));
+            let response = json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": [{
+                    "address": format!("{accumulator:#x}"),
+                    "topics": [
+                        format!("{:#x}", AttestationAttested::SIGNATURE_HASH),
+                        indexed_eas,
+                        format!("{uid:#x}")
+                    ],
+                    "data": "0x",
+                    "blockNumber": "0x64",
+                    "transactionHash": format!("{:#x}", B256::repeat_byte(0x44))
+                }]
+            })
+            .to_string();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response.len(),
+                response
+            )
+            .unwrap();
+        });
+
+        // The source attestation may have been emitted long before block 100. Discovery must query
+        // the accumulator marker emitted during import at block 100, not the historical EAS log.
+        let found = marked_attestation_uids(
+            &Rpc::new(format!("http://{address}")),
+            accumulator,
+            eas,
+            100,
+            100,
+            1,
+        )
+        .await
+        .unwrap();
+        assert_eq!(found.into_iter().collect::<Vec<_>>(), vec![uid]);
+
+        let request: Value = serde_json::from_str(&request_rx.recv().unwrap()).unwrap();
+        assert_eq!(request["method"], "eth_getLogs");
+        assert_eq!(request["params"][0]["address"], format!("{accumulator:#x}"));
+        assert_eq!(request["params"][0]["fromBlock"], "0x64");
+        assert_eq!(
+            request["params"][0]["topics"][0],
+            format!("{:#x}", AttestationAttested::SIGNATURE_HASH)
+        );
+    }
 }

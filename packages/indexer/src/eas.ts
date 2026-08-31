@@ -1,6 +1,7 @@
 import { ponder } from 'ponder:registry'
 import { accumulatorRecord, easAttestation } from 'ponder:schema'
 
+import { easFoldTimestamp } from './eas-fold-time'
 import { revalidateNetwork } from './utils'
 import { easAbi } from '../../frontend/lib/contract-abis'
 
@@ -12,6 +13,7 @@ const onAttested = async ({ event, context }: any) => {
     functionName: 'getAttestation',
     args: [uid],
   })
+  const foldTimestamp = easFoldTimestamp(attestation, 'attest')
   await context.db.insert(easAttestation).values({
     uid,
     schema: attestation.schema,
@@ -24,7 +26,7 @@ const onAttested = async ({ event, context }: any) => {
     revocationTime: attestation.revocationTime,
     data: attestation.data,
     blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
+    timestamp: foldTimestamp,
   })
 
   // Mirror the resolver's accumulator fold (kind 0 = attest — EASIndexerResolver.onAttest folds
@@ -40,7 +42,7 @@ const onAttested = async ({ event, context }: any) => {
     uid,
     schema: attestation.schema,
     data: attestation.data,
-    blockTimestamp: event.block.timestamp,
+    blockTimestamp: foldTimestamp,
     blockNumber: event.block.number,
     logIndex: event.log.logIndex,
     txHash: event.transaction.hash,
@@ -57,6 +59,7 @@ const onRevoked = async ({ event, context }: any) => {
     functionName: 'getAttestation',
     args: [uid],
   })
+  const foldTimestamp = easFoldTimestamp(attestation, 'revoke')
   // Out-of-universe guard: ensure-by-readback. The full attestation was just read from the EAS
   // contract, so a revocation whose attest marker predates the start block (or was folded by a
   // resolver we began watching mid-life) materializes the complete row instead of wedging on a
@@ -75,12 +78,13 @@ const onRevoked = async ({ event, context }: any) => {
       revocationTime: attestation.revocationTime,
       data: attestation.data,
       blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
+      timestamp: easFoldTimestamp(attestation, 'attest'),
     })
     .onConflictDoUpdate({ revocationTime: attestation.revocationTime })
 
-  // The revoke fold (kind 1): same leaf ABI, folded at the revoke block's timestamp, data
-  // preimage = the original attestation payload (see accumulatorRecord note above).
+  // The revoke fold (kind 1): same leaf ABI, folded at EAS's authenticated revocationTime, data
+  // preimage = the original attestation payload (see accumulatorRecord note above). For native
+  // resolver calls this equals the event block timestamp; delayed imports must retain history.
   await context.db.insert(accumulatorRecord).values({
     id: event.id,
     accumulator: event.log.address,
@@ -90,7 +94,7 @@ const onRevoked = async ({ event, context }: any) => {
     uid,
     schema: attestation.schema,
     data: attestation.data,
-    blockTimestamp: event.block.timestamp,
+    blockTimestamp: foldTimestamp,
     blockNumber: event.block.number,
     logIndex: event.log.logIndex,
     txHash: event.transaction.hash,

@@ -480,7 +480,7 @@ export const easAttestation = onchainTable(
     revocationTime: t.bigint().notNull(),
     data: t.hex().notNull(),
     blockNumber: t.bigint().notNull(),
-    timestamp: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(), // original EAS attestation time, not a delayed import time
   }),
   (t) => ({
     schemaIdx: index().on(t.schema),
@@ -1406,7 +1406,7 @@ export const accumulatorRecord = onchainTable(
     uid: t.hex().notNull(),
     schema: t.hex().notNull(),
     data: t.hex().notNull(), // raw EAS attestation data (preimage of the folded dataHash)
-    blockTimestamp: t.bigint().notNull(), // the block.timestamp folded into the leaf
+    blockTimestamp: t.bigint().notNull(), // authenticated EAS time/revocation/expiration folded into the leaf
     blockNumber: t.bigint().notNull(),
     logIndex: t.integer().notNull(),
     txHash: t.hex().notNull(),
