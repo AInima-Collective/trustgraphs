@@ -376,12 +376,22 @@ const onMerkleRootUpdated = async (
         .update(metadataTable)
         .set({
           ...discriminators.primary,
+          // Metadata is keyed by (snapshot, root), so a later checkpoint may
+          // legitimately return to an already-ingested root. Advance the
+          // collapsed row's chain cursor or an intervening root remains
+          // incorrectly visible as current.
+          blockNumber: event.block.number,
+          timestamp: event.block.timestamp,
           programProvenance: provenance,
         })
         .where(rootWhere)
       await offchainDb
         .update(entryTable)
-        .set(discriminators.primary)
+        .set({
+          ...discriminators.primary,
+          blockNumber: event.block.number,
+          timestamp: event.block.timestamp,
+        })
         .where(
           and(
             eq(entryTable.merkleSnapshotContract, event.log.address),
@@ -1137,7 +1147,9 @@ const onOwnershipTransferStarted = async ({
 }: SharedArgs<'merkleFundDistributor:OwnershipTransferStarted'>) => {
   // OpenZeppelin Ownable2Step's event: `newOwner` is the pending owner until acceptance.
   const { newOwner } = event.args
-  await updateDistributorConfig(context, event.log.address, { pendingOwner: newOwner })
+  await updateDistributorConfig(context, event.log.address, {
+    pendingOwner: newOwner,
+  })
 }
 
 const onOwnershipTransferred = async ({

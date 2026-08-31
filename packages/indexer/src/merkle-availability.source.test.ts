@@ -36,3 +36,13 @@ test('current APIs expose pending availability instead of serving a stale root',
     )
   }
 })
+
+test('repeated roots advance their collapsed metadata and entry cursors', () => {
+  const merkle = source('./merkle.ts')
+  const repair = merkle.slice(
+    merkle.indexOf('if (\n      canRepairScoreRowsOnRestart'),
+    merkle.indexOf('// Load IPFS data.')
+  )
+  assert.equal(repair.match(/blockNumber: event\.block\.number/g)?.length, 2)
+  assert.equal(repair.match(/timestamp: event\.block\.timestamp/g)?.length, 2)
+})
