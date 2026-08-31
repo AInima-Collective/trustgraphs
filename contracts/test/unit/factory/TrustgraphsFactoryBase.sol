@@ -34,7 +34,7 @@ import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
 
 /// @title TrustgraphsFactoryBase
-/// @notice Shared rig for the M1 factory battery: a real EAS + `SchemaRegistry` (so created
+/// @notice Shared rig for the factory battery: a real EAS + `SchemaRegistry` (so created
 ///         instances can actually be attested against), a real `InstanceRegistry` with the factory
 ///         holding `REGISTRAR_ROLE`, and a mock verifier standing in for the shared
 ///         `SP1JournalVerifier`.

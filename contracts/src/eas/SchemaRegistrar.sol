@@ -10,7 +10,6 @@ import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contr
 contract SchemaRegistrar {
     error InvalidSchemaRegistry();
     error InvalidSchema();
-    error InvalidResolver();
 
     // The address of the global SchemaRegistry contract.
     ISchemaRegistry private immutable SCHEMA_REGISTRY;

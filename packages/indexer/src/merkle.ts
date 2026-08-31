@@ -1135,8 +1135,9 @@ const onOwnershipTransferStarted = async ({
   event,
   context,
 }: SharedArgs<'merkleFundDistributor:OwnershipTransferStarted'>) => {
-  const { pendingOwner } = event.args
-  await updateDistributorConfig(context, event.log.address, { pendingOwner })
+  // OpenZeppelin Ownable2Step's event: `newOwner` is the pending owner until acceptance.
+  const { newOwner } = event.args
+  await updateDistributorConfig(context, event.log.address, { pendingOwner: newOwner })
 }
 
 const onOwnershipTransferred = async ({

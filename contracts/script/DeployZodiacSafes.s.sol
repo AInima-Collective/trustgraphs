@@ -61,8 +61,8 @@ contract DeployZodiacSafes is Common {
     }
 
     /// @notice Deploy governance and complete the typed scoring-authority handoff in the same
-    ///         broadcast. Dev/factory instances use this overload; legacy snapshots without a
-    ///         typed controller retain the two-argument overload above.
+    ///         broadcast. Dev/factory instances use this overload; snapshots without a typed
+    ///         controller retain the two-argument overload above.
     function run(
         string calldata merkleSnapshotAddr,
         string calldata signerVerifierAddr,
@@ -115,18 +115,11 @@ contract DeployZodiacSafes is Common {
         controller.transferOwnership(deployment.safe);
         _execSafe(safe, address(controller), abi.encodeWithSignature("acceptOwnership()"), deployer);
 
-        require(
-            signerModule.paramsAuthority() == deployer, "DeployZodiacSafes: deployer is not signer params authority"
-        );
-        signerModule.transferParamsAuthority(deployment.safe);
-        _execSafe(safe, address(signerModule), abi.encodeWithSignature("acceptParamsAuthority()"), deployer);
-
         // Configuration of both enabled modules is itself a DAO action after bootstrap.
         govModule.transferOwnership(deployment.safe);
         signerModule.transferOwnership(deployment.safe);
 
         require(controller.owner() == deployment.safe, "DeployZodiacSafes: controller handoff failed");
-        require(signerModule.paramsAuthority() == deployment.safe, "DeployZodiacSafes: signer authority handoff failed");
         require(govModule.owner() == deployment.safe, "DeployZodiacSafes: gov module handoff failed");
         require(signerModule.owner() == deployment.safe, "DeployZodiacSafes: signer module handoff failed");
     }
@@ -263,7 +256,6 @@ contract DeployZodiacSafes is Common {
             IAttestationAccumulator(address(merkleSnapshot.accumulator())),
             ISignerSyncCheckpointSource(address(merkleSnapshot)),
             ISignerActivitySource(address(merkleGovModule)),
-            merkleSnapshot.paramsHash(),
             5,
             2,
             5_000,

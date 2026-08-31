@@ -5,6 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -65,16 +66,16 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
     function test_CallerCannotInstallAnAttackerSuppliedSignerVerifier() public {
         AlwaysAcceptSignerVerifier fake = new AlwaysAcceptSignerVerifier();
 
-        GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig = GovernedFactoryBase.SignerSyncConfig({
             enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
         });
 
         TrustgraphsFactory.CreateArgs memory args = _args("looks-governed");
         vm.prank(creator);
         (bytes32 instanceId,,, address snapshot) =
-            governedFactory.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), signerConfig);
+            governedFactory.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), signerConfig);
 
-        GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
         address safe = authority.safe;
 

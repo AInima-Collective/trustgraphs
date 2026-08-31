@@ -10,14 +10,18 @@ import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 
 /// @title MerkleGovModule - Zodiac module for merkle-based governance
-/// @notice Combines merkle voting verification with Zodiac's execution capabilities
-/// TODO: should the onlyOwner modifier be onlyAvatar instead? voting config (quorum, delay, period) should be set by the DAO probably, not owner.
+/// @notice Combines merkle voting verification with Zodiac's execution capabilities.
+/// @dev Governance configuration (quorum, voting delay/period, execution delay, the delegatecall
+///      allowlist, and the snapshot binding) belongs to the network DAO: only the avatar Safe may
+///      change it, either directly as a Safe transaction or through a passed proposal executing
+///      via the Safe.
 contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /*///////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
 
     error AlreadyInitialized();
+    error ProxyDeploymentUnsupported();
     error NoMerkleRootSet();
     error InvalidProposalData();
     error InvalidMerkleProof();
@@ -202,7 +206,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Governance parameters
     uint256 public votingDelay = 1; // blocks
     uint256 public votingPeriod = 50400; // ~1 week at 12s blocks
-    uint256 public quorum = 15e16; // 15% of decisive voting power (M2 scenario table)
+    uint256 public quorum = 15e16; // 15% of decisive voting power
 
     /// @notice Blocks between a proposal passing (endBlock) and becoming executable (M-4,
     ///         2026-08-13 audit). The exit window: a passed-but-hostile proposal cannot reach the
@@ -235,12 +239,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Hash-chain head and record count for direct, non-delegated governance votes.
     bytes32 public activityAccumulator;
     uint64 public activityCount;
-    mapping(address account => uint64 blockNumber) public lastDirectActivityBlock;
     ActivityCheckpoint[] private _activityCheckpoints;
 
     /// @notice Whether the module is initialized
-    bool private _initialized;
-
     /// @notice Whether the initial snapshot binding has been announced (or superseded by a
     ///         rotation). Construction is deliberately SILENT: a streaming indexer discovers this
     ///         module from its factory's discovery event, and a constructor log would precede that
@@ -253,27 +254,16 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     //////////////////////////////////////////////////////////////*/
 
     constructor(address _owner, address _avatar, address _target, address _merkleSnapshot) {
-        if (_initialized) revert AlreadyInitialized();
-        _initialized = true;
-
         _transferOwnership(_owner);
         avatar = _avatar;
         target = _target;
         _setMerkleSnapshotContract(_merkleSnapshot, false);
     }
 
-    /// @notice Sets up the module for factory deployment
-    function setUp(bytes memory initializeParams) public override {
-        if (_initialized) revert AlreadyInitialized();
-        _initialized = true;
-
-        (address _owner, address _avatar, address _target, address _merkleSnapshot) =
-            abi.decode(initializeParams, (address, address, address, address));
-
-        _transferOwnership(_owner);
-        avatar = _avatar;
-        target = _target;
-        _setMerkleSnapshotContract(_merkleSnapshot, false);
+    /// @notice Zodiac proxy-factory deployment is unsupported: the module is always deployed via
+    ///         `new` with its full configuration in the constructor.
+    function setUp(bytes memory) public pure override {
+        revert ProxyDeploymentUnsupported();
     }
 
     /// @notice Announce the constructor-bound snapshot to streaming indexers. One-shot and
@@ -528,11 +518,6 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         return proposals[proposalId].executionDeadlineBlock;
     }
 
-    /// @notice Get proposal actions
-    function getActions(uint256 proposalId) external view returns (ProposalAction[] memory) {
-        return proposalActions[proposalId];
-    }
-
     /// @notice Number of immutable activity checkpoints available to signer proofs.
     function activityCheckpointCount() external view returns (uint256) {
         return _activityCheckpoints.length;
@@ -559,21 +544,28 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
                             ADMIN FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @dev Voting configuration belongs to the network DAO: only the avatar Safe may call —
+    ///      directly as a Safe transaction, or via a passed proposal executing through the Safe.
+    modifier onlyAvatar() {
+        if (msg.sender != avatar) revert NotAuthorized();
+        _;
+    }
+
     /// @notice Update quorum requirement
-    function setQuorum(uint256 newQuorum) external onlyOwner {
+    function setQuorum(uint256 newQuorum) external onlyAvatar {
         if (newQuorum == 0 || newQuorum > QUORUM_RANGE) revert InvalidQuorum();
         quorum = newQuorum;
         emit QuorumUpdated(newQuorum);
     }
 
     /// @notice Update voting delay
-    function setVotingDelay(uint256 newDelay) external onlyOwner {
+    function setVotingDelay(uint256 newDelay) external onlyAvatar {
         votingDelay = newDelay;
         emit VotingDelayUpdated(newDelay);
     }
 
     /// @notice Update voting period
-    function setVotingPeriod(uint256 newPeriod) external onlyOwner {
+    function setVotingPeriod(uint256 newPeriod) external onlyAvatar {
         if (newPeriod == 0) revert InvalidVotingPeriod();
         votingPeriod = newPeriod;
         emit VotingPeriodUpdated(newPeriod);
@@ -581,20 +573,20 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     /// @notice Update the execution delay (M-4). Zero is allowed but is an explicit governance
     ///         decision to give up the exit window, never a default.
-    function setExecutionDelay(uint256 newDelay) external onlyOwner {
+    function setExecutionDelay(uint256 newDelay) external onlyAvatar {
         executionDelay = newDelay;
         emit ExecutionDelayUpdated(newDelay);
     }
 
     /// @notice Allow or revoke a `DelegateCall` target for proposal actions (M-4).
-    function setDelegateCallTarget(address target_, bool allowed) external onlyOwner {
+    function setDelegateCallTarget(address target_, bool allowed) external onlyAvatar {
         if (target_ == address(0)) revert InvalidAddress();
         delegateCallAllowlist[target_] = allowed;
         emit DelegateCallTargetSet(target_, allowed);
     }
 
     /// @notice Update merkle snapshot contract
-    function setMerkleSnapshotContract(address newContract) external onlyOwner {
+    function setMerkleSnapshotContract(address newContract) external onlyAvatar {
         // A rotation announces itself; a later "initial" announcement would be stale and
         // out of order, so the one-shot publisher is consumed here too.
         initialBindingPublished = true;
@@ -727,7 +719,6 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         uint64 sequence = ++activityCount;
         uint64 activityBlock = uint64(block.number);
         activityAccumulator = keccak256(abi.encode(activityAccumulator, sequence, account, proposalId, activityBlock));
-        lastDirectActivityBlock[account] = activityBlock;
         emit DirectGovernanceActivity(sequence, account, proposalId, activityBlock, activityAccumulator);
         _checkpointSignerActivity();
     }

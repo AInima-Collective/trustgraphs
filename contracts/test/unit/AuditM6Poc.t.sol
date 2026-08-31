@@ -91,7 +91,7 @@ contract AuditM6Poc is Test {
         );
     }
 
-    /// @notice M6-1 regression (was HIGH): a directly-created mirror checkpoint would mint a
+    /// @notice Finding M6-1 regression (was HIGH): a directly-created mirror checkpoint would mint a
     ///         lane-1 checkpoint id whose paired lane-2 anchor in MerkleSnapshot is (0,0) — because
     ///         only trigger() populates anchorCheckpoints — letting a prover bind lane-2 (the
     ///         contribution log) to EMPTY even though the live log is non-empty. FIXED: the mirror

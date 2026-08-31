@@ -2542,13 +2542,7 @@ export const governedTrustgraphsFactoryAbi = [
     type: 'function',
     inputs: [],
     name: 'FACTORY',
-    outputs: [
-      {
-        name: '',
-        internalType: 'contract TrustgraphsFactory',
-        type: 'address',
-      },
-    ],
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -2676,7 +2670,7 @@ export const governedTrustgraphsFactoryAbi = [
     outputs: [
       {
         name: '',
-        internalType: 'struct GovernedTrustgraphsFactory.Authority',
+        internalType: 'struct GovernedFactoryBase.Authority',
         type: 'tuple',
         components: [
           { name: 'safe', internalType: 'address', type: 'address' },
@@ -2790,7 +2784,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'policy',
-        internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
+        internalType: 'struct GovernedFactoryBase.InitialPolicy',
         type: 'tuple',
         components: [
           {
@@ -2803,7 +2797,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'signerSync',
-        internalType: 'struct GovernedTrustgraphsFactory.SignerSyncConfig',
+        internalType: 'struct GovernedFactoryBase.SignerSyncConfig',
         type: 'tuple',
         components: [
           { name: 'enabled', internalType: 'bool', type: 'bool' },
@@ -2900,7 +2894,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'policy',
-        internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
+        internalType: 'struct GovernedFactoryBase.InitialPolicy',
         type: 'tuple',
         components: [
           {
@@ -2913,7 +2907,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'signerSync',
-        internalType: 'struct GovernedTrustgraphsFactory.SignerSyncConfig',
+        internalType: 'struct GovernedFactoryBase.SignerSyncConfig',
         type: 'tuple',
         components: [
           { name: 'enabled', internalType: 'bool', type: 'bool' },
@@ -3231,26 +3225,9 @@ export const merkleFundDistributorAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
-    name: 'getAllowlistAt',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [],
     name: 'getAllowlistLength',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getAllowlistPaginated',
-    outputs: [{ name: '', internalType: 'address[]', type: 'address[]' }],
     stateMutability: 'view',
   },
   {
@@ -3297,46 +3274,6 @@ export const merkleFundDistributorAbi = [
     inputs: [],
     name: 'getDistributionCount',
     outputs: [{ name: 'total', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getDistributions',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct IMerkleFundDistributor.DistributionState[]',
-        type: 'tuple[]',
-        components: [
-          { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-          { name: 'timestamp', internalType: 'uint256', type: 'uint256' },
-          { name: 'root', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
-          {
-            name: 'totalMerkleValue',
-            internalType: 'uint256',
-            type: 'uint256',
-          },
-          { name: 'distributor', internalType: 'address', type: 'address' },
-          { name: 'token', internalType: 'address', type: 'address' },
-          { name: 'amountFunded', internalType: 'uint256', type: 'uint256' },
-          {
-            name: 'amountDistributed',
-            internalType: 'uint256',
-            type: 'uint256',
-          },
-          { name: 'feeRecipient', internalType: 'address', type: 'address' },
-          { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
-          { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
-          { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
-        ],
-      },
-    ],
     stateMutability: 'view',
   },
   {
@@ -3393,6 +3330,13 @@ export const merkleFundDistributorAbi = [
     inputs: [],
     name: 'pendingOwner',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'renounceOwnership',
+    outputs: [],
     stateMutability: 'view',
   },
   {
@@ -3652,7 +3596,13 @@ export const merkleFundDistributorAbi = [
     anonymous: false,
     inputs: [
       {
-        name: 'pendingOwner',
+        name: 'previousOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newOwner',
         internalType: 'address',
         type: 'address',
         indexed: true,
@@ -3774,9 +3724,17 @@ export const merkleFundDistributorAbi = [
   { type: 'error', inputs: [], name: 'NoClaimDeadline' },
   { type: 'error', inputs: [], name: 'NoFundsToClaim' },
   { type: 'error', inputs: [], name: 'NoScheduledFeeIncrease' },
-  { type: 'error', inputs: [], name: 'NotOwner' },
-  { type: 'error', inputs: [], name: 'NotPendingOwner' },
   { type: 'error', inputs: [], name: 'NothingToSweep' },
+  {
+    type: 'error',
+    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
+    name: 'OwnableInvalidOwner',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
+    name: 'OwnableUnauthorizedAccount',
+  },
   { type: 'error', inputs: [], name: 'ReentrancyGuardReentrantCall' },
   {
     type: 'error',
@@ -3970,26 +3928,6 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: 'proposalId', internalType: 'uint256', type: 'uint256' }],
-    name: 'getActions',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct MerkleGovModule.ProposalAction[]',
-        type: 'tuple[]',
-        components: [
-          { name: 'target', internalType: 'address', type: 'address' },
-          { name: 'value', internalType: 'uint256', type: 'uint256' },
-          { name: 'data', internalType: 'bytes', type: 'bytes' },
-          { name: 'operation', internalType: 'enum Operation', type: 'uint8' },
-          { name: 'description', internalType: 'string', type: 'string' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [
       { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
     ],
@@ -4092,13 +4030,6 @@ export const merkleGovModuleAbi = [
     inputs: [],
     name: 'ipfsHashCid',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
-    name: 'lastDirectActivityBlock',
-    outputs: [{ name: 'blockNumber', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
   {
@@ -4308,12 +4239,10 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'initializeParams', internalType: 'bytes', type: 'bytes' },
-    ],
+    inputs: [{ name: '', internalType: 'bytes', type: 'bytes' }],
     name: 'setUp',
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: 'pure',
   },
   {
     type: 'function',
@@ -4941,6 +4870,7 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'ProposalAlreadyExecuted' },
   { type: 'error', inputs: [], name: 'ProposalNotFound' },
   { type: 'error', inputs: [], name: 'ProposalNotPassed' },
+  { type: 'error', inputs: [], name: 'ProxyDeploymentUnsupported' },
   { type: 'error', inputs: [], name: 'SelfDelegation' },
   { type: 'error', inputs: [], name: 'VotingClosed' },
   {
@@ -5262,18 +5192,6 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getStateBlocks',
-    outputs: [
-      { name: 'result_', internalType: 'uint256[]', type: 'uint256[]' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [],
     name: 'getStateCount',
     outputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
@@ -5300,30 +5218,6 @@ export const merkleSnapshotAbi = [
             type: 'bytes32',
           },
           { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getStates',
-    outputs: [
-      {
-        name: 'result_',
-        internalType: 'struct IMerkleSnapshot.MerkleState[]',
-        type: 'tuple[]',
-        components: [
-          { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-          { name: 'timestamp', internalType: 'uint256', type: 'uint256' },
-          { name: 'root', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
-          { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
         ],
       },
     ],
@@ -5367,7 +5261,7 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [],
     name: 'hookCount',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -5638,67 +5532,11 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-    ],
-    name: 'verifyMyProof',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyMyProofAtBlock',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'stateIndex', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyMyProofAtStateIndex',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
       { name: 'account', internalType: 'address', type: 'address' },
       { name: 'value', internalType: 'uint256', type: 'uint256' },
       { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
     ],
     name: 'verifyProof',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyProofAtBlock',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'stateIndex', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyProofAtStateIndex',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
@@ -6324,7 +6162,6 @@ export const signerSyncModuleDeployerAbi = [
         internalType: 'contract ISignerActivitySource',
         type: 'address',
       },
-      { name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' },
       { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
       { name: 'topN', internalType: 'uint32', type: 'uint32' },
       { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
@@ -6487,20 +6324,12 @@ export const signerSyncZkModuleAbi = [
         internalType: 'contract ISignerActivitySource',
         type: 'address',
       },
-      { name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' },
       { name: '_topN', internalType: 'uint32', type: 'uint32' },
       { name: '_minThreshold', internalType: 'uint32', type: 'uint32' },
       { name: '_targetThresholdBps', internalType: 'uint32', type: 'uint32' },
       { name: '_maxInactiveBlocks', internalType: 'uint64', type: 'uint64' },
       { name: '_minActivityWitnesses', internalType: 'uint32', type: 'uint32' },
     ],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'acceptParamsAuthority',
-    outputs: [],
     stateMutability: 'nonpayable',
   },
   {
@@ -6567,29 +6396,8 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'paramsAuthority',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'paramsHash',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
     name: 'paused',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'pendingParamsAuthority',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -6654,13 +6462,6 @@ export const signerSyncZkModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'setParamsHash',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     inputs: [{ name: 'paused_', internalType: 'bool', type: 'bool' }],
     name: 'setPaused',
     outputs: [],
@@ -6688,12 +6489,10 @@ export const signerSyncZkModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'initializeParams', internalType: 'bytes', type: 'bytes' },
-    ],
+    inputs: [{ name: '', internalType: 'bytes', type: 'bytes' }],
     name: 'setUp',
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: 'pure',
   },
   {
     type: 'function',
@@ -6736,15 +6535,6 @@ export const signerSyncZkModuleAbi = [
     type: 'function',
     inputs: [{ name: 'newOwner', internalType: 'address', type: 'address' }],
     name: 'transferOwnership',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'nextAuthority', internalType: 'address', type: 'address' },
-    ],
-    name: 'transferParamsAuthority',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -6833,57 +6623,6 @@ export const signerSyncZkModuleAbi = [
       },
     ],
     name: 'OwnershipTransferred',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'currentAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'pendingAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-    ],
-    name: 'ParamsAuthorityTransferStarted',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'previousAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'newAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-    ],
-    name: 'ParamsAuthorityTransferred',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'paramsHash',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: false,
-      },
-    ],
-    name: 'ParamsHashUpdated',
   },
   {
     type: 'event',
@@ -7000,14 +6739,8 @@ export const signerSyncZkModuleAbi = [
     name: 'ActivityCheckpointStale',
   },
   { type: 'error', inputs: [], name: 'ActivityCheckpointSuperseded' },
-  { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'EmptySignerSet' },
   { type: 'error', inputs: [], name: 'InvalidInitialization' },
-  {
-    type: 'error',
-    inputs: [{ name: 'authority', internalType: 'address', type: 'address' }],
-    name: 'InvalidParamsAuthority',
-  },
   { type: 'error', inputs: [], name: 'InvalidSelectionParams' },
   {
     type: 'error',
@@ -7025,11 +6758,6 @@ export const signerSyncZkModuleAbi = [
   { type: 'error', inputs: [], name: 'NotInitializing' },
   {
     type: 'error',
-    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
-    name: 'NotParamsAuthority',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     name: 'OwnableInvalidOwner',
   },
@@ -7043,6 +6771,7 @@ export const signerSyncZkModuleAbi = [
     inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     name: 'OwnerNotFound',
   },
+  { type: 'error', inputs: [], name: 'ProxyDeploymentUnsupported' },
   {
     type: 'error',
     inputs: [{ name: 'data', internalType: 'bytes', type: 'bytes' }],
@@ -7325,42 +7054,7 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'MAX_ITERATIONS',
-    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
     name: 'MAX_NAME_BYTES',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_TOLERANCE_FP',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_TRUSTED_SEEDS',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_WEIGHT_FP',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MIN_TOLERANCE_FP',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -7375,13 +7069,6 @@ export const trustgraphsFactoryAbi = [
         type: 'address',
       },
     ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'PRECISION_SCALE',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -7436,13 +7123,6 @@ export const trustgraphsFactoryAbi = [
     inputs: [],
     name: 'VOUCH_SCHEMA',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'WEIGHT_FIELD_INDEX',
-    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
     stateMutability: 'view',
   },
   {
@@ -7911,7 +7591,6 @@ export const trustgraphsFactoryAbi = [
     name: 'SchemaAdopted',
   },
   { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
-  { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
   {
     type: 'error',
     inputs: [
@@ -7929,11 +7608,6 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'error',
-    inputs: [{ name: 'dampingFp', internalType: 'uint256', type: 'uint256' }],
-    name: 'InvalidDamping',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     name: 'InvalidDistributorSafe',
   },
@@ -7941,18 +7615,6 @@ export const trustgraphsFactoryAbi = [
     type: 'error',
     inputs: [{ name: 'maxIterations', internalType: 'uint32', type: 'uint32' }],
     name: 'InvalidIterations',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'maxIterations', internalType: 'uint32', type: 'uint32' }],
-    name: 'InvalidIterations',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidPrecisionScale',
   },
   {
     type: 'error',
@@ -7982,20 +7644,9 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'error',
-    inputs: [{ name: 'seed', internalType: 'address', type: 'address' }],
-    name: 'InvalidSeed',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
     name: 'InvalidTolerance',
   },
-  {
-    type: 'error',
-    inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
-    name: 'InvalidTolerance',
-  },
-  { type: 'error', inputs: [], name: 'InvalidTotalPool' },
   { type: 'error', inputs: [], name: 'InvalidTotalPool' },
   {
     type: 'error',
@@ -8003,20 +7654,6 @@ export const trustgraphsFactoryAbi = [
       { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidTrustDecay',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidTrustDecay',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidTrustShare',
   },
   {
     type: 'error',
@@ -8036,33 +7673,16 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'error',
     inputs: [
-      { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
-      { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidWeightBounds',
-  },
-  {
-    type: 'error',
-    inputs: [
       { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
     ],
     name: 'InvalidWeightFieldIndex',
   },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
-    ],
-    name: 'InvalidWeightFieldIndex',
-  },
-  { type: 'error', inputs: [], name: 'Lane2NotSupported' },
   { type: 'error', inputs: [], name: 'Lane2NotSupported' },
   {
     type: 'error',
     inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
     name: 'NameTooLong',
   },
-  { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
   { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
   { type: 'error', inputs: [], name: 'NoVaultConfigured' },
   {
@@ -8080,11 +7700,6 @@ export const trustgraphsFactoryAbi = [
       { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
     ],
     name: 'SchemaUidMismatch',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
-    name: 'TooManyTrustedSeeds',
   },
   {
     type: 'error',

@@ -86,7 +86,7 @@ contract HypercertsGoldenVectorsTest is Test {
         assertEq(HypercertsParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }
 
-    /// Journal v2 (two-lane, lane 1 empty for hypercerts): abi.encode of the 10 fields and its keccak.
+    /// The journal (two-lane, lane 1 empty for hypercerts): abi.encode of the fields and its keccak.
     function test_JournalEncodingAndDigest() public view {
         bytes32 acc = json.readBytes32(".journal.acc");
         uint64 leafCount = uint64(json.readUint(".journal.leafCount"));
@@ -104,9 +104,9 @@ contract HypercertsGoldenVectorsTest is Test {
         bytes memory expectedEncoded = json.readBytes(".journal.encoded");
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
-        // Journal v3. `instanceDomain` matters MORE here than anywhere else: this program's
-        // params carry no instance-unique field at all, so before v3 two identically-configured
-        // hypercerts instances accepted each other's proofs (issue #9).
+        // `instanceDomain` matters MORE here than anywhere else: this program's params carry no
+        // instance-unique field at all — without the domain binding, two identically-configured
+        // hypercerts instances would accept each other's proofs.
         bytes memory encoded = abi.encode(
             acc,
             leafCount,

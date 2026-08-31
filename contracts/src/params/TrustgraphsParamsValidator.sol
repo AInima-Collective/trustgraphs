@@ -39,8 +39,8 @@ library TrustgraphsParamsValidator {
             revert DerivedFieldNotZero();
         }
         validateComputationalEnvelope(p);
-        // The legacy factory selector remains lane-1-only. The additive hybrid selector derives
-        // both separators itself only after the EAS resolver and head registry exist.
+        // `createInstance` remains lane-1-only. The hybrid selector derives both separators
+        // itself only after the EAS resolver and head registry exist.
         if (p.envelope0DomainSeparators.length != 0 || p.lane2MaxHeadAge != 0) {
             revert Lane2NotSupported();
         }
@@ -99,8 +99,8 @@ library TrustgraphsParamsValidator {
         }
     }
 
-    /// Lane 2 is either absent or the strict v2 pair `[EAS domain, head domain]`. Head freshness is
-    /// checked against the first lane-1 anchor inside the guest, so the old wall-clock age knob is
+    /// Lane 2 is either absent or the strict pair `[EAS domain, head domain]`. Head freshness is
+    /// checked against the first lane-1 anchor inside the guest, so `lane2MaxHeadAge` is
     /// deliberately fixed to zero for both profiles.
     function _validateLane2Profile(ParamsCodec.Params memory p) private pure {
         uint256 length = p.envelope0DomainSeparators.length;

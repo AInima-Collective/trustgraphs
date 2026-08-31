@@ -5,6 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -62,13 +63,13 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safe,,) = governedFactory.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
+            GovernedFactoryBase.SignerSyncConfig({
                 enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
             })
         );
 
-        GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         address module = authority.signerSyncModule;
         assertTrue(module != address(0), "module not installed");
         assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "canonical signer module is live on the Safe");

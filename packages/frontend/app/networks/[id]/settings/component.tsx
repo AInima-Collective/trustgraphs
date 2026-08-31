@@ -1062,11 +1062,6 @@ export const SettingsPage = ({
           {
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
-            functionName: 'paramsHash',
-          },
-          {
-            address: authoritySignerSync,
-            abi: signerSyncZkModuleAbi,
             functionName: 'selectionParamsHash',
           },
           {
@@ -1096,12 +1091,11 @@ export const SettingsPage = ({
   const signerPaused = asBoolean(readResult(signerSyncReads, 0))
   const signerHasApplied = asBoolean(readResult(signerSyncReads, 1))
   const signerLastApplied = asBigInt(readResult(signerSyncReads, 2))
-  const signerParamsHash = asString(readResult(signerSyncReads, 3))
-  const signerSelectionHash = asString(readResult(signerSyncReads, 4))
-  const signerVerifier = asString(readResult(signerSyncReads, 5))
-  const signerScoreSnapshot = asString(readResult(signerSyncReads, 6))
-  const signerAccumulator = asString(readResult(signerSyncReads, 7))
-  const signerOwner = asString(readResult(signerSyncReads, 8))
+  const signerSelectionHash = asString(readResult(signerSyncReads, 3))
+  const signerVerifier = asString(readResult(signerSyncReads, 4))
+  const signerScoreSnapshot = asString(readResult(signerSyncReads, 5))
+  const signerAccumulator = asString(readResult(signerSyncReads, 6))
+  const signerOwner = asString(readResult(signerSyncReads, 7))
 
   const { data: factoryVault } = useReadContract({
     address: factoryAddress as Hex,
@@ -3151,9 +3145,6 @@ export const SettingsPage = ({
                         network.safeZodiacSignerSync.selectionParamsHash
                       }
                     />
-                  </SettingRow>
-                  <SettingRow label="Module score-params reference">
-                    <Hash value={signerParamsHash} />
                   </SettingRow>
                   <SettingRow label="Score snapshot">
                     <ContractAddress value={signerScoreSnapshot} />

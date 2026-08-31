@@ -126,7 +126,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         InstanceDeployerVkeyVerifier signerVerifier = new InstanceDeployerVkeyVerifier(vkey);
         MockAccumulator accumulator = new MockAccumulator();
         SignerSyncModuleDeployer directDeployer = new SignerSyncModuleDeployer();
-        bytes32 paramsHash = keccak256("params");
         bytes32 instanceId = keccak256("instance");
         ISignerSyncCheckpointSource scoreSource = ISignerSyncCheckpointSource(address(0x501));
         ISignerActivitySource activitySource = ISignerActivitySource(address(0xA71));
@@ -138,7 +137,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             IAttestationAccumulator(address(accumulator)),
             scoreSource,
             activitySource,
-            paramsHash,
             vkey,
             5,
             2,
@@ -153,7 +151,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         assertEq(address(module.accumulator()), address(accumulator));
         assertEq(address(module.scoreSnapshot()), address(scoreSource));
         assertEq(address(module.activitySource()), address(activitySource));
-        assertEq(module.paramsHash(), paramsHash);
         assertEq(
             module.selectionParamsHash(),
             keccak256(abi.encode(uint32(5), uint32(2), uint32(5_000), uint64(151_200), uint32(2)))
@@ -171,7 +168,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             accumulator,
             scoreSource,
             activitySource,
-            paramsHash,
             bytes32(uint256(1)),
             5,
             2,
@@ -192,7 +188,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             accumulator,
             scoreSource,
             activitySource,
-            paramsHash,
             vkey,
             1,
             1,

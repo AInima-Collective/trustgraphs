@@ -5,6 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -55,13 +56,13 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
         );
     }
 
-    function _noPolicy() internal pure returns (GovernedTrustgraphsFactory.InitialPolicy memory) {
-        return GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
+    function _noPolicy() internal pure returns (GovernedFactoryBase.InitialPolicy memory) {
+        return GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
     }
 
-    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
         return
-            GovernedTrustgraphsFactory.SignerSyncConfig({
+            GovernedFactoryBase.SignerSyncConfig({
                 enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
             });
     }

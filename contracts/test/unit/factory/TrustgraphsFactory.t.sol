@@ -8,6 +8,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
 import {
     MerkleSnapshotDeployer,
@@ -43,7 +44,7 @@ contract ProgramKeyedVerifier is IZkVerifier {
 }
 
 /// @title TrustgraphsFactoryTest
-/// @notice M1's core battery: the properties that make one transaction a whole, safe instance —
+/// @notice The factory's core battery: the properties that make one transaction a whole, safe instance —
 ///         the factory keeps nothing (ground rule 3), the `paramsHash` it computes is the golden
 ///         encoding, the event reconstructs the instance, the id cannot be squatted, and the epoch
 ///         floor is a raise rather than a rejection. Bounds live in `TrustgraphsFactoryBounds.t.sol`,
@@ -293,7 +294,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         args.admin = alice;
         args.withDistributor = true;
 
-        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidDistributorSafe.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, alice));
         factory.createInstance(args);
     }
 
@@ -543,9 +544,9 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         uint256 totalPool
     ) public {
         ParamsCodec.Params memory p = _baseParams();
-        p.dampingFp = bound(dampingFp, 1, factory.PRECISION_SCALE() - 1);
-        p.toleranceFp = bound(toleranceFp, factory.MIN_TOLERANCE_FP(), factory.MAX_TOLERANCE_FP());
-        p.maxIterations = uint32(bound(uint256(maxIterations), 1, factory.MAX_ITERATIONS()));
+        p.dampingFp = bound(dampingFp, 1, TrustgraphsParamsValidator.PRECISION_SCALE - 1);
+        p.toleranceFp = bound(toleranceFp, TrustgraphsParamsValidator.MIN_TOLERANCE_FP, TrustgraphsParamsValidator.MAX_TOLERANCE_FP);
+        p.maxIterations = uint32(bound(uint256(maxIterations), 1, TrustgraphsParamsValidator.MAX_ITERATIONS));
         p.totalPool = bound(totalPool, 1, type(uint128).max);
         Created memory c = _create(_args("fuzz-params", p));
 
@@ -557,10 +558,10 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                     THE EVENT IS THE INTERFACE (M5)
+                       THE EVENT IS THE INTERFACE
     //////////////////////////////////////////////////////////////*/
 
-    /// THE property the whole M5 prover loop rests on: an instance reconstructed from
+    /// THE property the whole prover loop rests on: an instance reconstructed from
     /// `InstanceCreated` alone hashes to the `paramsHash` its snapshot enforces. If this can ever
     /// fail, a prover that trusts the event produces proofs that no snapshot will accept.
     function test_EventParamsHashToTheSnapshotsParamsHash() public {
@@ -674,7 +675,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REGISTRY RECORD (M2)
+                            REGISTRY RECORD
     //////////////////////////////////////////////////////////////*/
 
     /// The directory row is exactly the instance's contract set, labelled `keccak256("trust-graph")`
@@ -776,7 +777,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
             ];
             holes[i] = address(0);
 
-            vm.expectRevert(TrustgraphsFactory.ZeroAddress.selector);
+            vm.expectRevert(DistributorAttaching.ZeroAddress.selector);
             new TrustgraphsFactory(
                 IEAS(holes[0]),
                 SchemaRegistrar(holes[1]),
@@ -909,8 +910,8 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_FrozenConstants() public view {
         assertEq(factory.VOUCH_SCHEMA(), "string comment,uint256 confidence", "vouch schema");
         assertEq(factory.PROGRAM(), keccak256("trust-graph"), "program label");
-        assertEq(factory.PRECISION_SCALE(), 1e18, "S is the guest's constant");
-        assertEq(uint256(factory.WEIGHT_FIELD_INDEX()), 1, "confidence is ABI head slot 1");
+        assertEq(TrustgraphsParamsValidator.PRECISION_SCALE, 1e18, "S is the guest's constant");
+        assertEq(uint256(TrustgraphsParamsValidator.WEIGHT_FIELD_INDEX), 1, "confidence is ABI head slot 1");
         assertEq(factory.EPOCH_FLOOR(), EPOCH_FLOOR, "floor is immutable");
     }
 

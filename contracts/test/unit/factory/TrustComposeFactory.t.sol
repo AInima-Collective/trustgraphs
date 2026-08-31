@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {
     CompositionSourceAccumulatorDeployer,
@@ -93,7 +94,7 @@ contract TrustComposeFactoryTest is Test {
     }
 
     function test_ConstructorRejectsZeroInvalidAndMismatchedVerifier() public {
-        vm.expectRevert(TrustComposeFactory.ZeroAddress.selector);
+        vm.expectRevert(DistributorAttaching.ZeroAddress.selector);
         _deploy(IZkVerifier(address(0)), VKEY, registry, adapterFactory, EPOCH_FLOOR, ACTIVATION_DELAY);
 
         DirectNoVkeyVerifier invalidVerifier = new DirectNoVkeyVerifier();
@@ -158,7 +159,7 @@ contract TrustComposeFactoryTest is Test {
                 paramsHash: keccak256("params")
             })
         );
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.UnknownInstance.selector, instanceId));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.UnknownInstance.selector, instanceId));
         factory.attachDistributor(instanceId, address(this), address(0));
     }
 
@@ -169,7 +170,7 @@ contract TrustComposeFactoryTest is Test {
         args.policyManifest = CompositionPolicyTestLib.manifest(address(0x100), address(0x200), 1_000, false);
         args.admin = address(this);
         args.withDistributor = true;
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.InvalidDistributorSafe.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, address(this)));
         factory.createInstance(args);
 
         MockAccumulator accumulator = new MockAccumulator();
@@ -192,7 +193,7 @@ contract TrustComposeFactoryTest is Test {
                 paramsHash: snapshot.paramsHash()
             })
         );
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.InvalidDistributorSafe.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, address(this)));
         factory.attachDistributor(instanceId, address(this), address(0));
 
         MockSafeOwner safe = new MockSafeOwner(address(this), 1);

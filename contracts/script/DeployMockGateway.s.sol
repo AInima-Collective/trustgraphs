@@ -17,7 +17,7 @@ import {Common} from "script/Common.s.sol";
 /// @dev Why this exists: `SP1_VERIFIER_GATEWAY` names a real per-chain Succinct deployment, and on a
 ///      non-fork anvil that address has **no code**. Every `MerkleSnapshot.submitProof` then reverts
 ///      inside `gateway.verifyProof` before any real check runs — so a freshly deployed local stack
-///      silently cannot accept a proof at all. Found by the M5 proving loop, which had to
+///      silently cannot accept a proof at all. Found by the local proving loop, which had to
 ///      `anvil_setCode` a gateway in by hand to get anywhere.
 ///
 ///      The stub is at the GATEWAY seam only: the real `SP1JournalVerifier` still runs, so journal

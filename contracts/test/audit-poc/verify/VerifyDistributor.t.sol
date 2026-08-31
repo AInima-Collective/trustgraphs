@@ -8,6 +8,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 
 contract VSnap is IMerkleSnapshot {
@@ -247,7 +248,7 @@ contract VerifyDistributor is Test {
         VSnap rogue = new VSnap();
         rogue.set(honestRoot, 1);
         vm.prank(address(0xBAD));
-        vm.expectRevert(IMerkleFundDistributor.NotOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
         dist.setMerkleSnapshot(address(rogue));
     }
 }

@@ -8,6 +8,7 @@ import {
     TrustComposeParamsControllerDeployer
 } from "src/factory/TrustComposeInstanceDeployers.sol";
 import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
@@ -20,7 +21,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 /// @title TrustComposeFactory
 /// @notice Isolated one-transaction factory/registry path for the `trust-compose` program.
-contract TrustComposeFactory {
+contract TrustComposeFactory is DistributorAttaching {
     struct CreateArgs {
         string name;
         string metadataURI;
@@ -55,17 +56,12 @@ contract TrustComposeFactory {
     event InstancePrepaid(bytes32 indexed instanceId, address indexed from, uint256 amount);
     /// @notice A fund distributor was attached to an existing instance after creation.
     ///         `distributorToken` is presentation only, exactly like the creation-time field.
-    event DistributorAttached(bytes32 indexed instanceId, address distributor, address distributorToken);
-
-    bytes32 public constant PROGRAM = keccak256("trust-compose");
     uint256 public constant MAX_NAME_BYTES = 64;
 
     IZkVerifier public immutable VERIFIER;
     bytes32 public immutable PROGRAM_VKEY;
-    IInstanceRegistry public immutable INSTANCE_REGISTRY;
     ICompositionSourceAdapterFactory public immutable SOURCE_ADAPTER_FACTORY;
     MerkleSnapshotDeployer public immutable SNAPSHOT_DEPLOYER;
-    MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
     CompositionSourceAccumulatorDeployer public immutable ACCUMULATOR_DEPLOYER;
     TrustComposeParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
     IProvingVault public immutable VAULT;
@@ -74,9 +70,6 @@ contract TrustComposeFactory {
 
     /// @notice The one fund distributor this factory knows per instance: the creation-time one,
     ///         or the one `attachDistributor` deployed later. Zero means "none yet".
-    mapping(bytes32 instanceId => address distributor) public distributorOf;
-
-    error ZeroAddress();
     error ZeroEpochFloor();
     error ZeroActivationDelay();
     error InvalidAdmin();
@@ -87,10 +80,6 @@ contract TrustComposeFactory {
     error InvalidCompositionVerifier();
     error ProgramVKeyMismatch(bytes32 expected, bytes32 actual);
     error SourceAdapterRegistryMismatch(address expected, address actual);
-    error UnknownInstance(bytes32 instanceId);
-    error NotInstanceAuthority(bytes32 instanceId, address owner);
-    error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
-    error InvalidDistributorSafe(address owner);
 
     constructor(
         IZkVerifier verifier,
@@ -104,7 +93,7 @@ contract TrustComposeFactory {
         uint64 epochFloor,
         uint48 policyActivationDelay,
         IProvingVault vault
-    ) {
+    ) DistributorAttaching(keccak256("trust-compose"), instanceRegistry, distributorDeployer) {
         if (
             address(verifier) == address(0) || address(instanceRegistry) == address(0)
                 || address(sourceAdapterFactory) == address(0) || address(snapshotDeployer) == address(0)
@@ -125,10 +114,8 @@ contract TrustComposeFactory {
 
         VERIFIER = verifier;
         PROGRAM_VKEY = programVKey;
-        INSTANCE_REGISTRY = instanceRegistry;
         SOURCE_ADAPTER_FACTORY = sourceAdapterFactory;
         SNAPSHOT_DEPLOYER = snapshotDeployer;
-        DISTRIBUTOR_DEPLOYER = distributorDeployer;
         ACCUMULATOR_DEPLOYER = accumulatorDeployer;
         PARAMS_CONTROLLER_DEPLOYER = paramsControllerDeployer;
         EPOCH_FLOOR = epochFloor;
@@ -243,30 +230,6 @@ contract TrustComposeFactory {
     ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
     ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
     ///         creation-time path: fee 0, `feeRecipient = owner`.
-    function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
-        external
-        returns (address distributor)
-    {
-        // An unregistered id reverts inside the registry (`InstanceNotFound`); this factory only
-        // adds the program check so it never serves another program's instance.
-        IInstanceRegistry.Instance memory record = INSTANCE_REGISTRY.getInstance(instanceId);
-        if (record.program != PROGRAM) revert UnknownInstance(instanceId);
-        address existing = distributorOf[instanceId];
-        if (existing != address(0)) revert DistributorAlreadyAttached(instanceId, existing);
-        MerkleSnapshot snapshot = MerkleSnapshot(record.snapshot);
-        if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
-            revert NotInstanceAuthority(instanceId, owner);
-        }
-        if (!SafeOwnerPolicy.isSafe(owner)) revert InvalidDistributorSafe(owner);
-        distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
-        distributorOf[instanceId] = distributor;
-        emit DistributorAttached(instanceId, distributor, distributorToken);
-    }
-
-    function computeInstanceId(address creator, string calldata name, bytes32 salt) public pure returns (bytes32) {
-        return keccak256(abi.encode(creator, name, salt));
-    }
-
     function validateCreation(TrustComposeParamsCodec.Params calldata params, bytes calldata manifest) external view {
         if (block.chainid > type(uint64).max) revert ChainIdTooLarge(block.chainid);
         TrustComposeParamsCodec.Params memory paramsMemory = params;

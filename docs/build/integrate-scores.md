@@ -52,7 +52,6 @@ function getLatestState() external view returns (MerkleState memory);
 function getStateAtBlock(uint256 blockNumber) external view returns (MerkleState memory);
 function getStateAtIndex(uint256 index) external view returns (MerkleState memory);
 function getStateCount() external view returns (uint256);
-function getStates(uint256 offset, uint256 limit) external view returns (MerkleState[] memory);
 ```
 
 The CID commits to the named bytes; it does not guarantee that a gateway will continue to serve
@@ -77,9 +76,10 @@ helpers for this domain:
 
 ```solidity
 snapshot.verifyProof(account, value, proof);
-snapshot.verifyProofAtBlock(account, value, proof, blockNumber);
-snapshot.verifyProofAtStateIndex(account, value, proof, stateIndex);
 ```
+
+To verify against a historical root, read it with `getStateAtBlock` or `getStateAtIndex` and
+check the proof against `state.root` with any `StandardMerkleTree` verifier.
 
 Node-ID programs such as Hypercerts and Nostr use a different output domain and leaf encoding.
 Their primary entries must not be passed to the address helpers. A verified EVM binding may add a
