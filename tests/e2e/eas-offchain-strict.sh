@@ -56,6 +56,10 @@ cleanup() {
     else
       rm -f "$FRONTEND_CONFIG_FILE"
     fi
+    # Restore config.json to the operator's development config, or to the tracked typecheck
+    # template when this was a fresh checkout with no generated deployment config.
+    node packages/frontend/scripts/link-deployment-config.mjs config \
+      --allow-typecheck-template >/dev/null 2>&1 || true
   fi
   if [ "$FRONTEND_WAGMI_REPLACED" = 1 ]; then
     cp "$WORK/frontend-contract-abis.original.ts" "$FRONTEND_ABIS_FILE"
@@ -256,6 +260,7 @@ if [ "$BROWSER_MODE" = 1 ]; then
     '.apis.ponder = $ponder | .apis.ipfsGateway = $gateway | .contracts.EAS = $eas | .contracts.SchemaRegistry = $schemaRegistry | .contracts.SchemaRegistrar = $schemaRegistrar | .contracts.TrustgraphsFactory = $factory | .contracts.GovernedTrustgraphsFactory = $governedFactory' \
     "$FRONTEND_CONFIG_FILE" >"$WORK/frontend-config.e2e.json"
   cp "$WORK/frontend-config.e2e.json" "$FRONTEND_CONFIG_FILE"
+  pnpm --dir packages/frontend config:link >/dev/null
   cp "$FRONTEND_ABIS_FILE" "$WORK/frontend-contract-abis.original.ts"
   FRONTEND_WAGMI_REPLACED=1
   pnpm --dir packages/frontend wagmi:generate >"$WORK/frontend-wagmi.log" 2>&1 \
