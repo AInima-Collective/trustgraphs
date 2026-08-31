@@ -2,6 +2,7 @@ import { ponder } from 'ponder:registry'
 import { accumulatorRecord, easAttestation } from 'ponder:schema'
 
 import { easExpirationFoldTimestamp, easFoldTimestamp } from './eas-fold-time'
+import { recordFoldedImport } from './eas-import'
 import { revalidateNetwork } from './utils'
 import { easAbi } from '../../frontend/lib/contract-abis'
 
@@ -152,6 +153,10 @@ const onExpired = async ({ event, context }: any) => {
     logIndex: event.log.logIndex,
     txHash: event.transaction.hash,
   })
+
+  // Ponder permits one indexing function per source event. Record sync progress here alongside
+  // the accumulator fold so ExpirationImported remains one atomic handler.
+  await recordFoldedImport(2)({ event, context })
 
   await revalidateNetwork()
 }

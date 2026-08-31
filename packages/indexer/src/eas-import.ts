@@ -89,7 +89,7 @@ ponder.on('canonicalEas:Revoked', async ({ event, context }) => {
     })
 })
 
-const recordFolded =
+export const recordFoldedImport =
   (kind: 0 | 1 | 2) =>
   async ({ event, context }: any) => {
     await context.db
@@ -109,9 +109,14 @@ const recordFolded =
       .onConflictDoNothing()
   }
 
-ponder.on('onchainAttestationImporter:AttestationImported', recordFolded(0))
-ponder.on('onchainAttestationImporter:RevocationImported', recordFolded(1))
-ponder.on('onchainAttestationImporter:ExpirationImported', recordFolded(2))
+ponder.on(
+  'onchainAttestationImporter:AttestationImported',
+  recordFoldedImport(0)
+)
+ponder.on(
+  'onchainAttestationImporter:RevocationImported',
+  recordFoldedImport(1)
+)
 
 ponder.on(
   'onchainAttestationImporter:ImportSkipped',

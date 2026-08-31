@@ -44,6 +44,10 @@ test('EAS handlers persist authenticated fold times, never delayed event times',
     new URL('../abis/onchainAttestationImporter.ts', import.meta.url),
     'utf8'
   )
+  const importStatusSource = readFileSync(
+    new URL('./eas-import.ts', import.meta.url),
+    'utf8'
+  )
   const config = readFileSync(
     new URL('../ponder.config.ts', import.meta.url),
     'utf8'
@@ -54,6 +58,14 @@ test('EAS handlers persist authenticated fold times, never delayed event times',
   assert.match(source, /easFoldTimestamp\(attestation, 'revoke'\)/)
   assert.match(source, /onchainAttestationImporter:ExpirationImported/)
   assert.match(source, /easExpirationFoldTimestamp\(attestation, timestamp\)/)
+  assert.match(source, /recordFoldedImport\(2\)/)
+  assert.equal(
+    `${source}\n${importStatusSource}`.match(
+      /ponder\.on\(\s*['"]onchainAttestationImporter:ExpirationImported/g
+    )?.length,
+    1,
+    'Ponder requires graph folding and import progress to share one expiration handler'
+  )
   assert.match(
     source.match(/const onAttested[\s\S]*?const onRevoked/)?.[0] ?? '',
     /onConflictDoNothing\(\)/,
