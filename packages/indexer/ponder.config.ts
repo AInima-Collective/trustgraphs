@@ -15,6 +15,7 @@ import { easOffchainAnchorRegistryAbi } from './abis/easOffchainAnchorRegistry'
 import { erc8004IdentityRegistryAbi } from './abis/erc8004IdentityRegistry'
 import { erc8004ReputationRegistryAbi } from './abis/erc8004ReputationRegistry'
 import { graphLineageRegistryAbi } from './abis/graphLineage'
+import { onchainAttestationImporterAbi } from './abis/onchainAttestationImporter'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
@@ -792,6 +793,14 @@ export default createConfig({
             : deployedAddresses('easIndexerResolver'),
         },
       },
+    },
+    // The factory/deploy slice for #117 will replace this empty source with factory-discovered
+    // importer addresses. Declaring the event surface now keeps expiry folds and ordinary markers
+    // on the same typed handler path without claiming any undeployed instance is live.
+    onchainAttestationImporter: {
+      abi: onchainAttestationImporterAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: {},
     },
     merkleSnapshot: {
       abi: merkleSnapshotAbi,

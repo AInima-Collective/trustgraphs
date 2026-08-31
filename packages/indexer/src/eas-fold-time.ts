@@ -26,3 +26,17 @@ export const easFoldTimestamp = (
   }
   return timestamp
 }
+
+/** Expiration markers are importer-authored, so bind them back to canonical EAS storage. */
+export const easExpirationFoldTimestamp = (
+  attestation: EasAttestationTimes,
+  markerTimestamp: bigint
+): bigint => {
+  const expirationTime = easFoldTimestamp(attestation, 'expire')
+  if (markerTimestamp !== expirationTime) {
+    throw new Error(
+      `Importer expiration marker ${markerTimestamp} does not match EAS expirationTime ${expirationTime}`
+    )
+  }
+  return expirationTime
+}

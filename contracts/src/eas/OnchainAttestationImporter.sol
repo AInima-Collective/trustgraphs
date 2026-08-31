@@ -69,7 +69,7 @@ contract OnchainAttestationImporter is AttestationAccumulator {
     /// @dev This is intentionally distinct from `AttestationRevoked`: EAS storage's
     ///      `revocationTime` may be zero or different, so an indexer must not mistake one for the
     ///      other when reconstructing the leaf preimage.
-    event ExpirationImported(bytes32 indexed uid, uint64 timestamp);
+    event ExpirationImported(address indexed eas, bytes32 indexed uid, uint64 timestamp);
 
     /// @notice A requested operation was an idempotent retry or an intentional zero-recipient skip.
     event ImportSkipped(bytes32 indexed uid, ImportKind indexed kind, SkipReason reason);
@@ -199,7 +199,7 @@ contract OnchainAttestationImporter is AttestationAccumulator {
             }
 
             _foldAt(1, attestation.attester, attestation.recipient, uid, expirationTime, keccak256(attestation.data));
-            emit ExpirationImported(uid, expirationTime);
+            emit ExpirationImported(address(EAS), uid, expirationTime);
             ++folded;
         }
     }

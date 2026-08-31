@@ -471,6 +471,8 @@ export const easAttestation = onchainTable(
   (t) => ({
     uid: t.hex().primaryKey(),
     schema: t.hex().notNull(),
+    // First accumulator through which this canonical UID was observed. A legacy UID may belong to
+    // multiple importer graphs; authoritative per-graph membership is accumulatorRecord.
     resolver: t.hex().notNull(),
     attester: t.hex().notNull(),
     recipient: t.hex().notNull(),
@@ -1391,7 +1393,7 @@ export const easOffchainMutation = onchainTable(
 // accumulator-bearing resolver (the trust EASIndexerResolver instances, kinds {0, 1}, and the
 // ContributionResolver, kinds 0–5 per research/operations/contributions/interfaces.md §2). This is the indexer's
 // mirror of the exact `RawEdge` stream the ZK guest consumes: ordering by (block_number, log_index)
-// is fold order (each fold emits exactly one AttestationAttested/AttestationRevoked marker), and
+// is fold order (each fold emits exactly one attest/revoke/expiration marker), and
 // `data` is the payload preimage of the folded `dataHash`. The derived-scoring recompute truncates
 // this log to the checkpointed leaf counts and re-folds it, asserting the accumulator matches the
 // chain before trusting anything derived from it.

@@ -33,7 +33,7 @@ contract OnchainAttestationImporterTest is Test {
         OnchainAttestationImporter.SkipReason reason
     );
 
-    event ExpirationImported(bytes32 indexed uid, uint64 timestamp);
+    event ExpirationImported(address indexed eas, bytes32 indexed uid, uint64 timestamp);
 
     SchemaRegistry internal schemaRegistry;
     EAS internal eas;
@@ -274,8 +274,8 @@ contract OnchainAttestationImporterTest is Test {
         importer.importExpirations(_one(uid));
 
         vm.warp(expirationTime);
-        vm.expectEmit(true, false, false, true, address(importer));
-        emit ExpirationImported(uid, expirationTime);
+        vm.expectEmit(true, true, false, true, address(importer));
+        emit ExpirationImported(address(eas), uid, expirationTime);
         (uint256 folded, uint256 skipped) = importer.importExpirations(_one(uid));
         assertEq(folded, 1);
         assertEq(skipped, 0);

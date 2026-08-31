@@ -1,7 +1,7 @@
 import { ponder } from 'ponder:registry'
 import { accumulatorRecord, easAttestation } from 'ponder:schema'
 
-import { easFoldTimestamp } from './eas-fold-time'
+import { easExpirationFoldTimestamp, easFoldTimestamp } from './eas-fold-time'
 import { revalidateNetwork } from './utils'
 import { easAbi } from '../../frontend/lib/contract-abis'
 
@@ -14,20 +14,25 @@ const onAttested = async ({ event, context }: any) => {
     args: [uid],
   })
   const foldTimestamp = easFoldTimestamp(attestation, 'attest')
-  await context.db.insert(easAttestation).values({
-    uid,
-    schema: attestation.schema,
-    resolver: event.log.address,
-    attester: attestation.attester,
-    recipient: attestation.recipient,
-    ref: attestation.refUID,
-    revocable: attestation.revocable,
-    expirationTime: attestation.expirationTime,
-    revocationTime: attestation.revocationTime,
-    data: attestation.data,
-    blockNumber: event.block.number,
-    timestamp: foldTimestamp,
-  })
+  // EAS UIDs are globally canonical, while the same historical UID may be imported into several
+  // accumulators. Keep one source record here; accumulatorRecord stores every graph membership.
+  await context.db
+    .insert(easAttestation)
+    .values({
+      uid,
+      schema: attestation.schema,
+      resolver: event.log.address,
+      attester: attestation.attester,
+      recipient: attestation.recipient,
+      ref: attestation.refUID,
+      revocable: attestation.revocable,
+      expirationTime: attestation.expirationTime,
+      revocationTime: attestation.revocationTime,
+      data: attestation.data,
+      blockNumber: event.block.number,
+      timestamp: foldTimestamp,
+    })
+    .onConflictDoNothing()
 
   // Mirror the resolver's accumulator fold (kind 0 = attest — EASIndexerResolver.onAttest folds
   // exactly one leaf per Attested marker). Ordering by (blockNumber, logIndex) is fold order;
@@ -103,7 +108,58 @@ const onRevoked = async ({ event, context }: any) => {
   await revalidateNetwork()
 }
 
+const onExpired = async ({ event, context }: any) => {
+  const { eas, uid, timestamp } = event.args
+  const attestation = await context.client.readContract({
+    address: eas,
+    abi: easAbi,
+    functionName: 'getAttestation',
+    args: [uid],
+  })
+  const foldTimestamp = easExpirationFoldTimestamp(attestation, timestamp)
+
+  // The UID row is canonical EAS data and may already have been observed through another importer.
+  // Per-accumulator membership lives below in accumulatorRecord, whose event id is instance-local.
+  await context.db
+    .insert(easAttestation)
+    .values({
+      uid,
+      schema: attestation.schema,
+      resolver: event.log.address,
+      attester: attestation.attester,
+      recipient: attestation.recipient,
+      ref: attestation.refUID,
+      revocable: attestation.revocable,
+      expirationTime: attestation.expirationTime,
+      revocationTime: attestation.revocationTime,
+      data: attestation.data,
+      blockNumber: event.block.number,
+      timestamp: easFoldTimestamp(attestation, 'attest'),
+    })
+    .onConflictDoNothing()
+
+  await context.db.insert(accumulatorRecord).values({
+    id: event.id,
+    accumulator: event.log.address,
+    kind: 1,
+    attester: attestation.attester,
+    recipient: attestation.recipient,
+    uid,
+    schema: attestation.schema,
+    data: attestation.data,
+    blockTimestamp: foldTimestamp,
+    blockNumber: event.block.number,
+    logIndex: event.log.logIndex,
+    txHash: event.transaction.hash,
+  })
+
+  await revalidateNetwork()
+}
+
 ponder.on('easIndexerResolver:AttestationAttested', onAttested)
 ponder.on('weightedEasIndexerResolver:AttestationAttested', onAttested)
 ponder.on('easIndexerResolver:AttestationRevoked', onRevoked)
 ponder.on('weightedEasIndexerResolver:AttestationRevoked', onRevoked)
+ponder.on('onchainAttestationImporter:AttestationAttested', onAttested)
+ponder.on('onchainAttestationImporter:AttestationRevoked', onRevoked)
+ponder.on('onchainAttestationImporter:ExpirationImported', onExpired)
