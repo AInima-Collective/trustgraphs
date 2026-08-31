@@ -5,11 +5,18 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+const requireFromFrontend = createRequire(
+  new URL('../../packages/frontend/package.json', import.meta.url)
+)
 const loadPlaywright = () => {
   try {
     return require('playwright')
   } catch {
-    return require('/usr/lib/node_modules/playwright')
+    try {
+      return requireFromFrontend('playwright')
+    } catch {
+      return require('/usr/lib/node_modules/playwright')
+    }
   }
 }
 const { chromium } = loadPlaywright()
