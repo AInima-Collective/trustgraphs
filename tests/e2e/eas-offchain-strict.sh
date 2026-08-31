@@ -14,6 +14,8 @@ RELAYER_A_KEY="${EAS_OFFCHAIN_E2E_RELAYER_A_KEY:-0x59c6995e998f97a5a0044966f0945
 RELAYER_B_KEY="${EAS_OFFCHAIN_E2E_RELAYER_B_KEY:-0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a}"
 BASE_PORT="${EAS_OFFCHAIN_E2E_BASE_PORT:-15100}"
 BROWSER_MODE="${EAS_OFFCHAIN_E2E_BROWSER:-0}"
+APP_PORT=$((BASE_PORT + 31))
+APP_URL="http://127.0.0.1:$APP_PORT"
 
 CREATED_WORK=0
 if [ -z "${WORK:-}" ]; then
@@ -174,6 +176,7 @@ if [ "${EAS_OFFCHAIN_E2E_INDEXER:-0}" = 1 ]; then
   INDEXER_API="http://127.0.0.1:$INDEXER_PORT"
   say "== start the live Ponder indexer/API =="
   env DATABASE_URL="$DATABASE_URL" DEPLOY_STAGE=development RPC_URL="$RPC" \
+    FRONTEND_URL="$APP_URL" \
     PONDER_RPC_URL_31337="$RPC" PONDER_START_BLOCK=1 PONDER_PORT="$INDEXER_PORT" \
     PONDER_VIEWS_SCHEMA=eas_offchain_e2e EAS_OFFCHAIN_GATEWAYS="$GATEWAYS" \
     IPFS_GATEWAY="http://127.0.0.1:${KUBO_PORTS[0]}/ipfs/" \
@@ -238,8 +241,6 @@ stop_relays() {
 start_relays "$REGISTRY" factory-created
 
 if [ "$BROWSER_MODE" = 1 ]; then
-  APP_PORT=$((BASE_PORT + 31))
-  APP_URL="http://127.0.0.1:$APP_PORT"
   FRONTEND_DIST_NAME=".next-eas-offchain-e2e-$$"
   FRONTEND_DIST_PATH="$(pwd)/packages/frontend/$FRONTEND_DIST_NAME"
   FRONTEND_TSCONFIG_NAME=".tsconfig-eas-offchain-e2e-$$.json"

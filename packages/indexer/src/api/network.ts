@@ -148,7 +148,9 @@ app.get('/:snapshot', async (c) => {
           lower(t.merkleSnapshotContract),
           merkleSnapshotContract.toLowerCase()
         ),
-      orderBy: (t, { desc }) => desc(t.timestamp),
+      // Anvil and valid public chains can contain multiple roots with the same
+      // timestamp. Block order, not wall-clock order, defines current state.
+      orderBy: (t, { desc }) => [desc(t.blockNumber), desc(t.timestamp)],
     })
     if (!latestMerkleTree) {
       return c.json({ error: 'Merkle tree not found' }, 404)

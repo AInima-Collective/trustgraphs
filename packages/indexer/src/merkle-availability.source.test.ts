@@ -29,4 +29,10 @@ test('current APIs expose pending availability instead of serving a stale root',
   assert.match(networkApi, /requireCurrentScoreBlobAvailable/)
   assert.match(merkleApi, /currentScoreBlobUnavailableBody\(error\), 503/)
   assert.match(networkApi, /currentScoreBlobUnavailableBody\(error\), 503/)
+  for (const api of [merkleApi, networkApi]) {
+    assert.match(
+      api,
+      /orderBy: \(t, \{ desc \}\) => \[desc\(t\.blockNumber\), desc\(t\.timestamp\)\]/
+    )
+  }
 })
