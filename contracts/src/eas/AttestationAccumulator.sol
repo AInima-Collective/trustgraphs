@@ -5,10 +5,11 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {ISnapshotAccumulatorView} from "interfaces/merkle/ISnapshotAccumulatorView.sol";
 
 /// @title AttestationAccumulator
-/// @notice Abstract mix-in that folds every edge passing through a resolver into a chained keccak
-///         hash and lets anyone checkpoint the running state. Inherited by exactly ONE live feeder
-///         (the single-schema EASIndexerResolver) so there is one ordered log = one `acc`
-///         (see ZK_ARCHITECTURE.md §3.2, the one-accumulator-per-checkpoint invariant).
+/// @notice Abstract mix-in that folds every authenticated edge into a chained keccak hash and lets
+///         the bound snapshot checkpoint the running state. Each deployed accumulator has exactly
+///         one live feeder (for example an inline EAS resolver or a storage-authenticated importer),
+///         so there is one ordered log = one `acc` (see ZK_ARCHITECTURE.md §3.2, the
+///         one-accumulator-per-checkpoint invariant).
 ///
 /// @dev The leaf and fold encodings are frozen and reproduced byte-for-byte by the zkVM guest
 ///      (`pagerank-core::encode`): the guest re-folds all leaves and asserts it reproduces `acc`,
@@ -89,7 +90,25 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
     /// @param uid The attestation uid.
     /// @param dataHash keccak256 of the raw attestation data.
     function _fold(uint8 kind, address attester, address recipient, bytes32 uid, bytes32 dataHash) internal {
-        bytes32 leaf = keccak256(abi.encode(kind, attester, recipient, uid, block.timestamp, dataHash));
+        _foldAt(kind, attester, recipient, uid, block.timestamp, dataHash);
+    }
+
+    /// @notice Fold one edge using an explicitly authenticated source timestamp.
+    /// @dev This is the deferred-ingress counterpart to `_fold`. The leaf ABI is deliberately
+    ///      identical: `timestamp` occupies the same 32-byte ABI word as `block.timestamp`, so
+    ///      inline resolver leaves and imported leaves are byte-for-byte interchangeable. Callers
+    ///      MUST derive the timestamp from an authenticated source rather than calldata; otherwise
+    ///      they hand reconciliation order to the transaction sender.
+    /// @param kind 0 = attest, 1 = revoke.
+    /// @param attester The attester address.
+    /// @param recipient The recipient address.
+    /// @param uid The attestation uid.
+    /// @param timestamp The authenticated event timestamp used for reconciliation ordering.
+    /// @param dataHash keccak256 of the raw attestation data.
+    function _foldAt(uint8 kind, address attester, address recipient, bytes32 uid, uint256 timestamp, bytes32 dataHash)
+        internal
+    {
+        bytes32 leaf = keccak256(abi.encode(kind, attester, recipient, uid, timestamp, dataHash));
         acc = keccak256(abi.encode(acc, leaf));
         emit EdgeFolded(leafCount, leaf, acc);
         leafCount++;
