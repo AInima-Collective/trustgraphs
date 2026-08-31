@@ -462,7 +462,7 @@ if [ "$BROWSER_MODE" = 1 ]; then
   INSTANCE_ID="$(jq -r .instanceId "$DRIVER_OUTPUT")"
   BROWSER_ACCOUNT="$(cast wallet address --private-key "$DEPLOYER_KEY")"
   BROWSER_RECIPIENT="0x4444444444444444444444444444444444444444"
-  BROWSER_NETWORK_NAME="browser-created-strict-eas-e2e"
+  BROWSER_NETWORK_NAME="strict-eas-offchain-e2e"
 
   run_browser_phase() {
     local phase="$1" output="$2" expected_cid="${3:-}" expected_count="${4:-}"
@@ -478,85 +478,19 @@ if [ "$BROWSER_MODE" = 1 ]; then
       node tests/e2e/eas-offchain-browser.mjs
   }
 
-  say "== browser creates a hybrid through the standard app wizard =="
-  APP_CREATE_OUTPUT="$WORK/browser-create-network.json"
-  run_browser_phase create-network "$APP_CREATE_OUTPUT"
-  APP_INSTANCE_ID="$(jq -r .instanceId "$APP_CREATE_OUTPUT")"
-  APP_REGISTRY="$(jq -r .registry "$APP_CREATE_OUTPUT")"
-  [ "$(jq -r .defaultMode "$APP_CREATE_OUTPUT")" = onchain ] \
-    || die "the standard app wizard was not on-chain-only by default"
-  [ "$(jq -r .selectedMode "$APP_CREATE_OUTPUT")" = hybrid ] \
-    || die "the app did not opt into the hybrid factory path"
-  [ "${APP_REGISTRY,,}" != "${REGISTRY,,}" ] \
-    || die "the app creation did not emit a fresh strict registry"
-  [ "$(cast call "$APP_REGISTRY" 'EAS()(address)' --rpc-url "$RPC" | tr '[:upper:]' '[:lower:]')" = "${EAS,,}" ] \
-    || die "the app-created registry is bound to another EAS contract"
-  APP_SCHEMA="$(cast call "$APP_REGISTRY" 'schemaUid()(bytes32)' --rpc-url "$RPC")"
-  [ "$APP_SCHEMA" != 0x0000000000000000000000000000000000000000000000000000000000000000 ] \
-    || die "the app-created registry has no EAS schema"
-  ANCHORER_ROLE="$(cast call "$APP_REGISTRY" 'ANCHORER_ROLE()(bytes32)' --rpc-url "$RPC")"
-  for relayer in "$RELAYER_A" "$RELAYER_B"; do
-    [ "$(cast call "$APP_REGISTRY" 'hasRole(bytes32,address)(bool)' "$ANCHORER_ROLE" "$relayer" --rpc-url "$RPC")" = true ] \
-      || die "the app-created hybrid omitted configured relayer $relayer"
-  done
-
-  APP_INDEXED=0
-  for attempt in $(seq 1 180); do
-    if curl -fsS "$INDEXER_API/instances/$APP_INSTANCE_ID" >"$WORK/indexer-app-instance.json" 2>/dev/null \
-      && [ "$(jq -r '.instance.offchainLane.registry // empty' "$WORK/indexer-app-instance.json" | tr '[:upper:]' '[:lower:]')" = "${APP_REGISTRY,,}" ]; then
-      APP_INDEXED=1
-      break
-    fi
-    kill -0 "$INDEXER_PID" 2>/dev/null \
-      || die "indexer exited while discovering the app-created hybrid: $(tail -80 "$WORK/indexer.log")"
-    if [ $((attempt % 5)) = 0 ]; then cast rpc evm_mine --rpc-url "$RPC" >/dev/null; fi
-    sleep 1
-  done
-  [ "$APP_INDEXED" = 1 ] \
-    || die "app-created hybrid did not reach the normal instance API: $(tail -80 "$WORK/indexer.log")"
-
-  say "== independently discover the app-created hybrid from factory events =="
-  APP_SCAN_DIR="$WORK/app-scan"
-  cargo run -q -p input-exporter --bin instance-scan -- \
-    --rpc "$RPC" --registry "$DIRECTORY" --out-dir "$APP_SCAN_DIR" >"$WORK/app-scan.log"
-  APP_PLAN="$APP_SCAN_DIR/instances.json"
-  [ "$(jq --arg id "${APP_INSTANCE_ID,,}" '[.instances[] | select((.instanceId | ascii_downcase) == $id)] | length' "$APP_PLAN")" = 1 ] \
-    || die "factory scanning did not find exactly one app-created hybrid"
-  [ "$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .status' "$APP_PLAN")" = skipped ] \
-    || die "the empty app-created hybrid was unexpectedly proof-ready"
-  [ "$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .reason' "$APP_PLAN")" = "neither input lane has entries yet — nothing to prove" ] \
-    || die "the empty app-created hybrid was skipped for an unexpected reason"
-  PLAN_REGISTRY="$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .anchorRegistry' "$APP_PLAN")"
-  [ "${PLAN_REGISTRY,,}" = "${APP_REGISTRY,,}" ] \
-    || die "app success and independent factory discovery disagree on the registry"
-  PARAMS="$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .paramsPath' "$APP_PLAN")"
-  ACCUMULATOR="$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .accumulator' "$APP_PLAN")"
-  SNAPSHOT="$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .snapshot' "$APP_PLAN")"
-  INSTANCE_ID="$APP_INSTANCE_ID"
-  REGISTRY="$APP_REGISTRY"
-  SCHEMA="$APP_SCHEMA"
-  FINAL_INSTANCE_ID="$APP_INSTANCE_ID"
-
-  say "== retarget relays to the app-created immutable registry =="
-  stop_relays
-  start_relays "$APP_REGISTRY" app-created
-
-  say "== browser uses the unchanged wallet-paid on-chain EAS flow =="
+  # Standard creation deliberately remains on-chain-only. The product contract above asserts that
+  # boundary; browser assurance exercises the independently factory-deployed strict hybrid.
+  say "== browser uses the wallet-paid on-chain EAS flow on the strict hybrid =="
   run_browser_phase onchain-create "$WORK/browser-onchain-create.json"
-  [ "$(cast call "$ACCUMULATOR" 'leafCount()(uint64)' --rpc-url "$RPC")" = 1 ] \
+  [ "$(cast call "$ACCUMULATOR" 'leafCount()(uint64)' --rpc-url "$RPC")" = 2 ] \
     || die "browser on-chain vouch did not append exactly one accumulator leaf"
-  cargo run -q -p input-exporter --bin instance-scan -- \
-    --rpc "$RPC" --registry "$DIRECTORY" --out-dir "$WORK/app-ready-scan" \
-    >"$WORK/app-ready-scan.log"
-  [ "$(jq -r --arg id "${APP_INSTANCE_ID,,}" '.instances[] | select((.instanceId | ascii_downcase) == $id) | .status' "$WORK/app-ready-scan/instances.json")" = ready ] \
-    || die "the app-created hybrid did not become proof-ready after its on-chain vouch"
   ONCHAIN_INDEXED=0
   for attempt in $(seq 1 120); do
     if curl -fsS "$INDEXER_API/account/${BROWSER_ACCOUNT,,}/attestations" \
       >"$WORK/indexer-onchain-attestations.json" 2>/dev/null \
-      && [ "$(jq --arg schema "${APP_SCHEMA,,}" --arg recipient "${BROWSER_RECIPIENT,,}" \
+      && [ "$(jq --arg schema "${SCHEMA,,}" --arg recipient "${BROWSER_RECIPIENT,,}" \
         '[.attestations[] | select((.schema | ascii_downcase) == $schema and (.recipient | ascii_downcase) == $recipient and .revocationTime == "0")] | length' \
-        "$WORK/indexer-onchain-attestations.json")" = 1 ]; then
+        "$WORK/indexer-onchain-attestations.json")" = 2 ]; then
       ONCHAIN_INDEXED=1
       break
     fi
@@ -570,36 +504,36 @@ if [ "$BROWSER_MODE" = 1 ]; then
 
   say "== browser replaces it with a gasless vouch and no member transaction =="
   CREATE_BUNDLE="$WORK/browser-create-bundle.json"
-  run_browser_phase create "$CREATE_BUNDLE" "" 1
+  run_browser_phase create "$CREATE_BUNDLE" "" 3
   CREATE_CID="$(jq -r .cid "$CREATE_BUNDLE")"
-  [ "$(jq -r .message.count "$CREATE_BUNDLE")" = 1 ] \
-    || die "browser create did not append the first strict head"
+  [ "$(jq -r .message.count "$CREATE_BUNDLE")" = 3 ] \
+    || die "browser create did not append strict head 3"
 
-  say "== preflight and publish the app-created cross-lane checkpoint =="
+  say "== preflight and publish the browser-updated cross-lane checkpoint =="
   cargo run -q -p input-exporter --bin envelope0-preflight -- \
     --rpc "$RPC" --registry "$PLAN_REGISTRY" --params "$PARAMS" \
-    --envelope0-cache "$WORK/app-preflight-cache" \
+    --envelope0-cache "$WORK/browser-preflight-cache" \
     --envelope0-gateway "http://127.0.0.1:${KUBO_PORTS[0]}/ipfs/" \
     --envelope0-gateway "http://127.0.0.1:${KUBO_PORTS[2]}/ipfs/" \
     >"$WORK/app-preflight.json"
-  publish_checkpoint 0 1 5
-  [ "$(jq '.attestations | length' "$WORK/indexer-network-0.json")" = 1 ] \
+  publish_checkpoint 1 3 15
+  [ "$(jq '.attestations | length' "$WORK/indexer-network-1.json")" = 1 ] \
     || die "browser-created current vouch was absent from the normal network API"
-  [ "$(jq -r '.attestations[0].provenance.source' "$WORK/indexer-network-0.json")" = off-chain-eas ] \
+  [ "$(jq -r '.attestations[0].provenance.source' "$WORK/indexer-network-1.json")" = off-chain-eas ] \
     || die "browser-created vouch lost its off-chain provenance"
-  [ "$(jq -r '.attestations[0].provenance.cid' "$WORK/indexer-network-0.json")" = "$CREATE_CID" ] \
+  [ "$(jq -r '.attestations[0].provenance.cid' "$WORK/indexer-network-1.json")" = "$CREATE_CID" ] \
     || die "browser-created vouch exposed another CID"
-  [ "$(jq -r '.attestations[0].provenance.storageHealthy' "$WORK/indexer-network-0.json")" = true ] \
+  [ "$(jq -r '.attestations[0].provenance.storageHealthy' "$WORK/indexer-network-1.json")" = true ] \
     || die "browser-created vouch was not independently storage-verified"
 
   say "== browser renders exact provenance and appends the in-log revoke =="
   REVOKE_BUNDLE="$WORK/browser-revoke-bundle.json"
-  run_browser_phase render-revoke "$REVOKE_BUNDLE" "$CREATE_CID" 2
-  [ "$(jq -r .message.count "$REVOKE_BUNDLE")" = 2 ] \
-    || die "browser revoke did not append strict count 2"
-  publish_checkpoint 1 2 10
+  run_browser_phase render-revoke "$REVOKE_BUNDLE" "$CREATE_CID" 4
+  [ "$(jq -r .message.count "$REVOKE_BUNDLE")" = 4 ] \
+    || die "browser revoke did not append strict count 4"
+  publish_checkpoint 2 4 20
   INPUT="$LAST_INPUT"
-  [ "$(jq '.attestations | length' "$WORK/indexer-network-1.json")" = 0 ] \
+  [ "$(jq '.attestations | length' "$WORK/indexer-network-2.json")" = 0 ] \
     || die "browser revoke resurrected an older vouch in the normal network API"
 
   say "== browser renders the published no-resurrection state =="
