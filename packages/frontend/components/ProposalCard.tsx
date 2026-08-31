@@ -35,6 +35,7 @@ export interface ProposalVoteRow {
 interface ProposalCardProps {
   proposal: ProposalCore
   actions: ProposalAction[]
+  actionsError?: string
   votes?: ProposalVoteRow[]
   /** Quorum as a fraction of total voting power (0.10 = 10%). */
   quorum?: number
@@ -78,6 +79,7 @@ const voteTypeStyles = (voteType: VoteType | number | null | undefined) => {
 export function ProposalCard({
   proposal,
   actions,
+  actionsError,
   votes = [],
   quorum = 0,
   currentBlockNumber,
@@ -206,17 +208,31 @@ export function ProposalCard({
       </div>
 
       {/* Actions */}
-      {actions.length > 0 && (
+      {(actions.length > 0 || actionsError) && (
         <div className="border-t border-border pt-6 space-y-4">
           <h3 className="text-sm font-bold text-foreground">
             What passes if this passes
           </h3>
-          <ProposalActionList actions={actions} />
-          <ProposalScoringSimulation
-            actions={actions}
-            merkleRoot={proposal.merkleRoot}
-            proposalBlock={proposal.blockNumber}
-          />
+          {actionsError ? (
+            <div
+              className="border border-destructive/50 bg-destructive/10 p-4 text-sm"
+              role="alert"
+            >
+              <p className="font-medium">Action details unavailable</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {actionsError} No action was decoded or omitted.
+              </p>
+            </div>
+          ) : (
+            <>
+              <ProposalActionList actions={actions} />
+              <ProposalScoringSimulation
+                actions={actions}
+                merkleRoot={proposal.merkleRoot}
+                proposalBlock={proposal.blockNumber}
+              />
+            </>
+          )}
         </div>
       )}
 

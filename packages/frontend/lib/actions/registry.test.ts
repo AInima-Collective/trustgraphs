@@ -7,9 +7,13 @@ import type { Params } from '../pagerank/types'
 import { PARAMS_SCALE, serializeParams } from '../scoring-params'
 import { customAction } from './custom'
 import { governanceActionContextFor } from './network'
+import { normalizeSafeActions } from './normalize'
 import { walkGovernanceActions } from './registry'
 import { scoringParamsAction, signerParamsAction } from './scoring'
-import { selectProposalBaselineVersion } from './scoring-history'
+import {
+  reconstructProposalBaseline,
+  selectProposalProof,
+} from './scoring-history'
 import { ethTransferAction } from './transfer'
 import type { GovernanceActionContext, SafeAction } from './types'
 
@@ -152,6 +156,30 @@ const fallback = walkGovernanceActions([raw], context)
 assert.equal(fallback[0]!.definition, customAction)
 assert.deepEqual(fallback[0]!.values, raw)
 
+const normalizedRaw = normalizeSafeActions([raw])
+assert.equal(normalizedRaw.ok, true)
+assert.equal(
+  walkGovernanceActions(
+    normalizedRaw.ok ? normalizedRaw.actions : [],
+    context
+  )[0]!.definition,
+  customAction,
+  'a valid unknown action must retain the raw fallback'
+)
+
+for (const malformed of [
+  [{ ...raw, target: null }],
+  [{ ...raw, value: 'not-a-number' }],
+  [{ ...raw, value: '-1' }],
+  [{ ...raw, value: (1n << 256n).toString() }],
+  [{ ...raw, data: '0x123' }],
+  [{ ...raw, operation: 2 }],
+  [{ ...raw, description: 42 }],
+  { ...raw },
+]) {
+  assert.equal(normalizeSafeActions(malformed).ok, false)
+}
+
 assert.throws(
   () =>
     walkGovernanceActions([raw], context, [
@@ -166,42 +194,127 @@ assert.throws(
   /No governance action matched/
 )
 
-const baseline = selectProposalBaselineVersion(
-  [
-    { version: '4', executedAtBlock: '40', valid: true },
-    { version: '3', executedAtBlock: '30', valid: false },
-    { version: '2', executedAtBlock: '20', valid: true },
-    { version: '1', executedAtBlock: '10', valid: true },
-  ],
-  35n
+const history = [
+  {
+    version: '3',
+    executedAtBlock: '30',
+    firstCheckpoint: null,
+    valid: true,
+  },
+  {
+    version: '2',
+    executedAtBlock: '20',
+    firstCheckpoint: '2',
+    valid: true,
+  },
+  {
+    version: '1',
+    executedAtBlock: '10',
+    firstCheckpoint: '1',
+    valid: true,
+  },
+]
+const versionRoots = new Map([
+  ['1', bytes32('1')],
+  ['2', bytes32('2')],
+])
+assert.deepEqual(selectProposalProof(undefined), {
+  status: 'unavailable',
+  reason: 'no-proof',
+})
+assert.deepEqual(
+  selectProposalProof([
+    { id: 'older', blockNumber: 10n },
+    { id: 'newest', blockNumber: 20n },
+  ]),
+  { status: 'verified', proof: { id: 'newest', blockNumber: 20n } }
 )
-assert.equal(baseline?.version, '2')
-assert.equal(
-  selectProposalBaselineVersion(
-    [
-      { version: '1', executedAtBlock: '10', valid: true },
-      { version: '2', executedAtBlock: '10', valid: true },
+assert.deepEqual(
+  selectProposalProof([
+    { id: 'same-block-a', blockNumber: 20n },
+    { id: 'same-block-b', blockNumber: 20n },
+  ]),
+  { status: 'unavailable', reason: 'same-block-proof' }
+)
+const reconstruct = (version: (typeof history)[number]) => ({
+  root: versionRoots.get(version.version)!,
+  result: `version-${version.version}`,
+})
+const verifiedBaseline = reconstructProposalBaseline({
+  versions: history,
+  proposalBlock: 35n,
+  checkpointId: 2n,
+  expectedRoot: bytes32('2'),
+  reconstruct,
+})
+assert.equal(verifiedBaseline.status, 'verified')
+if (verifiedBaseline.status === 'verified') {
+  assert.equal(verifiedBaseline.version.version, '2')
+  assert.equal(verifiedBaseline.result, 'version-2')
+}
+
+assert.deepEqual(
+  reconstructProposalBaseline({
+    versions: history,
+    proposalBlock: 0n,
+    checkpointId: 2n,
+    expectedRoot: bytes32('2'),
+    reconstruct,
+  }),
+  { status: 'unavailable', reason: 'recovered-proposal' }
+)
+assert.deepEqual(
+  reconstructProposalBaseline({
+    versions: [
+      ...history,
+      {
+        version: '4',
+        executedAtBlock: '35',
+        firstCheckpoint: '2',
+        valid: true,
+      },
     ],
-    10n
-  )?.version,
-  '2'
+    proposalBlock: 35n,
+    checkpointId: 2n,
+    expectedRoot: bytes32('2'),
+    reconstruct,
+  }),
+  { status: 'unavailable', reason: 'same-block-order' }
 )
-assert.equal(
-  selectProposalBaselineVersion(
-    [{ version: '1', executedAtBlock: '10', valid: true }],
-    9n
-  ),
-  undefined
+assert.deepEqual(
+  reconstructProposalBaseline({
+    versions: history,
+    proposalBlock: 35n,
+    checkpointId: 2n,
+    expectedRoot: bytes32('3'),
+    reconstruct,
+  }),
+  { status: 'unavailable', reason: 'root-mismatch' }
 )
-assert.equal(
-  selectProposalBaselineVersion(
-    [
-      { version: '1', executedAtBlock: 'not-a-block', valid: true },
-      { version: 'invalid', executedAtBlock: '10', valid: true },
-    ],
-    10n
-  ),
-  undefined
+assert.deepEqual(
+  reconstructProposalBaseline({
+    versions: history,
+    proposalBlock: 35n,
+    checkpointId: 2n,
+    expectedRoot: bytes32('2'),
+    reconstruct: (version) => ({
+      root: bytes32('2'),
+      result: version.version,
+    }),
+  }),
+  { status: 'unavailable', reason: 'ambiguous-root' }
+)
+assert.deepEqual(
+  reconstructProposalBaseline({
+    versions: history,
+    proposalBlock: 35n,
+    checkpointId: 2n,
+    expectedRoot: bytes32('2'),
+    reconstruct: () => {
+      throw new Error('corrupt indexed params')
+    },
+  }),
+  { status: 'unavailable', reason: 'invalid-reconstruction' }
 )
 
 console.log('governance action registry matching and target verification: ok')

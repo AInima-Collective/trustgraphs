@@ -35,6 +35,7 @@ import { formatBigNumber, formatPercentage } from '@/lib/utils'
 interface ProposalRow {
   core: ProposalCore
   actions: ProposalAction[]
+  actionsError?: string
 }
 
 /** Active proposals first (they can still be voted on), then newest first. */

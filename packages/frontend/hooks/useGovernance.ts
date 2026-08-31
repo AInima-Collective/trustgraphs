@@ -6,6 +6,7 @@ import { type Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
 
 import { useNetwork } from '@/contexts/NetworkContext'
+import { normalizeSafeActions } from '@/lib/actions'
 import type { SafeAction } from '@/lib/actions'
 import { merkleGovModuleAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
@@ -20,6 +21,11 @@ import {
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 export type ProposalAction = SafeAction
+
+export type ProposalActionsView = {
+  actions: ProposalAction[]
+  actionsError?: string
+}
 
 export interface ProposalCore {
   id: bigint
@@ -245,7 +251,11 @@ export function useGovernance() {
   const proposalsWithState = useMemo(() => {
     return proposals.map((proposal) => {
       const state = computeProposalState(proposal, currentBlockNumber)
-      const actions = (proposal.actions as ProposalAction[]) || []
+      const normalizedActions = normalizeSafeActions(proposal.actions)
+      const actions = normalizedActions.ok ? normalizedActions.actions : []
+      const actionsError = normalizedActions.ok
+        ? undefined
+        : normalizedActions.reason
 
       const core: ProposalCore = {
         id: proposal.id,
@@ -268,7 +278,7 @@ export function useGovernance() {
         timestamp: proposal.timestamp,
       }
 
-      return { core, actions }
+      return { core, actions, ...(actionsError ? { actionsError } : {}) }
     })
   }, [proposals, currentBlockNumber])
 
@@ -276,7 +286,7 @@ export function useGovernance() {
   const getProposal = useCallback(
     (
       proposalId: number
-    ): { core: ProposalCore; actions: ProposalAction[] } | null => {
+    ): ({ core: ProposalCore } & ProposalActionsView) | null => {
       const proposal = proposalsWithState.find(
         (p) => Number(p.core.id) === proposalId
       )
@@ -289,6 +299,7 @@ export function useGovernance() {
   const getAllProposals = useCallback((): {
     core: ProposalCore
     actions: ProposalAction[]
+    actionsError?: string
   }[] => {
     return proposalsWithState
   }, [proposalsWithState])
