@@ -13,6 +13,7 @@ import { domainSeparator, headDomain } from '@trustgraphs/eas-offchain-client'
 import { ponder } from 'ponder:registry'
 import {
   easOffchainLane,
+  easSchemaRecord,
   instance,
   merkleFundDistributor,
   networkMetadataRevision,
@@ -268,6 +269,38 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
 
   await revalidateNetwork(instanceId)
 })
+
+ponder.on(
+  'trustgraphsFactory:ImportedEasLaneCreated',
+  async ({ event, context }) => {
+    const { instanceId, importer, router, eas, schemaUid } = event.args
+    const catalog = await context.db.find(instance, { id: instanceId })
+    if (
+      !catalog ||
+      catalog.resolver.toLowerCase() !== importer.toLowerCase() ||
+      catalog.schemaUid.toLowerCase() !== schemaUid.toLowerCase()
+    ) {
+      console.error(
+        `factory: imported lane ${importer} does not match preceding instance ${instanceId}; refusing discovery`
+      )
+      return
+    }
+    const registered = await context.db.find(easSchemaRecord, {
+      uid: schemaUid,
+    })
+    if (!registered) {
+      console.error(
+        `factory: imported schema ${schemaUid} was not indexed from the canonical SchemaRegistry`
+      )
+    }
+    await context.db.update(instance, { id: instanceId }).set({
+      importedEas: eas,
+      importedRouter: router,
+      ...(registered ? { schemaString: registered.schema } : {}),
+    })
+    await revalidateNetwork(instanceId)
+  }
+)
 
 ponder.on(
   'trustgraphsFactory:OffchainEasLaneCreated',

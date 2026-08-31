@@ -6,8 +6,11 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
+import {OnchainAttestationImporter} from "src/eas/OnchainAttestationImporter.sol";
+import {EASAttestAndImportRouter} from "src/eas/EASAttestAndImportRouter.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -85,6 +88,39 @@ contract TrustgraphsParamsControllerDeployer {
         address owner
     ) external returns (TrustgraphsParamsController) {
         return new TrustgraphsParamsController(instanceId, snapshot, registry, initialParams, owner, msg.sender);
+    }
+}
+
+/// @title OnchainImportLaneDeployer
+/// @notice Holds importer/router creation code outside `TrustgraphsFactory` and preserves the
+///         importer's one-shot snapshot binder across the two-stage deployment cycle.
+/// @dev The importer records this helper as its binder. `deploy` records the calling factory as the
+///      only address allowed to ask the helper to bind that importer, then `bindSnapshot` deletes
+///      the capability before making the irreversible call. There is no externally interleavable
+///      window in the factory path: deploy, snapshot construction, and bind share one transaction.
+contract OnchainImportLaneDeployer {
+    mapping(address importer => address factory) public pendingBinder;
+
+    error NotPendingBinder(address importer, address caller);
+
+    event ImportLaneDeployed(address indexed importer, address indexed router, address indexed factory);
+
+    function deploy(IEAS eas, bytes32 schemaUid)
+        external
+        returns (OnchainAttestationImporter importer, EASAttestAndImportRouter router)
+    {
+        importer = new OnchainAttestationImporter(eas, schemaUid);
+        router = new EASAttestAndImportRouter(eas, importer, schemaUid);
+        pendingBinder[address(importer)] = msg.sender;
+        emit ImportLaneDeployed(address(importer), address(router), msg.sender);
+    }
+
+    function bindSnapshot(OnchainAttestationImporter importer, address snapshot) external {
+        if (pendingBinder[address(importer)] != msg.sender) {
+            revert NotPendingBinder(address(importer), msg.sender);
+        }
+        delete pendingBinder[address(importer)];
+        importer.bindSnapshot(snapshot);
     }
 }
 

@@ -69,6 +69,13 @@ export const WEIGHTED_FACTORY = (CONFIG as { weightedFactory?: string })
 export const GOVERNED_WEIGHTED_FACTORY = (
   CONFIG as { governedWeightedFactory?: string }
 ).governedWeightedFactory as `0x${string}` | '' | undefined
+export const IMPORTED_FACTORY_CONFIG = (
+  CONFIG as {
+    importedFactory?: { factory?: string; governedFactory?: string }
+  }
+).importedFactory as
+  | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
+  | undefined
 // The contributions ROUND factory. Absent/empty on a deployment that has not stood it up; the
 // "start a contribution round" flow then explains the feature is not available here.
 export const CONTRIBUTIONS_FACTORY = (

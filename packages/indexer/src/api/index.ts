@@ -7,6 +7,7 @@ import account from './account'
 import compositions from './compositions'
 import contributions from './contributions'
 import easOffchain from './eas-offchain'
+import easImport from './eas-import'
 import erc8004 from './erc8004'
 import graphLineages from './graph-lineages'
 import hypercerts from './hypercerts'
@@ -29,6 +30,7 @@ app.route('/contributions', contributions)
 app.route('/compositions', compositions)
 app.route('/erc8004', erc8004)
 app.route('/eas-offchain', easOffchain)
+app.route('/eas-import', easImport)
 app.route('/graph-lineages', graphLineages)
 app.route('/hypercerts', hypercerts)
 app.route('/instances', instances)

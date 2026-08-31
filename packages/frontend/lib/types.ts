@@ -33,6 +33,14 @@ export type Network = {
     easDomainSeparator: Hex
     maxTotalInputs: string
   }
+  /** Existing-schema lane: canonical EAS is the source and the importer is this network's accumulator. */
+  importedLane?: {
+    eas: Hex
+    importer: Hex
+    router: Hex
+    schemaUid: Hex
+    completeness: string
+  }
   name: string
   /** Presentation image from the current network metadata revision. */
   image?: string

@@ -32,4 +32,32 @@ export const onchainAttestationImporterAbi = [
       { name: 'timestamp', type: 'uint64', indexed: false },
     ],
   },
+  {
+    type: 'event',
+    name: 'AttestationImported',
+    anonymous: false,
+    inputs: [
+      { name: 'uid', type: 'bytes32', indexed: true },
+      { name: 'timestamp', type: 'uint64', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'RevocationImported',
+    anonymous: false,
+    inputs: [
+      { name: 'uid', type: 'bytes32', indexed: true },
+      { name: 'timestamp', type: 'uint64', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ImportSkipped',
+    anonymous: false,
+    inputs: [
+      { name: 'uid', type: 'bytes32', indexed: true },
+      { name: 'kind', type: 'uint8', indexed: true },
+      { name: 'reason', type: 'uint8', indexed: false },
+    ],
+  },
 ] as const

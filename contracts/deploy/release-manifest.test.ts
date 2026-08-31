@@ -322,8 +322,10 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         'Instance Registry',
         'Proving Vault',
         'Trustgraphs Factory',
+        'Imported EAS Factory',
         'Signer ZK Verifier',
         'Governed Factory',
+        'Governed Imported EAS Factory',
         'Weighted ZK Verifier',
         'Weighted Factory',
         'Governed Weighted Factory',
@@ -345,9 +347,11 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.instanceRegistry.address !== null,
         contracts.provingVault.address !== null,
         contracts.trustgraphsFactory.address !== null,
+        contracts.importedTrustgraphsFactory?.address != null,
         contracts.signerVerifier.address !== null,
         contracts.governedTrustgraphsFactory.address !== null &&
           contracts.signerSyncModuleDeployer.address !== null,
+        contracts.governedImportedTrustgraphsFactory?.address != null,
         contracts.weightedVerifier.address !== null,
         contracts.weightedTrustgraphsFactory.address !== null,
         contracts.governedWeightedTrustgraphsFactory.address !== null,
@@ -357,10 +361,10 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.contributionsFactory.address !== null,
       ]
     )
-    assert.equal(env.deployContracts[9]?.sig, 'run(string,string)')
-    assert.equal(env.deployContracts[12]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[11]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[14]?.sig, 'run(string,string)')
     assert.equal(
-      env.deployContracts[13]?.sig,
+      env.deployContracts[15]?.sig,
       'run(string,string,string,string,string,uint64)'
     )
     assert.doesNotMatch(JSON.stringify(env.deployContracts), /hypercert|nostr/i)

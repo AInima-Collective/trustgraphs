@@ -51,11 +51,14 @@ export type ReleaseManifest = {
     instanceRegistry: DeploymentRecord
     provingVault: DeploymentRecord
     trustgraphsFactory: DeploymentRecord
+    /** Existing-EAS-schema sibling factory. Optional on manifests predating #117. */
+    importedTrustgraphsFactory?: DeploymentRecord
     /** Second factory generation with `EPOCH_FLOOR = 1` (testnet-fast epochs). Optional: absent
      *  on manifests predating it, and always recorded together with its governed wrapper. */
     trustgraphsFactoryFast?: DeploymentRecord
     signerVerifier: DeploymentRecord
     governedTrustgraphsFactory: DeploymentRecord
+    governedImportedTrustgraphsFactory?: DeploymentRecord
     governedTrustgraphsFactoryFast?: DeploymentRecord
     signerSyncModuleDeployer: DeploymentRecord
     safeSingleton: DeploymentRecord
@@ -280,9 +283,11 @@ export const validateReleaseManifest = (
       'instanceRegistry',
       'provingVault',
       'trustgraphsFactory',
+      'importedTrustgraphsFactory',
       'trustgraphsFactoryFast',
       'signerVerifier',
       'governedTrustgraphsFactory',
+      'governedImportedTrustgraphsFactory',
       'governedTrustgraphsFactoryFast',
       'signerSyncModuleDeployer',
       'safeSingleton',
@@ -373,6 +378,28 @@ export const validateReleaseManifest = (
   if (governedAddress !== null && signerVerifier.address === null) {
     throw new Error(
       'manifest signerVerifier is required when governedTrustgraphsFactory is deployed'
+    )
+  }
+
+  const importedFactory = manifestContracts.importedTrustgraphsFactory
+  const governedImportedFactory =
+    manifestContracts.governedImportedTrustgraphsFactory
+  for (const [record, key] of [
+    [importedFactory, 'importedTrustgraphsFactory'],
+    [governedImportedFactory, 'governedImportedTrustgraphsFactory'],
+  ] as const) {
+    if (record === undefined) continue
+    assertObject(record, `manifest.contracts.${key}`)
+    validateRecord(record, `manifest.contracts.${key}`, record.address !== null)
+  }
+  const importedPresent = (importedFactory as DeploymentRecord | undefined)
+    ?.address
+  const governedImportedPresent = (
+    governedImportedFactory as DeploymentRecord | undefined
+  )?.address
+  if ((importedPresent != null) !== (governedImportedPresent != null)) {
+    throw new Error(
+      'manifest importedTrustgraphsFactory and governedImportedTrustgraphsFactory must be recorded together'
     )
   }
 
@@ -689,6 +716,18 @@ export const releaseManifestToDeploymentSummary = (
           manifest.contracts.governedTrustgraphsFactoryFast.address,
       }
     : undefined
+  const importedFactory = manifest.contracts.importedTrustgraphsFactory?.address
+    ? {
+        imported_factory: manifest.contracts.importedTrustgraphsFactory.address,
+      }
+    : undefined
+  const governedImportedFactory = manifest.contracts
+    .governedImportedTrustgraphsFactory?.address
+    ? {
+        governed_imported_factory:
+          manifest.contracts.governedImportedTrustgraphsFactory.address,
+      }
+    : undefined
   const signerVerifier = manifest.contracts.signerVerifier.address
     ? {
         zk_verifier: manifest.contracts.signerVerifier.address,
@@ -784,6 +823,8 @@ export const releaseManifestToDeploymentSummary = (
     },
     provingVault: manifest.contracts.provingVault.address,
     governedFactory,
+    importedFactory,
+    governedImportedFactory,
     factoryFast,
     governedFactoryFast,
     signerVerifier,

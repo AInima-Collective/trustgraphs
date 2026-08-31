@@ -196,8 +196,8 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTotalPool.selector));
     }
 
-    /// `weightFieldIndex` is fixed by the canonical vouch schema: `confidence` is ABI head slot 1.
-    /// Any other index reads a different field as the edge weight.
+    /// Native networks retain the canonical vouch schema's confidence at ABI head slot 1. The
+    /// imported sibling factory has its own validator entry point for foreign schema layouts.
     function test_RejectsWrongWeightFieldIndex() public {
         ParamsCodec.Params memory p = _baseParams();
         p.weightFieldIndex = 0;

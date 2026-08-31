@@ -1,0 +1,10 @@
+{
+  "rpcUrl": "http://127.0.0.1:8545",
+  "importer": "0x0000000000000000000000000000000000000000",
+  "snapshot": "0x0000000000000000000000000000000000000000",
+  "startBlock": 0,
+  "confirmations": 2,
+  "logBlockRange": 2000,
+  "batchSize": 32,
+  "statePath": "../.state/eas-import.json"
+}

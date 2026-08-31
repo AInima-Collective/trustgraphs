@@ -3,7 +3,11 @@ import { isAddress, zeroAddress } from 'viem'
 
 import { ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
-import { TRUST_COMPOSE_CONFIG, WEIGHTED_FACTORY } from '@/lib/config'
+import {
+  IMPORTED_FACTORY_CONFIG,
+  TRUST_COMPOSE_CONFIG,
+  WEIGHTED_FACTORY,
+} from '@/lib/config'
 import { getTargetChainConfig } from '@/lib/wagmi'
 
 import { isFactoryAvailable } from './model'
@@ -19,6 +23,9 @@ const WEIGHTED_PATH_AVAILABLE = publicFactoryAvailable(WEIGHTED_FACTORY)
 const COMPOSITION_PATH_AVAILABLE = publicFactoryAvailable(
   TRUST_COMPOSE_CONFIG?.factory
 )
+const IMPORTED_PATH_AVAILABLE =
+  publicFactoryAvailable(IMPORTED_FACTORY_CONFIG?.factory) &&
+  publicFactoryAvailable(IMPORTED_FACTORY_CONFIG?.governedFactory)
 
 /** Every creation program gets a stable URL before any form state exists. */
 export const CreateNetworkChooser = () => (
@@ -56,6 +63,24 @@ export const CreateNetworkChooser = () => (
           </p>
         )}
       </Card>
+
+      {IMPORTED_PATH_AVAILABLE && (
+        <Card type="accent" size="md" className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="tg-label-strong">
+              Start from existing attestations
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Preview an existing EAS schema and turn its historical
+              attestations into a governed trust network.
+            </p>
+          </div>
+          <ButtonLink href="/create/imported" variant="outline" size="sm">
+            Preview an EAS schema
+            <ArrowRight className="h-4 w-4" />
+          </ButtonLink>
+        </Card>
+      )}
 
       {WEIGHTED_PATH_AVAILABLE && (
         <Card type="accent" size="md" className="space-y-3">

@@ -495,6 +495,89 @@ export const easAttestation = onchainTable(
   })
 )
 
+/** Every schema registration observed on the canonical EAS SchemaRegistry. */
+export const easSchemaRecord = onchainTable(
+  'eas_schema_record',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    registry: t.hex().notNull(),
+    registerer: t.hex().notNull(),
+    resolver: t.hex().notNull(),
+    revocable: t.boolean().notNull(),
+    schema: t.text().notNull(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    registererIdx: index().on(t.registerer),
+    resolverIdx: index().on(t.resolver),
+    blockIdx: index().on(t.blockNumber),
+  })
+)
+
+/** Canonical EAS history, independent of whether any importer has folded the UID yet. */
+export const easCanonicalAttestation = onchainTable(
+  'eas_canonical_attestation',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    eas: t.hex().notNull(),
+    schema: t.hex().notNull(),
+    attester: t.hex().notNull(),
+    recipient: t.hex().notNull(),
+    ref: t.hex().notNull(),
+    revocable: t.boolean().notNull(),
+    expirationTime: t.bigint().notNull(),
+    revocationTime: t.bigint().notNull(),
+    data: t.hex().notNull(),
+    sourceTime: t.bigint().notNull(),
+    sourceBlock: t.bigint().notNull(),
+    sourceLogIndex: t.integer().notNull(),
+    sourceTxHash: t.hex().notNull(),
+    revokedBlock: t.bigint(),
+    revokedLogIndex: t.integer(),
+    revokedTxHash: t.hex(),
+  }),
+  (t) => ({
+    schemaBlockIdx: index().on(t.schema, t.sourceBlock),
+    attesterIdx: index().on(t.schema, t.attester),
+    recipientIdx: index().on(t.schema, t.recipient),
+    expirationIdx: index().on(t.schema, t.expirationTime),
+    revocationIdx: index().on(t.schema, t.revocationTime),
+  })
+)
+
+/** One terminal importer outcome per (importer, UID, operation kind). */
+export const easImportOperation = onchainTable(
+  'eas_import_operation',
+  (t) => ({
+    id: t.text().primaryKey(), // `${importer}:${uid}:${kind}`
+    importer: t.hex().notNull(),
+    uid: t.hex().notNull(),
+    kind: t.integer().notNull(), // 0 attest, 1 explicit revoke, 2 expiration
+    outcome: t.text().notNull(), // folded | skipped-zero-recipient
+    sourceTimestamp: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    importerKindIdx: index().on(t.importer, t.kind),
+    importerUidIdx: index().on(t.importer, t.uid),
+    blockIdx: index().on(t.importer, t.blockNumber),
+  })
+)
+
+/** Exact latest canonical-EAS block observed by this Ponder deployment. */
+export const easImportSyncHead = onchainTable('eas_import_sync_head', (t) => ({
+  id: t.text().primaryKey(),
+  chainId: t.text().notNull(),
+  blockNumber: t.bigint().notNull(),
+  timestamp: t.bigint().notNull(),
+}))
+
 /*///////////////////////////////////////////////////////////////
         THE TRUST-GRAPH CATALOG — one row per factory instance
 //////////////////////////////////////////////////////////////*/
@@ -575,6 +658,10 @@ export const instance = onchainTable(
     offchainRegistry: t.hex(),
     offchainEasDomainSeparator: t.hex(),
     offchainMaxTotalInputs: t.bigint(),
+    // Present only for the existing-EAS-schema flavor. `resolver` remains the accumulator/importer
+    // so every generic consumer keeps working; these fields expose the immutable source + router.
+    importedEas: t.hex(),
+    importedRouter: t.hex(),
     // Denormalized out of `params` so seed membership is queryable without unpacking the JSON.
     trustedSeeds: t.hex().array().notNull(),
     createdBlock: t.bigint().notNull(),

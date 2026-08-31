@@ -76,6 +76,13 @@ export type InstanceRow = {
     easDomainSeparator: Hex
     maxTotalInputs: string
   } | null
+  importedLane: {
+    eas: Hex
+    importer: Hex
+    router: Hex
+    schemaUid: Hex
+    completeness: string
+  } | null
   signerSync?: {
     operatorInstanceId: Hex
     module: Hex
@@ -230,6 +237,7 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
           },
         }
       : {}),
+    ...(row.importedLane ? { importedLane: row.importedLane } : {}),
     about: revisedProfile
       ? metadata.description?.trim() || ''
       : metadata.description?.trim() || NO_DESCRIPTION,

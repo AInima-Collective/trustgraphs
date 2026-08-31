@@ -15,6 +15,7 @@ import { CreateBatchAttestationModal } from '@/components/CreateBatchAttestation
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { HybridVouchAudit } from '@/components/HybridVouchAudit'
+import { ImportedEasStatus } from '@/components/ImportedEasStatus'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
 import { ScoresAsOf } from '@/components/ScoresAsOf'
@@ -212,6 +213,8 @@ export const NetworkPage = () => {
           </div>
         </div>
       </header>
+
+      {network.importedLane && <ImportedEasStatus network={network} />}
 
       {/* The graph is the overview. Stats are docked to its canvas as a quiet
           instrument rail instead of repeated as a row of cards below it. */}

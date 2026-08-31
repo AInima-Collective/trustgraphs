@@ -162,7 +162,7 @@ export const CreateAttestationModal = ({
     error,
     hash,
     isRelayEnabled,
-  } = useAttestation()
+  } = useAttestation(undefined, currentNetwork?.importedLane)
 
   const noteText =
     totalValue > 0 && networkProfile && networkProfile.score !== '0'

@@ -126,6 +126,17 @@ const serialize = (
         maxTotalInputs: row.offchainMaxTotalInputs?.toString() ?? null,
       }
     : null,
+  importedLane:
+    row.importedEas && row.importedRouter
+      ? {
+          eas: row.importedEas,
+          importer: row.resolver,
+          router: row.importedRouter,
+          schemaUid: row.schemaUid,
+          completeness:
+            'Checkpoint-complete when the permissionless sweep is live; anyone can import a missing UID.',
+        }
+      : null,
   signerSync: signer
     ? {
         operatorInstanceId: signer.operatorInstanceId,

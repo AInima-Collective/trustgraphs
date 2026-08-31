@@ -11,6 +11,7 @@ import {
 } from './abis/composition'
 import { contributionsFactoryAbi } from './abis/contributionsFactory'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
+import { canonicalEasAbi, schemaRegistryAbi } from './abis/canonicalEas'
 import { easOffchainAnchorRegistryAbi } from './abis/easOffchainAnchorRegistry'
 import { erc8004IdentityRegistryAbi } from './abis/erc8004IdentityRegistry'
 import { erc8004ReputationRegistryAbi } from './abis/erc8004ReputationRegistry'
@@ -71,10 +72,12 @@ type DeploymentSummary = {
   eas?: { eas?: string; schema_registry?: string; schema_registrar?: string }
   /** `.docker/factory_deploy.json`, present once `DeployFactory` has run on this box. */
   factory?: { factory?: string; instance_registry?: string }
+  importedFactory?: { imported_factory?: string }
   governedFactory?: {
     governed_factory?: string
     signer_sync_deployer?: string
   }
+  governedImportedFactory?: { governed_imported_factory?: string }
   /** The fast (EPOCH_FLOOR = 1) factory generation. Same contracts and event surface as
    *  `factory` / `governedFactory`, so both generations ride the same sources as address
    *  arrays; only present once the fast pair is recorded in the release manifest. */
@@ -225,6 +228,12 @@ const SEPOLIA_START_BLOCK = blockNumberEnv(
   releaseManifest?.firstDeploymentBlock ?? 0
 )
 const CORE_START_BLOCK = IS_SEPOLIA ? SEPOLIA_START_BLOCK : DEV_START_BLOCK
+// Legacy schemas predate Trustgraphs. Starting at the core deployment block would make the pending
+// set look complete while silently omitting their history, so EAS owns an explicit genesis-capable
+// cursor. Fork/local operators can raise the local start with the ordinary PONDER_START_BLOCK.
+const EAS_START_BLOCK = IS_SEPOLIA
+  ? blockNumberEnv('PONDER_EAS_START_BLOCK_11155111', 0)
+  : DEV_START_BLOCK
 
 /**
  * ERC-8004 is a local research fixture. Public deployment profiles do not accept an arbitrary
@@ -262,6 +271,8 @@ const PROVING_VAULT = (deploymentSummary as { provingVault?: string })
 const TRUSTGRAPHS_FACTORY = deploymentSummary.factory?.factory as
   | Hex
   | undefined
+const IMPORTED_TRUSTGRAPHS_FACTORY = deploymentSummary.importedFactory
+  ?.imported_factory as Hex | undefined
 const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
   | Hex
   | undefined
@@ -273,11 +284,14 @@ const TRUSTGRAPHS_FACTORY_FAST = deploymentSummary.factoryFast?.factory as
  *  array so networks minted by either generation are indexed identically. */
 const TRUSTGRAPHS_FACTORIES = [
   TRUSTGRAPHS_FACTORY,
+  IMPORTED_TRUSTGRAPHS_FACTORY,
   TRUSTGRAPHS_FACTORY_FAST,
 ].filter((address): address is Hex => address !== undefined)
 const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | Hex
   | undefined
+const GOVERNED_IMPORTED_FACTORY = deploymentSummary.governedImportedFactory
+  ?.governed_imported_factory as Hex | undefined
 const GOVERNED_FACTORY_FAST = deploymentSummary.governedFactoryFast
   ?.governed_factory as Hex | undefined
 const GOVERNED_WEIGHTED_FACTORY = deploymentSummary.governedWeightedFactory
@@ -296,6 +310,7 @@ const GOVERNED_COMPOSE_FACTORY_FAST = deploymentSummary
  */
 const GOVERNED_WRAPPERS = [
   GOVERNED_FACTORY,
+  GOVERNED_IMPORTED_FACTORY,
   GOVERNED_FACTORY_FAST,
   GOVERNED_WEIGHTED_FACTORY,
   GOVERNED_WEIGHTED_FACTORY_FAST,
@@ -305,11 +320,16 @@ const GOVERNED_WRAPPERS = [
 /** Both governed trust-graph wrapper generations, one source: same ABI, same handlers. */
 const GOVERNED_TRUSTGRAPHS_FACTORIES = [
   GOVERNED_FACTORY,
+  GOVERNED_IMPORTED_FACTORY,
   GOVERNED_FACTORY_FAST,
 ].filter((address): address is Hex => address !== undefined)
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
 const CHAIN_ID = IS_SEPOLIA ? 11155111 : 31337
+const EAS_ADDRESS = deploymentSummary.eas?.eas as Hex | undefined
+const SCHEMA_REGISTRY_ADDRESS = deploymentSummary.eas?.schema_registry as
+  | Hex
+  | undefined
 const WEIGHTED_FACTORY =
   (process.env[`WEIGHTED_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
     | Hex
@@ -359,7 +379,7 @@ const GRAPH_LINEAGE_REGISTRY =
  * A box whose deploy chain never ran `DeployFactory` (for example a lane-2-only hypercerts box)
  * still falls back to the static lists.
  */
-const FACTORY_DISCOVERY = TRUSTGRAPHS_FACTORY !== undefined
+const FACTORY_DISCOVERY = TRUSTGRAPHS_FACTORIES.length > 0
 
 /** The frozen discovery event. Every child address below is one of its arguments. */
 const INSTANCE_CREATED = getAbiItem({
@@ -605,8 +625,27 @@ export default createConfig({
       startBlock: CORE_START_BLOCK,
       interval: 5,
     },
+    easImportHead: {
+      chain: CORE_CHAIN,
+      // This is only a cursor heartbeat; replaying one row per pre-Trustgraphs block would add no
+      // history. Canonical EAS contract sources above still begin at EAS_START_BLOCK.
+      startBlock: CORE_START_BLOCK,
+      interval: 1,
+    },
   },
   contracts: {
+    canonicalEas: {
+      abi: canonicalEasAbi,
+      startBlock: EAS_START_BLOCK,
+      chain: EAS_ADDRESS ? { [CORE_CHAIN]: { address: EAS_ADDRESS } } : {},
+    },
+    easSchemaRegistry: {
+      abi: schemaRegistryAbi,
+      startBlock: EAS_START_BLOCK,
+      chain: SCHEMA_REGISTRY_ADDRESS
+        ? { [CORE_CHAIN]: { address: SCHEMA_REGISTRY_ADDRESS } }
+        : {},
+    },
     graphLineageRegistry: {
       abi: graphLineageRegistryAbi,
       startBlock: CORE_START_BLOCK,
@@ -786,13 +825,16 @@ export default createConfig({
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
       startBlock: CORE_START_BLOCK,
-      chain: {
-        [CORE_CHAIN]: {
-          address: FACTORY_DISCOVERY
-            ? instanceChildren('resolver')
-            : deployedAddresses('easIndexerResolver'),
-        },
-      },
+      // In factory mode the importer source below deliberately watches the superset ABI for every
+      // resolver child. This keeps native and imported accumulators on one source without indexing
+      // native events twice. Static pre-factory deployments retain the original source.
+      chain: FACTORY_DISCOVERY
+        ? {}
+        : {
+            [CORE_CHAIN]: {
+              address: deployedAddresses('easIndexerResolver'),
+            },
+          },
     },
     // The factory/deploy slice for #117 will replace this empty source with factory-discovered
     // importer addresses. Declaring the event surface now keeps expiry folds and ordinary markers
@@ -800,7 +842,9 @@ export default createConfig({
     onchainAttestationImporter: {
       abi: onchainAttestationImporterAbi,
       startBlock: CORE_START_BLOCK,
-      chain: {},
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: instanceChildren('resolver') } }
+        : {},
     },
     merkleSnapshot: {
       abi: merkleSnapshotAbi,

@@ -76,7 +76,7 @@ export function CreateBatchAttestationModal({
     isCreating,
     isRelayEnabled,
     userAddress,
-  } = useAttestation()
+  } = useAttestation(undefined, network.importedLane)
   const resolveAccountIdentifier = useEnsResolver()
   const bumpPendingEcho = useSetAtom(bumpPendingEchoAtom)
 
