@@ -6,19 +6,12 @@ import {
 } from 'ponder:schema'
 import type { Address } from 'viem'
 
+import { formatProposalActions } from './gov-actions'
 import {
   ensureMerkleGovModuleRow,
   readMerkleGovModuleRow,
 } from './gov-module-shared'
 import { merkleGovModuleAbi } from '../../frontend/lib/contract-abis'
-
-// Helper type for proposal actions
-type ProposalAction = {
-  target: string
-  value: string
-  data: string
-  operation: number
-}
 
 // Scalar compatibility seam for the field appended to Proposal. Keeping this fragment local lets
 // the indexer adopt execution expiry without rewriting generated full-contract ABI artifacts.
@@ -106,13 +99,7 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
           i
         )
 
-        // Format actions for JSON storage
-        const formattedActions: ProposalAction[] = actions.map((action) => ({
-          target: action.target,
-          value: action.value.toString(),
-          data: action.data,
-          operation: action.operation,
-        }))
+        const formattedActions = formatProposalActions(actions)
 
         await context.db
           .insert(merkleGovModuleProposal)
@@ -169,20 +156,7 @@ const proposalCreated = async ({ event, context }: any) => {
     proposalId
   )
 
-  // Format actions for JSON storage
-  const formattedActions: ProposalAction[] = actions.map(
-    (action: {
-      target: string
-      value: bigint
-      data: string
-      operation: number
-    }) => ({
-      target: action.target,
-      value: action.value.toString(),
-      data: action.data,
-      operation: action.operation,
-    })
-  )
+  const formattedActions = formatProposalActions(actions)
 
   // Insert the new proposal
   await context.db.insert(merkleGovModuleProposal).values({
