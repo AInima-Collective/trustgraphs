@@ -100,12 +100,12 @@ contract DeployNostrWorkspaceInstance is Common {
             .registerWithParamsAuthority(
                 instanceId,
                 IInstanceRegistry.Instance({
-                    program: keccak256("nostr-workspace"),
-                    snapshot: address(snapshot),
-                    verifier: address(verifier),
-                    registryOrAccumulator: address(anchors),
-                    paramsHash: paramsHash
-                }),
+                program: keccak256("nostr-workspace"),
+                snapshot: address(snapshot),
+                verifier: address(verifier),
+                registryOrAccumulator: address(anchors),
+                paramsHash: paramsHash
+            }),
                 address(authority)
             );
 

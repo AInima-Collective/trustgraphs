@@ -38,6 +38,8 @@ FRONTEND_TSCONFIG_PATH=""
 SUMMARY_REPLACED=0
 SUMMARY_EXISTED=0
 SUMMARY_FILE="$(pwd)/.docker/deployment_summary.json"
+NETWORKS_CATALOG_CREATED=0
+NETWORKS_CATALOG_FILE="$(pwd)/config/networks.development.json"
 kill_tree() {
   local pid="$1" children
   [ -n "$pid" ] || return 0
@@ -66,6 +68,9 @@ cleanup() {
     else
       rm -f "$SUMMARY_FILE"
     fi
+  fi
+  if [ "$NETWORKS_CATALOG_CREATED" = 1 ]; then
+    rm -f "$NETWORKS_CATALOG_FILE"
   fi
   if [ -n "${DEPLOY_FILE:-}" ]; then rm -f "$DEPLOY_FILE"; fi
   if [ "$CREATED_WORK" = 1 ]; then rm -rf "$WORK"; fi
@@ -142,6 +147,10 @@ GATEWAYS="http://127.0.0.1:${KUBO_PORTS[0]}/ipfs/,http://127.0.0.1:${KUBO_PORTS[
 
 if [ "${EAS_OFFCHAIN_E2E_INDEXER:-0}" = 1 ]; then
   [ -n "${DATABASE_URL:-}" ] || die "DATABASE_URL is required for the live indexer gate"
+  if [ ! -f "$NETWORKS_CATALOG_FILE" ]; then
+    cp config/networks.development.template.json "$NETWORKS_CATALOG_FILE"
+    NETWORKS_CATALOG_CREATED=1
+  fi
   if [ -f "$SUMMARY_FILE" ]; then
     cp "$SUMMARY_FILE" "$WORK/deployment-summary.original.json"
     SUMMARY_EXISTED=1

@@ -87,12 +87,12 @@ contract DeployHypercertsInstance is Common {
                 .register(
                     keccak256(bytes(outLabel)),
                     IInstanceRegistry.Instance({
-                        program: keccak256("hypercerts"),
-                        snapshot: address(snapshot),
-                        verifier: address(verifier),
-                        registryOrAccumulator: address(anchorRegistry),
-                        paramsHash: paramsHash
-                    })
+                    program: keccak256("hypercerts"),
+                    snapshot: address(snapshot),
+                    verifier: address(verifier),
+                    registryOrAccumulator: address(anchorRegistry),
+                    paramsHash: paramsHash
+                })
                 );
         }
 
