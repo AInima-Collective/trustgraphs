@@ -31,7 +31,6 @@ RELAY_B_PID=""
 FRONTEND_CONFIG_REPLACED=0
 FRONTEND_CONFIG_FILE="$(pwd)/packages/frontend/config.development.json"
 FRONTEND_CONFIG_TEMPLATE="$(pwd)/packages/frontend/config.typecheck.json"
-FRONTEND_CONTRACTS_FILE="$(pwd)/packages/frontend/lib/contracts.ts"
 FRONTEND_ABIS_FILE="$(pwd)/packages/frontend/lib/contract-abis.ts"
 FRONTEND_CONFIG_EXISTED=0
 FRONTEND_WAGMI_REPLACED=0
@@ -59,7 +58,6 @@ cleanup() {
     fi
   fi
   if [ "$FRONTEND_WAGMI_REPLACED" = 1 ]; then
-    cp "$WORK/frontend-contracts.original.ts" "$FRONTEND_CONTRACTS_FILE"
     cp "$WORK/frontend-contract-abis.original.ts" "$FRONTEND_ABIS_FILE"
   fi
   if [ -n "$FRONTEND_DIST_PATH" ]; then
@@ -258,7 +256,6 @@ if [ "$BROWSER_MODE" = 1 ]; then
     '.apis.ponder = $ponder | .apis.ipfsGateway = $gateway | .contracts.EAS = $eas | .contracts.SchemaRegistry = $schemaRegistry | .contracts.SchemaRegistrar = $schemaRegistrar | .contracts.TrustgraphsFactory = $factory | .contracts.GovernedTrustgraphsFactory = $governedFactory' \
     "$FRONTEND_CONFIG_FILE" >"$WORK/frontend-config.e2e.json"
   cp "$WORK/frontend-config.e2e.json" "$FRONTEND_CONFIG_FILE"
-  cp "$FRONTEND_CONTRACTS_FILE" "$WORK/frontend-contracts.original.ts"
   cp "$FRONTEND_ABIS_FILE" "$WORK/frontend-contract-abis.original.ts"
   FRONTEND_WAGMI_REPLACED=1
   pnpm --dir packages/frontend wagmi:generate >"$WORK/frontend-wagmi.log" 2>&1 \
