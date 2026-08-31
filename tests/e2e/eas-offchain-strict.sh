@@ -30,8 +30,10 @@ RELAY_A_PID=""
 RELAY_B_PID=""
 FRONTEND_CONFIG_REPLACED=0
 FRONTEND_CONFIG_FILE="$(pwd)/packages/frontend/config.development.json"
+FRONTEND_CONFIG_TEMPLATE="$(pwd)/packages/frontend/config.typecheck.json"
 FRONTEND_CONTRACTS_FILE="$(pwd)/packages/frontend/lib/contracts.ts"
 FRONTEND_ABIS_FILE="$(pwd)/packages/frontend/lib/contract-abis.ts"
+FRONTEND_CONFIG_EXISTED=0
 FRONTEND_WAGMI_REPLACED=0
 FRONTEND_DIST_PATH=""
 FRONTEND_TSCONFIG_PATH=""
@@ -50,7 +52,11 @@ kill_tree() {
 cleanup() {
   for pid in "${PIDS[@]:-}"; do kill_tree "$pid"; done
   if [ "$FRONTEND_CONFIG_REPLACED" = 1 ]; then
-    cp "$WORK/frontend-config.original.json" "$FRONTEND_CONFIG_FILE"
+    if [ "$FRONTEND_CONFIG_EXISTED" = 1 ]; then
+      cp "$WORK/frontend-config.original.json" "$FRONTEND_CONFIG_FILE"
+    else
+      rm -f "$FRONTEND_CONFIG_FILE"
+    fi
   fi
   if [ "$FRONTEND_WAGMI_REPLACED" = 1 ]; then
     cp "$WORK/frontend-contracts.original.ts" "$FRONTEND_CONTRACTS_FILE"
@@ -236,7 +242,15 @@ if [ "$BROWSER_MODE" = 1 ]; then
   FRONTEND_DIST_PATH="$(pwd)/packages/frontend/$FRONTEND_DIST_NAME"
   FRONTEND_TSCONFIG_NAME=".tsconfig-eas-offchain-e2e-$$.json"
   FRONTEND_TSCONFIG_PATH="$(pwd)/packages/frontend/$FRONTEND_TSCONFIG_NAME"
-  cp "$FRONTEND_CONFIG_FILE" "$WORK/frontend-config.original.json"
+  if [ -f "$FRONTEND_CONFIG_FILE" ]; then
+    cp "$FRONTEND_CONFIG_FILE" "$WORK/frontend-config.original.json"
+    FRONTEND_CONFIG_EXISTED=1
+  else
+    # Fresh CI checkouts do not contain the ignored deployment output. The tracked typecheck
+    # template has the complete config shape; the jq patch below replaces every live E2E address.
+    cp "$FRONTEND_CONFIG_TEMPLATE" "$FRONTEND_CONFIG_FILE"
+  fi
+  FRONTEND_CONFIG_REPLACED=1
   jq --arg ponder "$INDEXER_API" --arg eas "$EAS" \
     --arg schemaRegistry "$SCHEMA_REGISTRY" --arg schemaRegistrar "$SCHEMA_REGISTRAR" \
     --arg factory "$FACTORY" --arg governedFactory "$GOVERNED_FACTORY" \
@@ -244,7 +258,6 @@ if [ "$BROWSER_MODE" = 1 ]; then
     '.apis.ponder = $ponder | .apis.ipfsGateway = $gateway | .contracts.EAS = $eas | .contracts.SchemaRegistry = $schemaRegistry | .contracts.SchemaRegistrar = $schemaRegistrar | .contracts.TrustgraphsFactory = $factory | .contracts.GovernedTrustgraphsFactory = $governedFactory' \
     "$FRONTEND_CONFIG_FILE" >"$WORK/frontend-config.e2e.json"
   cp "$WORK/frontend-config.e2e.json" "$FRONTEND_CONFIG_FILE"
-  FRONTEND_CONFIG_REPLACED=1
   cp "$FRONTEND_CONTRACTS_FILE" "$WORK/frontend-contracts.original.ts"
   cp "$FRONTEND_ABIS_FILE" "$WORK/frontend-contract-abis.original.ts"
   FRONTEND_WAGMI_REPLACED=1
