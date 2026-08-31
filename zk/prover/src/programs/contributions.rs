@@ -364,7 +364,7 @@ mod fetch {
         function getAttestation(bytes32 uid) external view returns (Attestation);
 
         event EdgeFolded(uint64 indexed index, bytes32 leaf, bytes32 acc);
-        event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID);
+        event AttestationAttested(address indexed eas, bytes32 indexed uid);
     }
 
     pub struct Args {
@@ -546,13 +546,14 @@ mod fetch {
         Ok(edges)
     }
 
-    /// Candidate edges from EAS `Attested` logs (optionally schema-filtered) + `getAttestation`,
-    /// with `kind_of(schema)` mapping each schema to its attest kind (revoke = attest + 1);
-    /// `None` skips the attestation.
+    /// Candidate edges from one accumulator's import/attest markers + authenticated EAS storage,
+    /// with `kind_of(schema)` mapping each schema to its attest kind (revoke = attest + 1).
+    /// Accumulator markers are essential for imported parent graphs: their legacy EAS logs predate
+    /// the parent instance's normal `from_block`. `None` skips the attestation.
     fn candidates(
         rpc: &Rpc,
+        accumulator: Address,
         eas: Address,
-        schema_filter: Option<B256>,
         kind_of: impl Fn(B256) -> Option<u8>,
         from_block: u64,
         to_block: u64,
@@ -560,18 +561,25 @@ mod fetch {
     ) -> Result<Vec<RawEdge>> {
         let logs = rpc
             .get_logs(
-                eas,
-                &[Some(Attested::SIGNATURE_HASH), None, None, schema_filter],
+                accumulator,
+                &[Some(AttestationAttested::SIGNATURE_HASH)],
                 from_block,
                 to_block,
                 chunk,
             )
-            .context("querying EAS Attested logs")?;
+            .context("querying accumulator AttestationAttested markers")?;
         let mut uids: BTreeSet<B256> = BTreeSet::new();
         for log in &logs {
-            let ev = Attested::decode_raw_log(log.topics.iter().copied(), &log.data)
-                .context("decoding Attested")?;
-            uids.insert(ev.uid);
+            let marker = AttestationAttested::decode_raw_log(log.topics.iter().copied(), &log.data)
+                .context("decoding accumulator AttestationAttested marker")?;
+            if marker.eas != eas {
+                bail!(
+                    "accumulator {accumulator:#x} marked UID {:#x} from EAS {:#x}, not configured EAS {eas:#x}",
+                    marker.uid,
+                    marker.eas
+                );
+            }
+            uids.insert(marker.uid);
         }
         let mut out: Vec<RawEdge> = Vec::new();
         for uid in &uids {
@@ -579,6 +587,9 @@ mod fetch {
                 .eth_call(eas, getAttestationCall { uid: *uid }.abi_encode())
                 .with_context(|| format!("getAttestation({uid:#x}) failed"))?;
             let a = Attestation::abi_decode(&ret).context("decoding Attestation")?;
+            if a.uid != *uid {
+                bail!("EAS returned UID {:#x} for accumulator marker {uid:#x}", a.uid);
+            }
             let Some(attest_kind) = kind_of(a.schema) else { continue };
             let data = a.data.to_vec();
             // Attest edge (folded in onAttest at attestation.time).
@@ -590,6 +601,19 @@ mod fetch {
                 block_timestamp: a.time,
                 data: data.clone(),
             });
+            // Importer-backed trust accumulators may fold expiration at EAS.expirationTime while
+            // EAS.revocationTime remains zero. Native resolvers and contribution schemas simply
+            // leave this extra authentic candidate unmatched.
+            if a.expirationTime != 0 {
+                out.push(RawEdge {
+                    kind: attest_kind + 1,
+                    attester: a.attester,
+                    recipient: a.recipient,
+                    uid: *uid,
+                    block_timestamp: a.expirationTime,
+                    data: data.clone(),
+                });
+            }
             // Revoke edge (folded in onRevoke at revocationTime), if revoked. Leaf-matching
             // drops it if the revoke happened after this checkpoint.
             if a.revocationTime != 0 {
@@ -681,11 +705,17 @@ mod fetch {
         let trust_filter = args.trust_schema_uid.as_ref().map(|s| b256(s)).transpose()?;
         let trust_candidates = candidates(
             &rpc,
+            trust_acc,
             eas,
-            trust_filter,
             // Trust lane: every candidate is a plain vouch edge (kind 0 attest / 1 revoke);
-            // when unfiltered, foreign-schema extras are dropped by leaf-matching.
-            |_schema| Some(0),
+            // when unfiltered, the accumulator's own markers define the admitted UID set.
+            move |schema| {
+                if trust_filter.is_none() || trust_filter == Some(schema) {
+                    Some(0)
+                } else {
+                    None
+                }
+            },
             args.from_block,
             to_block,
             args.chunk,
@@ -708,8 +738,8 @@ mod fetch {
         let (cs, rs, vs) = (p.claim_schema_uid, p.response_schema_uid, p.valuation_schema_uid);
         let record_candidates = candidates(
             &rpc,
+            resolver,
             eas,
-            None,
             move |schema| {
                 if schema == cs {
                     Some(kind::kind(kind::SCHEMA_CLAIM, false))
