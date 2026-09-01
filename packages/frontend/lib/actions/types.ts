@@ -1,6 +1,7 @@
 import type { Address, Hex } from 'viem'
 
 import type { Params } from '../pagerank/types'
+import type { ExactParamsJson } from '../scoring-params'
 
 export type SafeOperation = 0 | 1
 
@@ -29,13 +30,17 @@ export type GovernanceActionCategory =
  * action targets with this context before assigning a friendly presentation to calldata.
  */
 export type GovernanceActionContext = {
+  instanceId?: Hex
   snapshot?: Address
   paramsController?: Address
   signerSyncModule?: Address
   weightedParamsController?: Address
+  compositionParamsController?: Address
   treasurySafe?: Address
   fundDistributor?: Address
   governanceModule?: Address
+  provingVault?: Address
+  contributionsFactory?: Address
 }
 
 export type GovernanceActionMatch<Values = unknown> = {
@@ -97,6 +102,53 @@ export type WeightedPriorRotationActionValues = {
   controller: Address
   manifest: Hex
   metadataDigest: Hex
+}
+
+export type CompositionPolicyActionValues = {
+  manifest: Hex
+  adapters: Address[]
+  metadataDigest: Hex
+}
+
+export type VaultPolicyActionValues = {
+  minPaidIntervalBlocks: string
+  maxPerRootUsd: string
+}
+
+export type VaultWithdrawalRequestActionValues = {
+  ethAmount: string
+  usdcAmount: string
+}
+
+export type VaultWithdrawalExecuteActionValues = {
+  recipient: Address
+}
+
+export type SafetyAddressActionValues = {
+  address: Address
+}
+
+export type SafeDisableModuleActionValues = {
+  previousModule: Address
+  module: Address
+}
+
+export type SafeSwapOwnerActionValues = {
+  previousOwner: Address
+  oldOwner: Address
+  newOwner: Address
+}
+
+export type ContributionRoundActionValues = {
+  parentParams?: ExactParamsJson
+  parentEpochLength?: string
+  name: string
+  roundStart: string
+  roundEnd: string
+  totalPool: string
+  evaluatorCarveoutBps: string
+  distributorToken: Address
+  salt: Hex
 }
 
 export type Erc20TransferActionValues = {

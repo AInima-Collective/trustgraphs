@@ -1,3 +1,7 @@
+import {
+  compositionPolicyAction,
+  compositionPolicyCancelAction,
+} from './composition'
 import { customAction } from './custom'
 import {
   governanceCancelProposalAction,
@@ -13,7 +17,17 @@ import {
   operationalRoleAction,
 } from './membership'
 import { networkProfileAction } from './profile'
-import { signerPauseAction } from './safety'
+import { createContributionRoundAction } from './programs'
+import {
+  safeDisableModuleAction,
+  safeEnableModuleAction,
+  safeGuardAction,
+  safeSwapOwnerAction,
+  signerPauseAction,
+  snapshotAccumulatorAction,
+  snapshotAnchorRegistryAction,
+  snapshotVerifierAction,
+} from './safety'
 import { scoringParamsAction, signerParamsAction } from './scoring'
 import { ethTransferAction } from './transfer'
 import {
@@ -31,7 +45,16 @@ import type {
   MatchedGovernanceAction,
   SafeAction,
 } from './types'
-import { weightedPriorRotationAction } from './weighted'
+import {
+  vaultPolicyAction,
+  vaultWithdrawalCancelAction,
+  vaultWithdrawalExecuteAction,
+  vaultWithdrawalRequestAction,
+} from './vault'
+import {
+  weightedPriorCancelAction,
+  weightedPriorRotationAction,
+} from './weighted'
 
 /** Specific matchers precede the raw escape hatch. First valid match wins. */
 export const governanceActionRegistry: readonly MatchableGovernanceAction[] = [
@@ -39,7 +62,22 @@ export const governanceActionRegistry: readonly MatchableGovernanceAction[] = [
   signerParamsAction,
   networkProfileAction,
   signerPauseAction,
+  snapshotVerifierAction,
+  snapshotAccumulatorAction,
+  snapshotAnchorRegistryAction,
+  safeEnableModuleAction,
+  safeDisableModuleAction,
+  safeGuardAction,
+  safeSwapOwnerAction,
   weightedPriorRotationAction,
+  weightedPriorCancelAction,
+  compositionPolicyAction,
+  compositionPolicyCancelAction,
+  vaultPolicyAction,
+  vaultWithdrawalRequestAction,
+  vaultWithdrawalCancelAction,
+  vaultWithdrawalExecuteAction,
+  createContributionRoundAction,
   rewardDistributionAction,
   rewardsPauseAction,
   rewardsFeeRecipientAction,

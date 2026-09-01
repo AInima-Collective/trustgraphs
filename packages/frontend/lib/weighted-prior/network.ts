@@ -9,7 +9,11 @@ const VOUCH_SCHEMA = 'string comment,uint256 confidence'
 /** Present one isolated weighted-prior catalog row through the shared vouch-network overview. */
 export const weightedInstanceToNetwork = (
   instance: WeightedApiInstanceDetail,
-  entries: readonly WeightedApiEntry[] = []
+  entries: readonly WeightedApiEntry[] = [],
+  infrastructure: {
+    provingVault?: Hex
+    contributionsFactory?: Hex
+  } = {}
 ): Network => {
   const metadata: Partial<NonNullable<WeightedApiInstanceDetail['metadata']>> =
     instance.metadata ?? {}
@@ -43,6 +47,15 @@ export const weightedInstanceToNetwork = (
     contracts: {
       merkleSnapshot: instance.snapshot,
       easIndexerResolver: instance.resolver,
+      ...(infrastructure.provingVault
+        ? { provingVault: infrastructure.provingVault }
+        : {}),
+      ...(infrastructure.contributionsFactory
+        ? { contributionsFactory: infrastructure.contributionsFactory }
+        : {}),
+      ...(instance.controller
+        ? { trustgraphsParamsController: instance.controller }
+        : {}),
       ...(instance.governance
         ? {
             merkleGovModule: instance.governance.module,

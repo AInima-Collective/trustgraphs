@@ -32,7 +32,15 @@ export const weightedPriorRotationAction: GovernanceActionDefinition<WeightedPri
       if (!bytes32(values.metadataDigest)) {
         throw new Error('Weighted metadata digest must be 32-byte hex')
       }
-      const controller = context.weightedParamsController ?? values.controller
+      const controller = requiredAddress(
+        context.weightedParamsController,
+        'Weighted parameters controller'
+      )
+      if (controller.toLowerCase() !== values.controller.toLowerCase()) {
+        throw new Error(
+          'Weighted parameters controller does not match this network'
+        )
+      }
       return [
         {
           target: controller,
@@ -78,3 +86,49 @@ export const weightedPriorRotationAction: GovernanceActionDefinition<WeightedPri
       }
     },
   }
+
+export const weightedPriorCancelAction: GovernanceActionDefinition<
+  Record<string, never>
+> = {
+  key: 'cancel-weighted-prior',
+  category: 'scoring',
+  label: 'Cancel weighted starting shares',
+  summary: 'Cancel the controller’s currently pending weighted-prior version.',
+  danger: true,
+  encode: (_values, context) => [
+    {
+      target: requiredAddress(
+        context.weightedParamsController,
+        'Weighted parameters controller'
+      ),
+      value: '0',
+      data: encodeFunctionData({
+        abi: weightedPriorParamsControllerAbi,
+        functionName: 'cancelPrior',
+      }),
+      operation: 0,
+      description: 'Cancel the pending weighted starting shares',
+    },
+  ],
+  match: (actions, index, context) => {
+    const action = actions[index]
+    if (
+      !targetMatches(action, context.weightedParamsController) ||
+      !isCall(action) ||
+      !isZeroValue(action)
+    ) {
+      return null
+    }
+    try {
+      const decoded = decodeFunctionData({
+        abi: weightedPriorParamsControllerAbi,
+        data: action!.data,
+      })
+      return decoded.functionName === 'cancelPrior'
+        ? { values: {}, consumed: 1 }
+        : null
+    } catch {
+      return null
+    }
+  },
+}

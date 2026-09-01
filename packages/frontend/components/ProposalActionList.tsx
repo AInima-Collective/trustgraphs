@@ -18,7 +18,9 @@ import {
   walkGovernanceActions,
 } from '@/lib/actions'
 import type {
+  CompositionPolicyActionValues,
   ConstitutionalTransferActionValues,
+  ContributionRoundActionValues,
   Erc20TransferActionValues,
   EthTransferActionValues,
   GovernanceCancelProposalActionValues,
@@ -35,9 +37,15 @@ import type {
   RewardsFeeRecipientActionValues,
   RewardsPauseActionValues,
   SafeAction,
+  SafeDisableModuleActionValues,
+  SafeSwapOwnerActionValues,
+  SafetyAddressActionValues,
   ScoringParamsActionValues,
   SignerParamsActionValues,
   SignerPauseActionValues,
+  VaultPolicyActionValues,
+  VaultWithdrawalExecuteActionValues,
+  VaultWithdrawalRequestActionValues,
   WeightedPriorRotationActionValues,
 } from '@/lib/actions'
 import { paramsHash } from '@/lib/pagerank/encode'
@@ -62,6 +70,9 @@ type ActionKind =
   | 'treasury'
   | 'governance'
   | 'membership'
+  | 'safety'
+  | 'vault'
+  | 'programs'
   | 'custom'
 
 type ActionPresentation = {
@@ -344,6 +355,159 @@ const presentAction = (
         icon: SlidersHorizontal,
         detailLabel: 'Manifest metadata digest',
         detailValue: values.metadataDigest,
+      }
+    }
+    case 'cancel-weighted-prior':
+      return {
+        kind: 'weighted-prior',
+        title: 'Cancel pending weighted starting shares',
+        summary: 'Stop the controller’s pending weighted-prior version.',
+        badge: 'Scoring settings',
+        icon: PauseCircle,
+      }
+    case 'propose-composition-policy': {
+      const values = matched.values as CompositionPolicyActionValues
+      return {
+        kind: 'scoring-update',
+        title: 'Change composition source policy',
+        summary:
+          'Propose reviewed source weights and adapters for delayed activation.',
+        badge: 'Composition policy',
+        icon: SlidersHorizontal,
+        detailLabel: 'Metadata digest',
+        detailValue: values.metadataDigest,
+        resultingSettings: [`Source adapters: ${values.adapters.length}`],
+      }
+    }
+    case 'cancel-composition-policy':
+      return {
+        kind: 'scoring-update',
+        title: 'Cancel pending composition policy',
+        summary: 'Stop the controller’s currently pending source policy.',
+        badge: 'Composition policy',
+        icon: PauseCircle,
+      }
+    case 'set-snapshot-verifier':
+    case 'set-snapshot-accumulator':
+    case 'set-snapshot-anchor-registry':
+    case 'enable-safe-module':
+    case 'set-safe-guard': {
+      const values = matched.values as SafetyAddressActionValues
+      const labels = {
+        'set-snapshot-verifier': ['Replace the proof verifier', 'New verifier'],
+        'set-snapshot-accumulator': [
+          'Replace the attestation accumulator',
+          'New accumulator',
+        ],
+        'set-snapshot-anchor-registry': [
+          'Replace the anchor registry',
+          'New registry',
+        ],
+        'enable-safe-module': ['Enable a Safe module', 'Module'],
+        'set-safe-guard': ['Replace the Safe guard', 'New guard'],
+      } as const
+      const [title, detailLabel] =
+        labels[matched.definition.key as keyof typeof labels]
+      return {
+        kind: 'safety',
+        title,
+        summary:
+          'This changes a proof or Safe execution boundary. Review the exact address carefully.',
+        badge: 'Safety control',
+        icon: ShieldCheck,
+        detailLabel,
+        detailValue: values.address,
+      }
+    }
+    case 'disable-safe-module': {
+      const values = matched.values as SafeDisableModuleActionValues
+      return {
+        kind: 'safety',
+        title: 'Disable a Safe module',
+        summary: 'Remove this module’s authority to execute Safe transactions.',
+        badge: 'Safety control',
+        icon: ShieldCheck,
+        detailLabel: 'Module',
+        detailValue: values.module,
+      }
+    }
+    case 'swap-safe-owner': {
+      const values = matched.values as SafeSwapOwnerActionValues
+      return {
+        kind: 'safety',
+        title: 'Replace a Safe owner',
+        summary: `Replace ${values.oldOwner} with the new owner shown below.`,
+        badge: 'Safety control',
+        icon: ShieldCheck,
+        detailLabel: 'New owner',
+        detailValue: values.newOwner,
+      }
+    }
+    case 'set-vault-policy': {
+      const values = matched.values as VaultPolicyActionValues
+      return {
+        kind: 'vault',
+        title: 'Update proving-vault payout policy',
+        summary:
+          'Change when and how much successful score proofs may be paid.',
+        badge: 'Proving vault',
+        icon: SlidersHorizontal,
+        resultingSettings: [
+          `Minimum paid interval: ${values.minPaidIntervalBlocks} blocks`,
+          `Maximum per root: ${values.maxPerRootUsd} USD × 1e8`,
+        ],
+      }
+    }
+    case 'request-vault-withdrawal': {
+      const values = matched.values as VaultWithdrawalRequestActionValues
+      return {
+        kind: 'vault',
+        title: 'Request proving-fund withdrawal',
+        summary:
+          'Start the withdrawal notice period while funds remain available for bounties.',
+        badge: 'Proving vault',
+        icon: Send,
+        resultingSettings: [
+          `ETH: ${values.ethAmount} wei`,
+          `USDC: ${values.usdcAmount} base units`,
+        ],
+      }
+    }
+    case 'cancel-vault-withdrawal':
+      return {
+        kind: 'vault',
+        title: 'Cancel proving-fund withdrawal',
+        summary: 'Keep the pending funds working for future score proofs.',
+        badge: 'Proving vault',
+        icon: PauseCircle,
+      }
+    case 'execute-vault-withdrawal': {
+      const values = matched.values as VaultWithdrawalExecuteActionValues
+      return {
+        kind: 'vault',
+        title: 'Execute proving-fund withdrawal',
+        summary: 'Send the remaining requested funds after the notice period.',
+        badge: 'Proving vault',
+        icon: Send,
+        detailLabel: 'Recipient',
+        detailValue: values.recipient,
+      }
+    }
+    case 'create-contribution-round': {
+      const values = matched.values as ContributionRoundActionValues
+      return {
+        kind: 'programs',
+        title: `Create contribution round “${values.name}”`,
+        summary:
+          'Create a child funding round attached to this authenticated parent network.',
+        badge: 'Contribution program',
+        icon: FilePenLine,
+        resultingSettings: [
+          `Window: ${values.roundStart}–${values.roundEnd}`,
+          `Pool shares: ${values.totalPool}`,
+          `Rater reward: ${values.evaluatorCarveoutBps} bps`,
+          `Payout token: ${values.distributorToken}`,
+        ],
       }
     }
     default: {

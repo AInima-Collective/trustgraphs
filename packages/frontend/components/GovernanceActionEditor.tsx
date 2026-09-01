@@ -618,6 +618,259 @@ export function GovernanceActionEditor({ draft, onChange }: EditorProps) {
           </div>
         </div>
       )
+    case 'cancel-weighted-prior':
+    case 'cancel-composition-policy':
+    case 'cancel-vault-withdrawal':
+      return (
+        <p className="text-sm text-muted-foreground">
+          This action has no editable arguments. It applies to the authenticated
+          pending item for this network.
+        </p>
+      )
+    case 'propose-composition-policy':
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className={fieldLabel}>
+              Canonical policy manifest (hex)
+            </label>
+            <textarea
+              value={text(values, 'manifest')}
+              onChange={(event) =>
+                onChange({ ...values, manifest: event.target.value })
+              }
+              className={`${inputClassName} min-h-24 font-mono text-xs`}
+              spellCheck={false}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className={fieldLabel}>Source adapters (one per line)</label>
+            <textarea
+              value={
+                Array.isArray(values.adapters) ? values.adapters.join('\n') : ''
+              }
+              onChange={(event) =>
+                onChange({
+                  ...values,
+                  adapters: event.target.value
+                    .split(/\r?\n/)
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+                })
+              }
+              className={`${inputClassName} min-h-24 font-mono text-xs`}
+              spellCheck={false}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className={fieldLabel}>Metadata digest</label>
+            <input
+              value={text(values, 'metadataDigest')}
+              onChange={(event) =>
+                onChange({ ...values, metadataDigest: event.target.value })
+              }
+              className={`${inputClassName} font-mono`}
+              placeholder="0x…"
+            />
+          </div>
+        </div>
+      )
+    case 'set-snapshot-verifier':
+    case 'set-snapshot-accumulator':
+    case 'set-snapshot-anchor-registry':
+    case 'enable-safe-module':
+    case 'set-safe-guard': {
+      const labels = {
+        'set-snapshot-verifier': 'New proof verifier',
+        'set-snapshot-accumulator': 'New attestation accumulator',
+        'set-snapshot-anchor-registry': 'New anchor registry',
+        'enable-safe-module': 'Module to enable',
+        'set-safe-guard': 'New guard (zero address clears it)',
+      } as const
+      return (
+        <div className="space-y-2">
+          <label className={fieldLabel}>{labels[draft.actionKey]}</label>
+          <input
+            value={text(values, 'address')}
+            onChange={(event) =>
+              onChange({ ...values, address: event.target.value })
+            }
+            className={`${inputClassName} font-mono`}
+            placeholder="0x…"
+          />
+        </div>
+      )
+    }
+    case 'disable-safe-module':
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className={fieldLabel}>Previous module in Safe list</label>
+            <input
+              value={text(values, 'previousModule')}
+              onChange={(event) =>
+                onChange({ ...values, previousModule: event.target.value })
+              }
+              className={`${inputClassName} font-mono`}
+              placeholder="0x…"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className={fieldLabel}>Module to disable</label>
+            <input
+              value={text(values, 'module')}
+              onChange={(event) =>
+                onChange({ ...values, module: event.target.value })
+              }
+              className={`${inputClassName} font-mono`}
+              placeholder="0x…"
+            />
+          </div>
+        </div>
+      )
+    case 'swap-safe-owner':
+      return (
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            ['previousOwner', 'Previous owner in Safe list'],
+            ['oldOwner', 'Owner to replace'],
+            ['newOwner', 'New owner'],
+          ].map(([key, label]) => (
+            <div className="space-y-2" key={key}>
+              <label className={fieldLabel}>{label}</label>
+              <input
+                value={text(values, key!)}
+                onChange={(event) =>
+                  onChange({ ...values, [key!]: event.target.value })
+                }
+                className={`${inputClassName} font-mono`}
+                placeholder="0x…"
+              />
+            </div>
+          ))}
+        </div>
+      )
+    case 'set-vault-policy':
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className={fieldLabel}>Minimum paid interval (blocks)</label>
+            <input
+              value={text(values, 'minPaidIntervalBlocks')}
+              onChange={(event) =>
+                onChange({
+                  ...values,
+                  minPaidIntervalBlocks: event.target.value,
+                })
+              }
+              inputMode="numeric"
+              className={inputClassName}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className={fieldLabel}>Maximum per root (USD × 1e8)</label>
+            <input
+              value={text(values, 'maxPerRootUsd')}
+              onChange={(event) =>
+                onChange({ ...values, maxPerRootUsd: event.target.value })
+              }
+              inputMode="numeric"
+              className={inputClassName}
+            />
+          </div>
+        </div>
+      )
+    case 'request-vault-withdrawal':
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className={fieldLabel}>ETH amount (wei)</label>
+            <input
+              value={text(values, 'ethAmount')}
+              onChange={(event) =>
+                onChange({ ...values, ethAmount: event.target.value })
+              }
+              inputMode="numeric"
+              className={inputClassName}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className={fieldLabel}>USDC amount (base units)</label>
+            <input
+              value={text(values, 'usdcAmount')}
+              onChange={(event) =>
+                onChange({ ...values, usdcAmount: event.target.value })
+              }
+              inputMode="numeric"
+              className={inputClassName}
+            />
+          </div>
+        </div>
+      )
+    case 'execute-vault-withdrawal':
+      return (
+        <div className="space-y-2">
+          <label className={fieldLabel}>Withdrawal recipient</label>
+          <input
+            value={text(values, 'recipient')}
+            onChange={(event) =>
+              onChange({ ...values, recipient: event.target.value })
+            }
+            className={`${inputClassName} font-mono`}
+            placeholder="0x…"
+          />
+        </div>
+      )
+    case 'create-contribution-round':
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className={fieldLabel}>Round name</label>
+            <input
+              value={text(values, 'name')}
+              onChange={(event) =>
+                onChange({ ...values, name: event.target.value })
+              }
+              className={inputClassName}
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              ['roundStart', 'Opens (Unix seconds)'],
+              ['roundEnd', 'Closes (Unix seconds)'],
+              ['totalPool', 'Pool shares'],
+              ['evaluatorCarveoutBps', 'Rater reward (basis points)'],
+            ].map(([key, label]) => (
+              <div className="space-y-2" key={key}>
+                <label className={fieldLabel}>{label}</label>
+                <input
+                  value={text(values, key!)}
+                  onChange={(event) =>
+                    onChange({ ...values, [key!]: event.target.value })
+                  }
+                  inputMode="numeric"
+                  className={inputClassName}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <label className={fieldLabel}>Payout token</label>
+            <input
+              value={text(values, 'distributorToken')}
+              onChange={(event) =>
+                onChange({ ...values, distributorToken: event.target.value })
+              }
+              className={`${inputClassName} font-mono`}
+              placeholder="0x…"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The parent network’s exact scoring tuple and epoch length remain
+            attached to this draft and are shown in the encoded transaction.
+          </p>
+        </div>
+      )
     case 'custom': {
       const operation = values.operation === 1 ? 1 : 0
       return (

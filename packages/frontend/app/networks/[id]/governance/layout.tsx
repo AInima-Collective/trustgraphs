@@ -8,6 +8,11 @@ import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
 import { compositionAsNetwork } from '@/lib/composition/network'
 import { getCompositionInstance } from '@/lib/composition.server'
+import {
+  CONTRIBUTIONS_FACTORY,
+  FAST_CONTRIBUTIONS_FACTORY,
+  PROVING_VAULT,
+} from '@/lib/config'
 
 import { CompositionGovernanceView } from '../../../compositions/[instanceId]/governance'
 
@@ -36,7 +41,15 @@ export default async function GovernanceLayout({
   if (!network) {
     const composition = await getCompositionInstance(id)
     if (composition.instance) {
-      const compositionNetwork = compositionAsNetwork(composition.instance)
+      const compositionNetwork = compositionAsNetwork(composition.instance, {
+        ...(PROVING_VAULT ? { provingVault: PROVING_VAULT } : {}),
+        ...(FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY
+          ? {
+              contributionsFactory: (FAST_CONTRIBUTIONS_FACTORY ||
+                CONTRIBUTIONS_FACTORY) as `0x${string}`,
+            }
+          : {}),
+      })
       if (!compositionNetwork.contracts.merkleGovModule) {
         return <CompositionGovernanceView instance={composition.instance} />
       }

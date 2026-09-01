@@ -85,6 +85,9 @@ export type Network = {
      * the catalog merge.
      */
     merkleGovModule?: Hex
+    /** Shared infrastructure authenticated by deployment config for typed governance actions. */
+    provingVault?: Hex
+    contributionsFactory?: Hex
     /** Typed, self-describing scoring control plane for migrated/factory networks. */
     trustgraphsParamsController?: Hex
     safe?: {

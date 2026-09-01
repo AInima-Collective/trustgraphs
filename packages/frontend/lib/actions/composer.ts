@@ -11,6 +11,10 @@ import {
 
 import type { ExactParamsJson } from '../scoring-params'
 import { paramsFromJson } from '../scoring-params'
+import {
+  compositionPolicyAction,
+  compositionPolicyCancelAction,
+} from './composition'
 import { customAction } from './custom'
 import {
   governanceCancelProposalAction,
@@ -26,7 +30,17 @@ import {
   operationalRoleAction,
 } from './membership'
 import { networkProfileAction } from './profile'
-import { signerPauseAction } from './safety'
+import { createContributionRoundAction } from './programs'
+import {
+  safeDisableModuleAction,
+  safeEnableModuleAction,
+  safeGuardAction,
+  safeSwapOwnerAction,
+  signerPauseAction,
+  snapshotAccumulatorAction,
+  snapshotAnchorRegistryAction,
+  snapshotVerifierAction,
+} from './safety'
 import { scoringParamsAction } from './scoring'
 import { ethTransferAction } from './transfer'
 import {
@@ -44,7 +58,16 @@ import type {
   SafeAction,
   SafeOperation,
 } from './types'
-import { weightedPriorRotationAction } from './weighted'
+import {
+  vaultPolicyAction,
+  vaultWithdrawalCancelAction,
+  vaultWithdrawalExecuteAction,
+  vaultWithdrawalRequestAction,
+} from './vault'
+import {
+  weightedPriorCancelAction,
+  weightedPriorRotationAction,
+} from './weighted'
 
 export const governanceComposerRegistry = [
   {
@@ -116,6 +139,27 @@ export const governanceComposerRegistry = [
     label: 'Change weighted starting shares',
     summary: 'Propose a weighted-prior manifest for delayed activation.',
     danger: false,
+  },
+  {
+    key: 'cancel-weighted-prior',
+    category: 'scoring',
+    label: 'Cancel weighted starting shares',
+    summary: 'Cancel the currently pending weighted-prior version.',
+    danger: true,
+  },
+  {
+    key: 'propose-composition-policy',
+    category: 'scoring',
+    label: 'Change composition policy',
+    summary: 'Propose reviewed source weights and adapters.',
+    danger: false,
+  },
+  {
+    key: 'cancel-composition-policy',
+    category: 'scoring',
+    label: 'Cancel composition policy',
+    summary: 'Cancel the currently pending composition policy.',
+    danger: true,
   },
   {
     key: 'update-network-profile',
@@ -195,6 +239,90 @@ export const governanceComposerRegistry = [
     danger: false,
   },
   {
+    key: 'set-snapshot-verifier',
+    category: 'safety',
+    label: 'Set proof verifier',
+    summary: 'Replace the contract that verifies score proofs.',
+    danger: true,
+  },
+  {
+    key: 'set-snapshot-accumulator',
+    category: 'safety',
+    label: 'Set attestation accumulator',
+    summary: 'Replace the network’s authenticated input accumulator.',
+    danger: true,
+  },
+  {
+    key: 'set-snapshot-anchor-registry',
+    category: 'safety',
+    label: 'Set anchor registry',
+    summary: 'Replace the network’s anchored-input registry.',
+    danger: true,
+  },
+  {
+    key: 'enable-safe-module',
+    category: 'safety',
+    label: 'Enable Safe module',
+    summary: 'Give a module transaction authority over the network Safe.',
+    danger: true,
+  },
+  {
+    key: 'disable-safe-module',
+    category: 'safety',
+    label: 'Disable Safe module',
+    summary: 'Remove a module’s transaction authority from the Safe.',
+    danger: true,
+  },
+  {
+    key: 'set-safe-guard',
+    category: 'safety',
+    label: 'Set Safe guard',
+    summary: 'Replace or clear the Safe transaction guard.',
+    danger: true,
+  },
+  {
+    key: 'swap-safe-owner',
+    category: 'safety',
+    label: 'Swap Safe owner',
+    summary: 'Replace one owner in the Safe’s linked owner list.',
+    danger: true,
+  },
+  {
+    key: 'set-vault-policy',
+    category: 'vault',
+    label: 'Set proving-vault policy',
+    summary: 'Set paid-root cadence and maximum payout.',
+    danger: false,
+  },
+  {
+    key: 'request-vault-withdrawal',
+    category: 'vault',
+    label: 'Request proving-vault withdrawal',
+    summary: 'Start the notice period for withdrawing proving funds.',
+    danger: true,
+  },
+  {
+    key: 'cancel-vault-withdrawal',
+    category: 'vault',
+    label: 'Cancel proving-vault withdrawal',
+    summary: 'Keep pending proving funds available for future roots.',
+    danger: false,
+  },
+  {
+    key: 'execute-vault-withdrawal',
+    category: 'vault',
+    label: 'Execute proving-vault withdrawal',
+    summary: 'Send the remaining requested funds after notice.',
+    danger: true,
+  },
+  {
+    key: 'create-contribution-round',
+    category: 'programs',
+    label: 'Create contribution round',
+    summary: 'Create a governed round attached to this parent network.',
+    danger: false,
+  },
+  {
     key: 'custom',
     category: 'custom',
     label: 'Custom contract call',
@@ -237,7 +365,11 @@ export const governanceComposerActionAvailable = (
     case 'set-signer-sync-paused':
       return !!context.signerSyncModule
     case 'rotate-weighted-prior':
+    case 'cancel-weighted-prior':
       return !!context.weightedParamsController
+    case 'propose-composition-policy':
+    case 'cancel-composition-policy':
+      return !!context.compositionParamsController
     case 'fund-rewards':
     case 'set-rewards-paused':
     case 'set-rewards-fee-recipient':
@@ -255,7 +387,22 @@ export const governanceComposerActionAvailable = (
     case 'set-operational-role':
     case 'propose-constitutional-transfer':
     case 'cancel-constitutional-transfer':
+    case 'set-snapshot-verifier':
+    case 'set-snapshot-accumulator':
+    case 'set-snapshot-anchor-registry':
       return !!context.snapshot
+    case 'enable-safe-module':
+    case 'disable-safe-module':
+    case 'set-safe-guard':
+    case 'swap-safe-owner':
+      return !!context.treasurySafe
+    case 'set-vault-policy':
+    case 'request-vault-withdrawal':
+    case 'cancel-vault-withdrawal':
+    case 'execute-vault-withdrawal':
+      return !!context.provingVault && !!context.instanceId
+    case 'create-contribution-round':
+      return !!context.contributionsFactory && !!context.instanceId
     default:
       return true
   }
@@ -293,6 +440,12 @@ export const defaultGovernanceActionValues = (
       return { proposed: null, evidenceURI: '', syncSigner: false }
     case 'rotate-weighted-prior':
       return { controller: '', manifest: '0x', metadataDigest: '' }
+    case 'cancel-weighted-prior':
+    case 'cancel-composition-policy':
+    case 'cancel-vault-withdrawal':
+      return {}
+    case 'propose-composition-policy':
+      return { manifest: '0x', adapters: [], metadataDigest: '' }
     case 'update-network-profile':
       return { metadataURI: '' }
     case 'set-operational-role':
@@ -313,6 +466,32 @@ export const defaultGovernanceActionValues = (
       return { proposalId: '' }
     case 'set-signer-sync-paused':
       return { paused: true }
+    case 'set-snapshot-verifier':
+    case 'set-snapshot-accumulator':
+    case 'set-snapshot-anchor-registry':
+    case 'enable-safe-module':
+    case 'set-safe-guard':
+      return { address: '' }
+    case 'disable-safe-module':
+      return { previousModule: '', module: '' }
+    case 'swap-safe-owner':
+      return { previousOwner: '', oldOwner: '', newOwner: '' }
+    case 'set-vault-policy':
+      return { minPaidIntervalBlocks: '', maxPerRootUsd: '' }
+    case 'request-vault-withdrawal':
+      return { ethAmount: '', usdcAmount: '' }
+    case 'execute-vault-withdrawal':
+      return { recipient: '' }
+    case 'create-contribution-round':
+      return {
+        name: '',
+        roundStart: '',
+        roundEnd: '',
+        totalPool: '',
+        evaluatorCarveoutBps: '',
+        distributorToken: zeroAddress,
+        salt: '',
+      }
     case 'custom':
       return {
         target: '',
@@ -607,7 +786,146 @@ export const encodeGovernanceActionDraft = async (
       }
       return weightedPriorRotationAction.encode(
         { controller, manifest, metadataDigest },
-        { ...context, weightedParamsController: controller }
+        context
+      )
+    }
+    case 'cancel-weighted-prior':
+      return weightedPriorCancelAction.encode({}, context)
+    case 'propose-composition-policy': {
+      const manifest = stringValue(values, 'manifest')
+      const metadataDigest = stringValue(values, 'metadataDigest')
+      if (!isHex(manifest, { strict: true }) || manifest.length % 2) {
+        throw new Error('Composition manifest must be valid byte-aligned hex')
+      }
+      if (
+        metadataDigest.length !== 66 ||
+        !isHex(metadataDigest, { strict: true })
+      ) {
+        throw new Error('Composition metadata digest must be 32-byte hex')
+      }
+      if (!Array.isArray(values.adapters)) {
+        throw new Error('Composition adapters must be a list')
+      }
+      const adapters = values.adapters.map((adapter, index) => {
+        if (typeof adapter !== 'string' || !isAddress(adapter)) {
+          throw new Error(`Composition adapter ${index + 1} is invalid`)
+        }
+        return adapter
+      })
+      return compositionPolicyAction.encode(
+        { manifest, adapters, metadataDigest },
+        context
+      )
+    }
+    case 'cancel-composition-policy':
+      return compositionPolicyCancelAction.encode({}, context)
+    case 'set-snapshot-verifier':
+      return snapshotVerifierAction.encode(
+        { address: addressValue(values, 'address', 'Proof verifier') },
+        context
+      )
+    case 'set-snapshot-accumulator':
+      return snapshotAccumulatorAction.encode(
+        { address: addressValue(values, 'address', 'Attestation accumulator') },
+        context
+      )
+    case 'set-snapshot-anchor-registry':
+      return snapshotAnchorRegistryAction.encode(
+        { address: addressValue(values, 'address', 'Anchor registry') },
+        context
+      )
+    case 'enable-safe-module':
+      return safeEnableModuleAction.encode(
+        { address: addressValue(values, 'address', 'Safe module') },
+        context
+      )
+    case 'set-safe-guard':
+      return safeGuardAction.encode(
+        { address: addressValue(values, 'address', 'Safe guard') },
+        context
+      )
+    case 'disable-safe-module':
+      return safeDisableModuleAction.encode(
+        {
+          previousModule: addressValue(
+            values,
+            'previousModule',
+            'Previous module'
+          ),
+          module: addressValue(values, 'module', 'Safe module'),
+        },
+        context
+      )
+    case 'swap-safe-owner':
+      return safeSwapOwnerAction.encode(
+        {
+          previousOwner: addressValue(
+            values,
+            'previousOwner',
+            'Previous owner'
+          ),
+          oldOwner: addressValue(values, 'oldOwner', 'Current owner'),
+          newOwner: addressValue(values, 'newOwner', 'New owner'),
+        },
+        context
+      )
+    case 'set-vault-policy':
+      return vaultPolicyAction.encode(
+        {
+          minPaidIntervalBlocks: stringValue(
+            values,
+            'minPaidIntervalBlocks'
+          ).trim(),
+          maxPerRootUsd: stringValue(values, 'maxPerRootUsd').trim(),
+        },
+        context
+      )
+    case 'request-vault-withdrawal':
+      return vaultWithdrawalRequestAction.encode(
+        {
+          ethAmount: stringValue(values, 'ethAmount').trim(),
+          usdcAmount: stringValue(values, 'usdcAmount').trim(),
+        },
+        context
+      )
+    case 'cancel-vault-withdrawal':
+      return vaultWithdrawalCancelAction.encode({}, context)
+    case 'execute-vault-withdrawal':
+      return vaultWithdrawalExecuteAction.encode(
+        {
+          recipient: addressValue(values, 'recipient', 'Withdrawal recipient'),
+        },
+        context
+      )
+    case 'create-contribution-round': {
+      const parentParams = values.parentParams
+      if (!parentParams || typeof parentParams !== 'object') {
+        throw new Error('The parent network’s exact parameters are required')
+      }
+      const salt = stringValue(values, 'salt')
+      if (salt.length !== 66 || !isHex(salt, { strict: true })) {
+        throw new Error('Round salt must be 32-byte hex')
+      }
+      return createContributionRoundAction.encode(
+        {
+          parentParams: parentParams as ExactParamsJson,
+          parentEpochLength: stringValue(values, 'parentEpochLength').trim(),
+          name: stringValue(values, 'name'),
+          roundStart: stringValue(values, 'roundStart').trim(),
+          roundEnd: stringValue(values, 'roundEnd').trim(),
+          totalPool: stringValue(values, 'totalPool').trim(),
+          evaluatorCarveoutBps: stringValue(
+            values,
+            'evaluatorCarveoutBps'
+          ).trim(),
+          distributorToken: addressValue(
+            values,
+            'distributorToken',
+            'Payout token'
+          ),
+          salt,
+        },
+        context
       )
     }
     case 'custom': {

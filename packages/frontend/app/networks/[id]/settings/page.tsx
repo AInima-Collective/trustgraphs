@@ -8,6 +8,11 @@ import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getInstanceDetails, getNetwork } from '@/lib/catalog.server'
 import { compositionAsNetwork } from '@/lib/composition/network'
 import { getCompositionInstance } from '@/lib/composition.server'
+import {
+  CONTRIBUTIONS_FACTORY,
+  FAST_CONTRIBUTIONS_FACTORY,
+  PROVING_VAULT,
+} from '@/lib/config'
 import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 
 import { SettingsPage } from './component'
@@ -38,7 +43,15 @@ export default async function NetworkSettingsPage({
   if (!network) {
     const composition = await getCompositionInstance(id)
     if (composition.instance) {
-      const compositionNetwork = compositionAsNetwork(composition.instance)
+      const compositionNetwork = compositionAsNetwork(composition.instance, {
+        ...(PROVING_VAULT ? { provingVault: PROVING_VAULT } : {}),
+        ...(FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY
+          ? {
+              contributionsFactory: (FAST_CONTRIBUTIONS_FACTORY ||
+                CONTRIBUTIONS_FACTORY) as `0x${string}`,
+            }
+          : {}),
+      })
       return (
         <div className="space-y-8">
           <BreadcrumbRenderer />

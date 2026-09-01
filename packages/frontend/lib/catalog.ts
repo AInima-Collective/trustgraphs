@@ -26,7 +26,13 @@
 import { type Hex, isAddressEqual } from 'viem'
 
 import { collectCatalogPages } from './catalog-pagination'
-import { APIS, VISIBLE_SEED_NETWORKS } from './config'
+import {
+  APIS,
+  CONTRIBUTIONS_FACTORY,
+  FAST_CONTRIBUTIONS_FACTORY,
+  PROVING_VAULT,
+  VISIBLE_SEED_NETWORKS,
+} from './config'
 import {
   type ScoreProgramProvenance,
   parseScoreProgramProvenance,
@@ -212,7 +218,7 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
   }
 
   return {
-    program: 'trust-graph',
+    program: scoreProgram.programName,
     // Catalog-only networks are addressed by their `instanceId`. A network that also has a seed
     // entry keeps the seed's human slug — see `mergeCatalog`.
     id: row.id,
@@ -250,6 +256,15 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
     contracts: {
       merkleSnapshot: row.contracts.merkleSnapshot,
       easIndexerResolver: row.contracts.easIndexerResolver,
+      ...(PROVING_VAULT ? { provingVault: PROVING_VAULT } : {}),
+      ...(((FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY) as
+        | Hex
+        | undefined)
+        ? {
+            contributionsFactory: (FAST_CONTRIBUTIONS_FACTORY ||
+              CONTRIBUTIONS_FACTORY) as Hex,
+          }
+        : {}),
       ...(row.contracts.easOffchainAnchorRegistry
         ? {
             easOffchainAnchorRegistry: row.contracts.easOffchainAnchorRegistry,
@@ -424,7 +439,23 @@ export const mergeCatalog = (
     return network
   })
 
-  const orphans = seeds.filter((seed) => !claimed.has(seed.id))
+  const orphans = seeds
+    .filter((seed) => !claimed.has(seed.id))
+    .map((seed) => ({
+      ...seed,
+      contracts: {
+        ...seed.contracts,
+        ...(PROVING_VAULT ? { provingVault: PROVING_VAULT } : {}),
+        ...(((FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY) as
+          | Hex
+          | undefined)
+          ? {
+              contributionsFactory: (FAST_CONTRIBUTIONS_FACTORY ||
+                CONTRIBUTIONS_FACTORY) as Hex,
+            }
+          : {}),
+      },
+    }))
   return [...merged, ...orphans].filter((network) => !network.hidden)
 }
 

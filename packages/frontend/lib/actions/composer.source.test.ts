@@ -10,6 +10,10 @@ const profile = source('app/networks/[id]/settings/profile.tsx')
 const scoring = source('app/networks/[id]/settings/scoring.tsx')
 const settings = source('app/networks/[id]/settings/component.tsx')
 const weighted = source('app/create/weighted/workspace.tsx')
+const composition = source('app/create/composition/workspace.tsx')
+const contributions = source(
+  'app/networks/[id]/contributions/new/component.tsx'
+)
 
 assert.match(form, /governanceComposerRegistry\.filter/)
 assert.match(form, /<optgroup/)
@@ -28,9 +32,20 @@ assert.match(editor, /case 'fund-rewards'/)
 assert.match(editor, /case 'set-operational-role'/)
 assert.match(editor, /case 'set-governance-quorum'/)
 assert.match(editor, /case 'set-governance-delegatecall-target'/)
+assert.match(editor, /case 'set-vault-policy'/)
+assert.match(editor, /case 'set-snapshot-verifier'/)
+assert.match(editor, /case 'create-contribution-round'/)
+assert.match(editor, /case 'propose-composition-policy'/)
 assert.match(form, /High-impact governance action/)
 
-for (const producer of [profile, scoring, settings, weighted]) {
+for (const producer of [
+  profile,
+  scoring,
+  settings,
+  weighted,
+  composition,
+  contributions,
+]) {
   assert.match(producer, /version: 2/)
   assert.match(producer, /actionKey:/)
   assert.match(producer, /values:/)
@@ -38,5 +53,10 @@ for (const producer of [profile, scoring, settings, weighted]) {
 assert.doesNotMatch(profile, /parentHash: ZERO_HASH/)
 assert.doesNotMatch(settings, /parentHash: ZERO_HASH/)
 assert.doesNotMatch(weighted, /actions: \[\s*\{\s*target:/)
+assert.match(weighted, /actionKey: 'cancel-weighted-prior'/)
+assert.match(composition, /actionKey: 'propose-composition-policy'/)
+assert.match(composition, /actionKey: 'cancel-composition-policy'/)
+assert.match(composition, /actionKey: 'set-vault-policy'/)
+assert.match(contributions, /actionKey: 'create-contribution-round'/)
 
 console.log('governance composer UI and typed prefill producers: ok')

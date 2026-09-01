@@ -1,4 +1,4 @@
-import { zeroAddress } from 'viem'
+import { type Hex, zeroAddress } from 'viem'
 
 import type { Network } from '../types'
 import type { CompositionInstance } from './api'
@@ -11,7 +11,11 @@ const text = (value: string | undefined) => value?.trim() ?? ''
  * snapshot, rewards, and navigation data.
  */
 export const compositionAsNetwork = (
-  instance: CompositionInstance
+  instance: CompositionInstance,
+  infrastructure: {
+    provingVault?: Hex
+    contributionsFactory?: Hex
+  } = {}
 ): Network => ({
   program: 'trust-compose',
   id: instance.id,
@@ -45,6 +49,15 @@ export const compositionAsNetwork = (
     // Compositions have no EAS vouch resolver. The accumulator is retained here as the closest
     // common provenance field; composition screens never invoke the vouching workflow.
     easIndexerResolver: instance.accumulator || zeroAddress,
+    ...(infrastructure.provingVault
+      ? { provingVault: infrastructure.provingVault }
+      : {}),
+    ...(infrastructure.contributionsFactory
+      ? { contributionsFactory: infrastructure.contributionsFactory }
+      : {}),
+    ...(instance.controller
+      ? { trustgraphsParamsController: instance.controller }
+      : {}),
     ...(instance.governance
       ? {
           merkleGovModule: instance.governance.module,

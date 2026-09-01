@@ -137,9 +137,25 @@ const main = async () => {
         metadataDigest: bytes32('a'),
       },
     },
-    context
+    { ...context, weightedParamsController: address('5') }
   )
   assert.equal(weighted[0]!.target, address('5'))
+
+  await assert.rejects(
+    () =>
+      encodeGovernanceActionDraft(
+        {
+          actionKey: 'rotate-weighted-prior',
+          values: {
+            controller: address('7'),
+            manifest: '0x1234',
+            metadataDigest: bytes32('a'),
+          },
+        },
+        { ...context, weightedParamsController: address('5') }
+      ),
+    /does not match/
+  )
 
   await assert.rejects(
     () =>

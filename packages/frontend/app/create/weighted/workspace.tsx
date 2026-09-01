@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Address,
   type Hex,
+  encodeFunctionData,
   getAddress,
   isAddress,
   isHex,
@@ -988,6 +989,50 @@ export const WeightedPriorWorkspace = ({
     }
   }
 
+  const cancelPending = async () => {
+    if (!pending || !rotationInstance) return
+    setBusy(true)
+    setProblem(null)
+    try {
+      if (wrongChain)
+        throw new Error('Switch the wallet to the target chain first.')
+      if (rotationInstance.governance) {
+        const data = encodeFunctionData({
+          abi: weightedPriorParamsControllerAbi,
+          functionName: 'cancelPrior',
+        })
+        const fingerprint = keccak256(data)
+        saveGovernancePrefill({
+          version: 2,
+          networkId: rotationInstance.id,
+          fingerprint,
+          title: `Cancel weighted starting shares version ${pending.version}`,
+          description: `Cancel the currently pending weighted-prior version ${pending.version}.`,
+          actions: [{ actionKey: 'cancel-weighted-prior', values: {} }],
+          createdAt: Date.now(),
+        })
+        router.push(
+          `/networks/${rotationInstance.id}/governance?new=1&actionDraft=${fingerprint}`
+        )
+        return
+      }
+      await txToast({
+        tx: {
+          address: pending.controller as Address,
+          abi: weightedPriorParamsControllerAbi,
+          functionName: 'cancelPrior',
+        },
+        successMessage: `Version ${pending.version} cancelled.`,
+      })
+      setSuccess(`Version ${pending.version} was cancelled.`)
+      await loadRotation()
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const modeButton = (value: Mode, label: string) => (
     <Button
       type="button"
@@ -1209,18 +1254,30 @@ export const WeightedPriorWorkspace = ({
                   {pendingDiagnosis}
                 </p>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={activate}
-                disabled={
-                  busy ||
-                  wrongChain ||
-                  pending.availability.status === 'unavailable'
-                }
-              >
-                Activate after the delay
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelPending}
+                  disabled={busy || wrongChain}
+                >
+                  {governedRotation
+                    ? 'Review cancellation proposal'
+                    : 'Cancel pending'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={activate}
+                  disabled={
+                    busy ||
+                    wrongChain ||
+                    pending.availability.status === 'unavailable'
+                  }
+                >
+                  Activate after the delay
+                </Button>
+              </div>
             </div>
           )}
         </Card>

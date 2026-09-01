@@ -7,10 +7,12 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import {
   type Address,
   type Hex,
+  encodeFunctionData,
   formatEther,
   getAddress,
   isAddress,
@@ -87,6 +89,7 @@ import {
   TRUST_COMPOSE_CONFIG,
 } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
+import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
@@ -160,6 +163,7 @@ export const CompositionWorkspace = ({
   settingsInstanceId?: Hex
   embedded?: boolean
 } = {}) => {
+  const router = useRouter()
   const { address, isConnected } = useAccount()
   const targetChainId = getTargetChainId()
   const chainId = useChainId()
@@ -965,7 +969,7 @@ export const CompositionWorkspace = ({
           throw new Error('Cancel or activate the pending policy first.')
         const adapters = compositionSourceAdapters(previewConfig.sources)
         await publicClient.simulateContract({
-          account: address,
+          account: instance?.governance?.safe ?? address,
           address: active.controller,
           abi: trustComposeParamsControllerAbi,
           functionName: 'proposePolicy',
@@ -1075,6 +1079,32 @@ export const CompositionWorkspace = ({
       } else {
         if (!active) throw new Error('Load an active composition policy first.')
         const adapters = compositionSourceAdapters(previewConfig.sources)
+        if (instance?.governance) {
+          const fingerprint = keccak256(payload)
+          saveGovernancePrefill({
+            version: 2,
+            networkId: instance.id,
+            fingerprint,
+            title: 'Change composition source policy',
+            description:
+              'Replace the composition’s source weights and authenticated adapters with the reviewed policy. If governance executes this proposal, the controller’s separate activation delay must still elapse before activation.',
+            actions: [
+              {
+                actionKey: 'propose-composition-policy',
+                values: {
+                  manifest: preview.policyManifest,
+                  adapters,
+                  metadataDigest: compositionMetadataDigest(preview, adapters),
+                },
+              },
+            ],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+          )
+          return
+        }
         await txToast({
           tx: {
             address: active.controller,
@@ -1139,6 +1169,26 @@ export const CompositionWorkspace = ({
           successMessage: `Composition policy ${pending.version} activated.`,
         })
       } else {
+        if (instance?.governance) {
+          const data = encodeFunctionData({
+            abi: trustComposeParamsControllerAbi,
+            functionName: 'cancelPolicy',
+          })
+          const fingerprint = keccak256(data)
+          saveGovernancePrefill({
+            version: 2,
+            networkId: instance.id,
+            fingerprint,
+            title: `Cancel composition policy ${pending.version}`,
+            description: `Cancel the currently pending composition policy version ${pending.version}.`,
+            actions: [{ actionKey: 'cancel-composition-policy', values: {} }],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+          )
+          return
+        }
         await txToast({
           tx: {
             address: pending.controller,
@@ -1166,6 +1216,36 @@ export const CompositionWorkspace = ({
       const cap = parseVaultUsd(maxPerRootUsd)
       if (!cap) throw new Error('Set a nonzero maximum per refresh.')
       const interval = BigInt(instance.epochLength)
+      if (instance.governance) {
+        const data = encodeFunctionData({
+          abi: compositionVaultAbi,
+          functionName: 'setPolicy',
+          args: [settingsInstanceId, interval, cap],
+        })
+        const fingerprint = keccak256(data)
+        saveGovernancePrefill({
+          version: 2,
+          networkId: instance.id,
+          fingerprint,
+          title: 'Enable paid composition refreshes',
+          description:
+            'Set the proving-vault cadence and maximum payout for this governed composition.',
+          actions: [
+            {
+              actionKey: 'set-vault-policy',
+              values: {
+                minPaidIntervalBlocks: interval.toString(),
+                maxPerRootUsd: cap.toString(),
+              },
+            },
+          ],
+          createdAt: Date.now(),
+        })
+        router.push(
+          `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+        )
+        return
+      }
       await configurePaidRefreshes(settingsInstanceId, {
         minPaidIntervalBlocks: interval,
         maxPerRootUsd: cap,
