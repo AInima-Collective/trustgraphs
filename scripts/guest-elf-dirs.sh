@@ -34,7 +34,7 @@ MODE=dirs
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
-GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program zk/nostr-program/program"
+GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program zk/composition-program-v2 zk/nostr-program/program"
 TARGET="riscv64im-succinct-zkvm-elf/release"
 
 for dir in $GUESTS; do

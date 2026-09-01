@@ -17,6 +17,7 @@
 //!                                                         `--features fetch`)
 //!   trustgraph-prover trust-graph-weighted {vkey|paramshash|execute|prove}
 //!   trustgraph-prover trust-compose {vkey|paramshash|execute|prove}
+//!   trustgraph-prover trust-compose-v2 {vkey|paramshash|execute|prove}
 //!   trustgraph-prover manifest [--commit SHA] [--tag vX.Y.Z]
 //!                                                         every program's ELF sha256 + vkey, JSON
 //!
@@ -56,6 +57,12 @@ enum Program {
     Composition {
         #[command(subcommand)]
         cmd: programs::composition::Command,
+    },
+    /// Mixed standard/weighted composition (params/manifest V2, closed compatibility class).
+    #[command(name = "trust-compose-v2")]
+    CompositionV2 {
+        #[command(subcommand)]
+        cmd: programs::composition_v2::Command,
     },
     /// Signer-sync (top-N Safe signer set + threshold from the proven scores).
     Signer {
@@ -149,6 +156,7 @@ fn main() -> Result<()> {
         Program::Trustgraphs { cmd } => programs::trust_graph::run(cmd),
         Program::Weighted { cmd } => programs::weighted::run(cmd),
         Program::Composition { cmd } => programs::composition::run(cmd),
+        Program::CompositionV2 { cmd } => programs::composition_v2::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
         Program::NostrWorkspace { cmd } => programs::nostr_workspace::run(cmd),

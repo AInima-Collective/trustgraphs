@@ -4,8 +4,8 @@ silent: true
 
 # ZK program tasks (multi-program platform).
 #
-# Every task takes PROGRAM (values: trust-graph | trust-graph-weighted | trust-compose | signer |
-# hypercerts | contributions | nostr-workspace, default trust-graph). The prover CLI is invoked as
+# Every task takes PROGRAM (values: trust-graph | trust-graph-weighted | trust-compose |
+# trust-compose-v2 | signer | hypercerts | contributions | nostr-workspace, default trust-graph). The prover CLI is invoked as
 # `trustgraph-prover <program> <command>`, so PROGRAM is passed as the first positional arg. The
 # `trust-graph` and `signer` programs share one golden feed because signer reads the same trust-graph
 # attestations; every other program owns its vector file.
@@ -52,7 +52,7 @@ tasks:
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:
-      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-fixture.ts && pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > tests/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > tests/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > tests/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > tests/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json{{end}}'
+      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-fixture.ts && pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-compose-v2"}}pnpm exec tsx research/composition/export-production-fixture-v2.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > tests/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > tests/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > tests/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > tests/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json{{end}}'
 
   vkey:
     desc: 'Print the SP1 program vkey for PROGRAM'
@@ -116,13 +116,14 @@ tasks:
         vars: { PROGRAM: '{{.PROGRAM}}' }
       - git diff --exit-code tests/golden/
       # (b) Rust parity (canonical core + zk glue + program crates).
-      - cargo test -p pagerank-core -p zk-core -p hypercerts-core -p contributions-core -p weighted-prior-core -p composition-core -p nostr-envelope -p nostr-workspace-core
+      - cargo test -p pagerank-core -p zk-core -p hypercerts-core -p contributions-core -p weighted-prior-core -p composition-core -p composition-core-v2 -p nostr-envelope -p nostr-workspace-core
       # (c) Solidity golden vectors (both split suites).
       - forge test --match-path "contracts/test/unit/golden/*"
       # (d) The independent TypeScript composition oracle, then frontend TS ports.
       - |
-        if [ "{{.PROGRAM}}" = "trust-compose" ]; then
-          node --import tsx --test research/composition/reference.test.ts research/composition/production.test.ts
+        if [ "{{.PROGRAM}}" = "trust-compose" ] || [ "{{.PROGRAM}}" = "trust-compose-v2" ]; then
+          node --import tsx --test research/composition/reference.test.ts research/composition/production.test.ts \
+            research/composition/production-v2.test.ts
           pnpm exec tsc research/composition/*.ts --noEmit \
             --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --strict \
             --types node --typeRoots packages/indexer/node_modules/@types

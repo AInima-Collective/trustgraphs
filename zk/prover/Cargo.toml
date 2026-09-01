@@ -66,6 +66,7 @@ nostr-envelope = { path = "../../crates/nostr-envelope" }
 contributions-core = { path = "../../crates/contributions-core" }
 weighted-prior-core = { path = "../../crates/weighted-prior-core" }
 composition-core = { path = "../../crates/composition-core" }
+composition-core-v2 = { path = "../../crates/composition-core-v2" }
 alloy-primitives = { version = "1", features = ["serde"] }
 # fetch feature only: the sol! call/event ABI plumbing for on-chain reconstruction.
 alloy-sol-types = { version = "1", optional = true }
