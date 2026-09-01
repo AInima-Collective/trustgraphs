@@ -1,7 +1,7 @@
-//! Browser-safe, byte-exact mirror of `composition-core` (V1) and `composition-core-v2`.
+//! Browser-safe, byte-exact mirror of the `composition-core` Rust crate.
 //!
 //! This module computes previews only from complete, authenticated source distributions. It never
-//! consumes raw graph edges and never treats a source's raw point scale as influence. V2 admits
+//! consumes raw graph edges and never treats a source's raw point scale as influence. Admission is
 //! one closed compatibility class — the standard and weighted TrustGraph program/output-domain
 //! pairs — so a single composition can blend both without relabelling either source.
 
@@ -54,7 +54,7 @@ export const WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN = keccak256(
 )
 
 /**
- * The one closed V2 compatibility class: class tag, shared key domain, shared
+ * The one closed compatibility class: class tag, shared key domain, shared
  * output kind, then the standard and weighted program/output-domain pairs, in
  * that normative order. Adding a pair requires another reviewed class and a
  * new params/guest version.
@@ -82,7 +82,7 @@ export const COMPOSITION_SOURCE_COMPATIBILITY_CLASS = keccak256(
   )
 )
 
-/** The sole output domain a source program is admitted with under the V2 class. */
+/** The sole output domain a source program is admitted with under the closed class. */
 export const admittedSourceOutputDomain = (programId: Hex): Hex | null => {
   const lowered = programId.toLowerCase()
   if (lowered === TRUST_GRAPH_SOURCE_PROGRAM_ID)
@@ -92,7 +92,8 @@ export const admittedSourceOutputDomain = (programId: Hex): Hex | null => {
   return null
 }
 
-export type CompositionParamsVersion = 1 | 2
+/** The one params/manifest version word every encoding carries. */
+export const COMPOSITION_PARAMS_VERSION = 1
 
 export type CompositionBounds = {
   maxSources: number
@@ -102,7 +103,7 @@ export type CompositionBounds = {
   maxAggregateBlobBytes: number
 }
 
-export const V1_COMPOSITION_BOUNDS: CompositionBounds = {
+export const MAX_COMPOSITION_BOUNDS: CompositionBounds = {
   maxSources: 8,
   maxEntriesPerSource: 4_096,
   maxAggregateEntries: 8_192,
@@ -148,10 +149,6 @@ export type CompositionConfig = {
   chainId: bigint
   captureBlock: bigint
   scopeHash: Hex
-  /** The params generation: 1 admits one program; 2 admits the closed mixed class. */
-  paramsVersion: CompositionParamsVersion
-  /** V1 only. A V2 policy admits the class, never a single relabelled program. */
-  admittedProgramId: Hex | null
   outputPool: bigint
   bounds: CompositionBounds
   sources: CompositionSource[]
@@ -419,70 +416,41 @@ export const hamilton = <T>(
   return apportioned.sort((left, right) => cmpHex(left.key, right.key))
 }
 
-/** The domain a V2 record commits for this source, derived from its program — never asserted. */
+/** The domain a record commits for this source, derived from its program — never asserted. */
 const requireAdmittedDomain = (source: CompositionSource): Hex =>
   admittedSourceOutputDomain(source.programId) ??
   fail(`source ${source.name} is not in the compatibility class`)
 
-const sourcePolicyLeaf = (
-  source: CompositionSource,
-  version: CompositionParamsVersion
-): Hex =>
-  version === 1
-    ? keccak256(
-        encodeAbiParameters(
-          [
-            { type: 'bytes32' },
-            { type: 'address' },
-            { type: 'bytes32' },
-            { type: 'bytes32' },
-            { type: 'uint64' },
-            { type: 'uint64' },
-            { type: 'uint8' },
-          ],
-          [
-            source.sourceId,
-            source.snapshot,
-            source.familyId,
-            source.programId,
-            source.weight,
-            source.maxAgeBlocks,
-            1,
-          ]
-        )
-      )
-    : keccak256(
-        encodeAbiParameters(
-          [
-            { type: 'bytes32' },
-            { type: 'address' },
-            { type: 'bytes32' },
-            { type: 'bytes32' },
-            { type: 'bytes32' },
-            { type: 'uint64' },
-            { type: 'uint64' },
-            { type: 'uint8' },
-          ],
-          [
-            source.sourceId,
-            source.snapshot,
-            source.familyId,
-            source.programId,
-            requireAdmittedDomain(source),
-            source.weight,
-            source.maxAgeBlocks,
-            1,
-          ]
-        )
-      )
+const sourcePolicyLeaf = (source: CompositionSource): Hex =>
+  keccak256(
+    encodeAbiParameters(
+      [
+        { type: 'bytes32' },
+        { type: 'address' },
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'uint64' },
+        { type: 'uint64' },
+        { type: 'uint8' },
+      ],
+      [
+        source.sourceId,
+        source.snapshot,
+        source.familyId,
+        source.programId,
+        requireAdmittedDomain(source),
+        source.weight,
+        source.maxAgeBlocks,
+        1,
+      ]
+    )
+  )
 
-export const compositionPolicyRoot = (
-  sources: CompositionSource[],
-  version: CompositionParamsVersion = 1
-): Hex => {
+export const compositionPolicyRoot = (sources: CompositionSource[]): Hex => {
   let level = [...sources]
     .sort((left, right) => cmpHex(left.sourceId, right.sourceId))
-    .map((source) => sourcePolicyLeaf(source, version))
+    .map((source) => sourcePolicyLeaf(source))
   if (level.length === 0) return ZERO_HASH
   while (level.length > 1) {
     const next: Hex[] = []
@@ -500,8 +468,7 @@ export const compositionPolicyRoot = (
 
 export const canonicalPolicyManifest = (
   chainId: bigint,
-  sources: CompositionSource[],
-  version: CompositionParamsVersion = 1
+  sources: CompositionSource[]
 ): Hex => {
   requireUint(chainId, 64, 'chainId')
   const ordered = [...sources].sort((left, right) =>
@@ -509,7 +476,7 @@ export const canonicalPolicyManifest = (
   )
   return concat([
     '0x54474350',
-    toHex(version, { size: 2 }),
+    toHex(COMPOSITION_PARAMS_VERSION, { size: 2 }),
     toHex(chainId, { size: 8 }),
     toHex(ordered.length, { size: 1 }),
     ...ordered.flatMap((source) => [
@@ -517,7 +484,7 @@ export const canonicalPolicyManifest = (
       source.snapshot,
       source.familyId,
       source.programId,
-      ...(version === 2 ? [requireAdmittedDomain(source)] : []),
+      requireAdmittedDomain(source),
       toHex(source.weight, { size: 8 }),
       toHex(source.maxAgeBlocks, { size: 8 }),
       toHex(1, { size: 1 }),
@@ -536,7 +503,7 @@ export const canonicalCaptureManifest = (
   )
   return concat([
     '0x5447434d',
-    toHex(config.paramsVersion, { size: 2 }),
+    toHex(COMPOSITION_PARAMS_VERSION, { size: 2 }),
     toHex(config.chainId, { size: 8 }),
     toHex(config.captureBlock, { size: 8 }),
     toHex(ordered.length, { size: 1 }),
@@ -545,7 +512,7 @@ export const canonicalCaptureManifest = (
       source.snapshot,
       source.familyId,
       source.programId,
-      ...(config.paramsVersion === 2 ? [requireAdmittedDomain(source)] : []),
+      requireAdmittedDomain(source),
       toHex(source.stateIndex, { size: 8 }),
       toHex(source.freezeBlock, { size: 8 }),
       source.outputRoot,
@@ -760,15 +727,6 @@ const validateConfig = (config: CompositionConfig) => {
   requireUint(config.captureBlock, 64, 'captureBlock')
   requireUint(config.outputPool, 128, 'outputPool')
   canonicalWord(config.scopeHash, 'scopeHash')
-  if (config.paramsVersion === 1) {
-    if (config.admittedProgramId === null) {
-      fail('a V1 composition names one admitted score program')
-    } else {
-      canonicalWord(config.admittedProgramId, 'admittedProgramId')
-    }
-  } else if (config.admittedProgramId !== null) {
-    fail('a V2 composition admits the compatibility class, not one program')
-  }
   if (config.scopeHash === ZERO_HASH) fail('scopeHash must be nonzero')
   if (config.outputPool === 0n) fail('outputPool must be positive')
   if (
@@ -777,10 +735,10 @@ const validateConfig = (config: CompositionConfig) => {
   ) {
     fail('source count is outside the configured 2–8 bound')
   }
-  for (const [key, maximum] of Object.entries(V1_COMPOSITION_BOUNDS)) {
+  for (const [key, maximum] of Object.entries(MAX_COMPOSITION_BOUNDS)) {
     const value = config.bounds[key as keyof CompositionBounds]
     if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
-      fail(`${key} exceeds the V1 bound ${maximum}`)
+      fail(`${key} exceeds the bound ${maximum}`)
     }
   }
 }
@@ -889,11 +847,7 @@ export const computeCompositionPreview = (
     }
     if (source.chainId !== rawConfig.chainId)
       fail(`source ${source.name} is on another chain`)
-    if (rawConfig.paramsVersion === 1) {
-      if (source.programId !== rawConfig.admittedProgramId) {
-        fail(`source ${source.name} uses a different score program`)
-      }
-    } else if (admittedSourceOutputDomain(source.programId) === null) {
+    if (admittedSourceOutputDomain(source.programId) === null) {
       fail(`source ${source.name} is not in the compatibility class`)
     }
     if (source.weight <= 0n) fail(`source ${source.name} has zero weight`)
@@ -958,11 +912,7 @@ export const computeCompositionPreview = (
     fail('composition output does not conserve its pool')
   const outputBlob = canonicalCompositionBlob(output)
   const outputDigest = sha256Utf8(outputBlob)
-  const policyManifest = canonicalPolicyManifest(
-    config.chainId,
-    sources,
-    config.paramsVersion
-  )
+  const policyManifest = canonicalPolicyManifest(config.chainId, sources)
   const captureManifest = canonicalCaptureManifest(config, sources)
   const emptyMetrics: CompositionMetrics = {
     pairwise: [],
@@ -1007,7 +957,7 @@ export const computeCompositionPreview = (
   return {
     policyManifest,
     policyManifestSha256: sha256(policyManifest),
-    sourcePolicyRoot: compositionPolicyRoot(sources, config.paramsVersion),
+    sourcePolicyRoot: compositionPolicyRoot(sources),
     captureManifest,
     captureManifestSha256: sha256(captureManifest),
     sourceAllocations,

@@ -5,10 +5,11 @@
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{anyhow, bail, Context, Result};
+use composition_core::Params as CompositionParams;
 use operator_core::catalog::{
     CatalogEntry, ChainReader, CompositionControllerParams, ContributionsControllerParams,
     ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor,
-    VersionedCompositionParams, WeightedControllerParams, WeightedCreatedParams,
+    WeightedControllerParams, WeightedCreatedParams,
 };
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::{Params, SelectionParams};
@@ -44,10 +45,10 @@ sol! {
         address accumulator; uint64 chainId;
     }
 
-    /// Mirror of `TrustComposeParamsCodec.Params` (isolated V1, 20 frozen words).
+    /// Mirror of `TrustComposeParamsCodec.Params` (20 frozen words).
     struct SolCompositionParams {
         uint32 version; bytes32 programId; bytes32 scopeHash; bytes32 identityDomain;
-        bytes32 outputKind; bytes32 outputDomain; bytes32 admittedProgramId; uint64 weightScale;
+        bytes32 outputKind; bytes32 outputDomain; bytes32 sourceCompatibilityClass; uint64 weightScale;
         uint128 outputPool; bytes32 sourcePolicyRoot; uint8 sourceCount;
         bytes32 policyManifestSha256; uint8 maxSources; uint32 maxEntriesPerSource;
         uint32 maxAggregateEntries; uint32 maxUnionAccounts; uint32 maxAggregateBlobBytes;
@@ -912,58 +913,32 @@ fn to_weighted_params(p: &SolWeightedParams) -> weighted_prior_core::Params {
     }
 }
 
-/// Both trust-compose generations share this 20-word ABI shape; word 0 selects the semantic
-/// decoder. Under V1 the sixth word is the singular admitted program; under V2 it is the closed
-/// source compatibility class and must never surface under the V1 field name. An unknown version
-/// fails before any witness work or proof spend — there is no "latest composition" fallback.
-fn to_composition_params(p: &SolCompositionParams) -> Result<VersionedCompositionParams> {
-    match p.version {
-        1 => Ok(VersionedCompositionParams::V1(composition_core::Params {
-            version: p.version,
-            program_id: p.programId,
-            scope_hash: p.scopeHash,
-            identity_domain: p.identityDomain,
-            output_kind: p.outputKind,
-            output_domain: p.outputDomain,
-            admitted_program_id: p.admittedProgramId,
-            weight_scale: p.weightScale,
-            output_pool: p.outputPool,
-            source_policy_root: p.sourcePolicyRoot,
-            source_count: p.sourceCount,
-            policy_manifest_sha256: p.policyManifestSha256,
-            max_sources: p.maxSources,
-            max_entries_per_source: p.maxEntriesPerSource,
-            max_aggregate_entries: p.maxAggregateEntries,
-            max_union_accounts: p.maxUnionAccounts,
-            max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
-            max_source_age_blocks: p.maxSourceAgeBlocks,
-            accumulator: p.accumulator,
-            chain_id: p.chainId,
-        })),
-        2 => Ok(VersionedCompositionParams::V2(composition_core_v2::Params {
-            version: p.version,
-            program_id: p.programId,
-            scope_hash: p.scopeHash,
-            identity_domain: p.identityDomain,
-            output_kind: p.outputKind,
-            output_domain: p.outputDomain,
-            source_compatibility_class: p.admittedProgramId,
-            weight_scale: p.weightScale,
-            output_pool: p.outputPool,
-            source_policy_root: p.sourcePolicyRoot,
-            source_count: p.sourceCount,
-            policy_manifest_sha256: p.policyManifestSha256,
-            max_sources: p.maxSources,
-            max_entries_per_source: p.maxEntriesPerSource,
-            max_aggregate_entries: p.maxAggregateEntries,
-            max_union_accounts: p.maxUnionAccounts,
-            max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
-            max_source_age_blocks: p.maxSourceAgeBlocks,
-            accumulator: p.accumulator,
-            chain_id: p.chainId,
-        })),
-        other => bail!("unsupported composition params version {other}"),
-    }
+/// Straight field-map of the frozen 20-word tuple. An unsupported version word fails in
+/// `Params::validate` before any witness work or proof spend — there is no "latest composition"
+/// fallback.
+fn to_composition_params(p: &SolCompositionParams) -> Result<CompositionParams> {
+    Ok(CompositionParams {
+        version: p.version,
+        program_id: p.programId,
+        scope_hash: p.scopeHash,
+        identity_domain: p.identityDomain,
+        output_kind: p.outputKind,
+        output_domain: p.outputDomain,
+        source_compatibility_class: p.sourceCompatibilityClass,
+        weight_scale: p.weightScale,
+        output_pool: p.outputPool,
+        source_policy_root: p.sourcePolicyRoot,
+        source_count: p.sourceCount,
+        policy_manifest_sha256: p.policyManifestSha256,
+        max_sources: p.maxSources,
+        max_entries_per_source: p.maxEntriesPerSource,
+        max_aggregate_entries: p.maxAggregateEntries,
+        max_union_accounts: p.maxUnionAccounts,
+        max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
+        max_source_age_blocks: p.maxSourceAgeBlocks,
+        accumulator: p.accumulator,
+        chain_id: p.chainId,
+    })
 }
 
 /// Everything an `InstanceState` needs from one snapshot, read in one place.
@@ -1424,7 +1399,7 @@ pub fn entry_at_params_hash(
             params
                 .validate()
                 .map_err(|error| anyhow!("invalid historical composition params: {error}"))?;
-            let reconstructed = params.params_hash();
+            let reconstructed = composition_core::codec::params_hash(&params);
             anyhow::ensure!(
                 reconstructed == params_hash,
                 "composition activation tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
@@ -1454,7 +1429,7 @@ pub fn entry_at_params_hash(
             params
                 .validate()
                 .map_err(|error| anyhow!("invalid initial composition params: {error}"))?;
-            let reconstructed = params.params_hash();
+            let reconstructed = composition_core::codec::params_hash(&params);
             anyhow::ensure!(
                 reconstructed == params_hash,
                 "initial composition event tuple hash mismatch"

@@ -974,10 +974,8 @@ export const compositionInstance = onchainTable(
     distributorToken: t.hex(),
     epochLength: t.bigint().notNull(),
     programVKey: t.hex().notNull(),
-    /** The trust-compose params generation (1 = single admitted program, 2 = closed class). */
-    paramsVersion: t.integer().notNull(),
-    /** V2 only: the committed source compatibility class. */
-    sourceCompatibilityClass: t.hex(),
+    /** The committed closed source compatibility class. */
+    sourceCompatibilityClass: t.hex().notNull(),
     currentVersion: t.bigint().notNull(),
     currentParamsHash: t.hex().notNull(),
     params: t.json().notNull(),

@@ -8,7 +8,7 @@ import { type Hex, bytesToHex, keccak256, sha256 } from 'viem'
 
 import { compositionCheckpointForEvent } from './composition-receipt'
 import {
-  type AnyCompositionParamsJson,
+  type CompositionParamsJson,
   compositionParamsFromJson,
   decodeCompositionScoreBlob,
   rawCompositionCid,
@@ -134,7 +134,7 @@ export const ingestCompositionScores = async (
     throw new Error('composition governance/source provenance is incomplete')
   const manifestBytes = capture.manifest as Hex
   const params = compositionParamsFromJson(
-    policy.params as AnyCompositionParamsJson
+    policy.params as CompositionParamsJson
   )
   const parsedSources = (policy.sources as Array<{ sourceId: Hex }>).length
   if (parsedSources !== sourceCheckpointIds.length)
@@ -143,10 +143,10 @@ export const ingestCompositionScores = async (
   // CIDs are derived from the TGCM sha256 fields by the recomputer, but source downloads need the
   // strings up front. rawCompositionCid is the only accepted derivation.
   const captureHex = manifestBytes.slice(2)
-  // V2 records are 32 bytes wider: each carries its source's real output domain
-  // after the program ID, shifting every later field by one word.
-  const captureRecordBytes = params.version === 2 ? 293 : 261
-  const blobSha256Offset = params.version === 2 ? 196 : 164
+  // Each 293-byte record carries its source's real output domain after the
+  // program ID; the committed blob sha256 sits one word past the output root.
+  const captureRecordBytes = 293
+  const blobSha256Offset = 196
   const captureHeaderBytes = 23
   const sourcePreimages = await Promise.all(
     sourceCheckpointIds.map(async (_sourceCheckpointId, position) => {

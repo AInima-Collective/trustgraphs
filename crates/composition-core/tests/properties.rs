@@ -1,4 +1,4 @@
-use composition_core::{fixture::sample_input, hamilton::apportion};
+use composition_core::{fixture::mixed_input, hamilton::apportion};
 use proptest::prelude::*;
 
 proptest! {
@@ -30,10 +30,11 @@ proptest! {
 
 #[test]
 fn allocating_a_source_its_total_reproduces_every_value() {
-    let input = sample_input();
+    let input = mixed_input();
     let manifest = composition_core::codec::parse_capture_manifest(&input.manifest, 10).unwrap();
     for (source, preimage) in manifest.sources.iter().zip(&input.source_preimages) {
-        let entries = composition_core::blob::decode_canonical_score_blob(&preimage.blob).unwrap();
+        let entries =
+            composition_core::blob::decode_canonical_score_blob(&preimage.blob).unwrap();
         let result = apportion(source.total_value, source.total_value, &entries).unwrap();
         assert_eq!(
             result.into_iter().map(|item| (item.key, item.allocation)).collect::<Vec<_>>(),

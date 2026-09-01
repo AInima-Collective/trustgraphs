@@ -4,7 +4,12 @@ pragma solidity ^0.8.22;
 import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
 
 /// @title TrustComposeValidator
-/// @notice Constitutional validation for V1 composition params and compact `TGCP` source policy.
+/// @notice Constitutional validation for composition params and the compact `TGCP` source
+///         policy. Admission is one closed compatibility class of program/output-domain pairs — the
+///         standard and weighted TrustGraph allocation outputs — so a single composition may blend
+///         both without relabelling either source. Every record carries its real program ID and
+///         real output domain; an unknown program fails even when it copies an allowed domain
+///         value, and an allowed program fails when paired with the other program's domain.
 library TrustComposeValidator {
     uint64 internal constant WEIGHT_SCALE = 1e18;
     uint32 internal constant PARAMS_VERSION = 1;
@@ -17,12 +22,26 @@ library TrustComposeValidator {
     uint32 internal constant MAX_AGGREGATE_BLOB_BYTES = 1_048_576;
     uint64 internal constant MAX_SOURCE_AGE_BLOCKS = 500_000;
     uint256 internal constant HEADER_LENGTH = 15;
-    uint256 internal constant RECORD_LENGTH = 133;
+    uint256 internal constant RECORD_LENGTH = 165;
     bytes4 internal constant MANIFEST_MAGIC = 0x54474350; // "TGCP"
     bytes32 internal constant PROGRAM_ID = keccak256("trust-compose");
     bytes32 internal constant IDENTITY_DOMAIN = keccak256("eip155-address");
     bytes32 internal constant OUTPUT_KIND = keccak256("allocation");
     bytes32 internal constant OUTPUT_DOMAIN = keccak256("trustgraphs.output.trust-compose-account.v1");
+
+    bytes32 internal constant TRUST_GRAPH_PROGRAM_ID = keccak256("trust-graph");
+    bytes32 internal constant WEIGHTED_TRUST_GRAPH_PROGRAM_ID = keccak256("trust-graph-weighted");
+    bytes32 internal constant TRUST_GRAPH_OUTPUT_DOMAIN = keccak256("trustgraphs.output.trust-graph-account.v1");
+    bytes32 internal constant WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN =
+        keccak256("trustgraphs.output.weighted-trust-graph-account.v1");
+
+    /// @dev `keccak256(abi.encode(keccak256("trust-compose.source-compatibility.v1"),
+    ///      IDENTITY_DOMAIN, OUTPUT_KIND, TRUST_GRAPH_PROGRAM_ID, TRUST_GRAPH_OUTPUT_DOMAIN,
+    ///      WEIGHTED_TRUST_GRAPH_PROGRAM_ID, WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN))`. The literal is
+    ///      pinned here and re-derived by `sourceCompatibilityClass()`; the golden suite asserts
+    ///      the two agree. Adding a pair requires another reviewed class and a new params version.
+    bytes32 internal constant SOURCE_COMPATIBILITY_CLASS =
+        0x5426d501d31705b306bf65d6260a564441ff6b3b98a4375766c76348b7cca9e2;
 
     struct Commitment {
         bytes32 sourcePolicyRoot;
@@ -37,7 +56,7 @@ library TrustComposeValidator {
     error InvalidIdentityDomain(bytes32 identityDomain);
     error InvalidOutputKind(bytes32 outputKind);
     error InvalidOutputDomain(bytes32 outputDomain);
-    error InvalidAdmittedProgram(bytes32 programId);
+    error InvalidCompatibilityClass(bytes32 class);
     error InvalidWeightScale(uint64 weightScale);
     error InvalidOutputPool();
     error InvalidSourceCount(uint8 count);
@@ -56,6 +75,7 @@ library TrustComposeValidator {
     error DuplicateSnapshot(uint8 index, address snapshot);
     error InvalidFamilyId(uint8 index);
     error UnadmittedSourceProgram(uint8 index, bytes32 programId);
+    error WrongSourceOutputDomain(uint8 index, bytes32 programId, bytes32 sourceOutputDomain);
     error InvalidSourceWeight(uint8 index);
     error InvalidWeightSum(uint256 sum);
     error InvalidSourceAge(uint8 index, uint64 maxAgeBlocks);
@@ -63,6 +83,29 @@ library TrustComposeValidator {
     error PolicyCommitmentMismatch();
     error DerivedFieldNotZero();
     error IdentityFieldChanged();
+
+    /// @notice Re-derive the closed class from its normative preimage.
+    function sourceCompatibilityClass() internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256("trust-compose.source-compatibility.v1"),
+                IDENTITY_DOMAIN,
+                OUTPUT_KIND,
+                TRUST_GRAPH_PROGRAM_ID,
+                TRUST_GRAPH_OUTPUT_DOMAIN,
+                WEIGHTED_TRUST_GRAPH_PROGRAM_ID,
+                WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN
+            )
+        );
+    }
+
+    /// @notice The sole output domain a source program is admitted with; zero when the program is
+    ///         outside the class.
+    function admittedSourceOutputDomain(bytes32 programId) internal pure returns (bytes32) {
+        if (programId == TRUST_GRAPH_PROGRAM_ID) return TRUST_GRAPH_OUTPUT_DOMAIN;
+        if (programId == WEIGHTED_TRUST_GRAPH_PROGRAM_ID) return WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN;
+        return bytes32(0);
+    }
 
     /// @notice Validate user-selected creation fields before factory-derived policy/chain fields.
     function validateCreation(TrustComposeParamsCodec.Params memory p) internal pure {
@@ -79,7 +122,7 @@ library TrustComposeValidator {
         returns (Commitment memory commitment)
     {
         validateComputationalEnvelope(p);
-        commitment = validatePolicyManifest(manifest, p.chainId, p.admittedProgramId, p.maxSourceAgeBlocks);
+        commitment = validatePolicyManifest(manifest, p.chainId, p.maxSourceAgeBlocks);
         if (
             commitment.sourcePolicyRoot != p.sourcePolicyRoot || commitment.sourceCount != p.sourceCount
                 || commitment.manifestSha256 != p.policyManifestSha256
@@ -91,19 +134,21 @@ library TrustComposeValidator {
         if (p.chainId == 0) revert InvalidChain(p.chainId);
     }
 
-    /// @notice Prove every field except the complete source policy remains constitutional.
-    function validateRotation(TrustComposeParamsCodec.Params memory next, TrustComposeParamsCodec.Params memory initial)
-        internal
-        pure
-    {
+    /// @notice Prove every field except the complete source policy remains constitutional. The
+    ///         class is an immutable identity field: a rotation may move between mixed and
+    ///         homogeneous source sets, but never widen or narrow what the instance can admit.
+    function validateRotation(
+        TrustComposeParamsCodec.Params memory next,
+        TrustComposeParamsCodec.Params memory initial
+    ) internal pure {
         validateComputationalEnvelope(next);
         if (
             next.version != initial.version || next.programId != initial.programId
                 || next.scopeHash != initial.scopeHash || next.identityDomain != initial.identityDomain
                 || next.outputKind != initial.outputKind || next.outputDomain != initial.outputDomain
-                || next.admittedProgramId != initial.admittedProgramId || next.weightScale != initial.weightScale
-                || next.outputPool != initial.outputPool || next.maxSources != initial.maxSources
-                || next.maxEntriesPerSource != initial.maxEntriesPerSource
+                || next.sourceCompatibilityClass != initial.sourceCompatibilityClass
+                || next.weightScale != initial.weightScale || next.outputPool != initial.outputPool
+                || next.maxSources != initial.maxSources || next.maxEntriesPerSource != initial.maxEntriesPerSource
                 || next.maxAggregateEntries != initial.maxAggregateEntries
                 || next.maxUnionAccounts != initial.maxUnionAccounts
                 || next.maxAggregateBlobBytes != initial.maxAggregateBlobBytes
@@ -119,8 +164,8 @@ library TrustComposeValidator {
         if (p.identityDomain != IDENTITY_DOMAIN) revert InvalidIdentityDomain(p.identityDomain);
         if (p.outputKind != OUTPUT_KIND) revert InvalidOutputKind(p.outputKind);
         if (p.outputDomain != OUTPUT_DOMAIN) revert InvalidOutputDomain(p.outputDomain);
-        if (p.admittedProgramId == bytes32(0) || p.admittedProgramId == PROGRAM_ID) {
-            revert InvalidAdmittedProgram(p.admittedProgramId);
+        if (p.sourceCompatibilityClass != SOURCE_COMPATIBILITY_CLASS) {
+            revert InvalidCompatibilityClass(p.sourceCompatibilityClass);
         }
         if (p.weightScale != WEIGHT_SCALE) revert InvalidWeightScale(p.weightScale);
         // `sourceCount` can grow on policy rotation while `outputPool` is an immutable identity
@@ -150,13 +195,44 @@ library TrustComposeValidator {
         if (requirePolicy && p.accumulator == address(0)) revert InvalidAccumulator();
     }
 
+    function _validateRecord(
+        uint8 index,
+        bytes32 sourceId,
+        bytes32 previousId,
+        address snapshot,
+        address[] memory snapshots,
+        bytes32 familyId,
+        bytes32 programId,
+        bytes32 sourceOutputDomain,
+        uint64 weight,
+        uint64 maxAgeBlocks,
+        uint64 maximumAge,
+        uint8 required
+    ) private pure {
+        if (sourceId == bytes32(0)) revert InvalidSourceId(index, sourceId);
+        if (sourceId <= previousId) revert SourceIdsNotAscending(index, previousId, sourceId);
+        if (snapshot == address(0)) revert InvalidSnapshot(index, snapshot);
+        for (uint8 j; j < index; ++j) {
+            if (snapshots[j] == snapshot) revert DuplicateSnapshot(index, snapshot);
+        }
+        if (familyId == bytes32(0)) revert InvalidFamilyId(index);
+        if (programId == PROGRAM_ID) revert UnadmittedSourceProgram(index, programId);
+        bytes32 admittedDomain = admittedSourceOutputDomain(programId);
+        if (admittedDomain == bytes32(0)) revert UnadmittedSourceProgram(index, programId);
+        if (sourceOutputDomain != admittedDomain) {
+            revert WrongSourceOutputDomain(index, programId, sourceOutputDomain);
+        }
+        if (weight == 0) revert InvalidSourceWeight(index);
+        if (maxAgeBlocks == 0 || maxAgeBlocks > maximumAge) revert InvalidSourceAge(index, maxAgeBlocks);
+        if (required != 1) revert OptionalSourceUnsupported(index);
+    }
+
     /// @notice Constructor equivalent of `validatePolicyManifest` for ABI-decoded memory bytes.
-    function validatePolicyManifestMemory(
-        bytes memory manifest,
-        uint64 expectedChain,
-        bytes32 admittedProgramId,
-        uint64 maximumAge
-    ) internal pure returns (Commitment memory commitment) {
+    function validatePolicyManifestMemory(bytes memory manifest, uint64 expectedChain, uint64 maximumAge)
+        internal
+        pure
+        returns (Commitment memory commitment)
+    {
         uint256 length = manifest.length;
         if (length < HEADER_LENGTH) revert InvalidManifestLength(length, HEADER_LENGTH);
         bytes4 magic;
@@ -187,6 +263,7 @@ library TrustComposeValidator {
             address snapshot;
             bytes32 familyId;
             bytes32 programId;
+            bytes32 sourceOutputDomain;
             uint64 weight;
             uint64 maxAgeBlocks;
             uint8 required;
@@ -195,27 +272,31 @@ library TrustComposeValidator {
                 snapshot := shr(96, mload(add(add(add(manifest, 32), offset), 32)))
                 familyId := mload(add(add(add(manifest, 32), offset), 52))
                 programId := mload(add(add(add(manifest, 32), offset), 84))
-                weight := shr(192, mload(add(add(add(manifest, 32), offset), 116)))
-                maxAgeBlocks := shr(192, mload(add(add(add(manifest, 32), offset), 124)))
-                required := shr(248, mload(add(add(add(manifest, 32), offset), 132)))
+                sourceOutputDomain := mload(add(add(add(manifest, 32), offset), 116))
+                weight := shr(192, mload(add(add(add(manifest, 32), offset), 148)))
+                maxAgeBlocks := shr(192, mload(add(add(add(manifest, 32), offset), 156)))
+                required := shr(248, mload(add(add(add(manifest, 32), offset), 164)))
             }
-            if (sourceId == bytes32(0)) revert InvalidSourceId(i, sourceId);
-            if (sourceId <= previousId) revert SourceIdsNotAscending(i, previousId, sourceId);
-            if (snapshot == address(0)) revert InvalidSnapshot(i, snapshot);
-            for (uint8 j; j < i; ++j) {
-                if (snapshots[j] == snapshot) revert DuplicateSnapshot(i, snapshot);
-            }
-            if (familyId == bytes32(0)) revert InvalidFamilyId(i);
-            if (programId != admittedProgramId || programId == PROGRAM_ID) {
-                revert UnadmittedSourceProgram(i, programId);
-            }
-            if (weight == 0) revert InvalidSourceWeight(i);
-            if (maxAgeBlocks == 0 || maxAgeBlocks > maximumAge) revert InvalidSourceAge(i, maxAgeBlocks);
-            if (required != 1) revert OptionalSourceUnsupported(i);
+            _validateRecord(
+                i,
+                sourceId,
+                previousId,
+                snapshot,
+                snapshots,
+                familyId,
+                programId,
+                sourceOutputDomain,
+                weight,
+                maxAgeBlocks,
+                maximumAge,
+                required
+            );
             previousId = sourceId;
             snapshots[i] = snapshot;
             weightSum += weight;
-            level[i] = keccak256(abi.encode(sourceId, snapshot, familyId, programId, weight, maxAgeBlocks, required));
+            level[i] = keccak256(
+                abi.encode(sourceId, snapshot, familyId, programId, sourceOutputDomain, weight, maxAgeBlocks, required)
+            );
         }
         if (weightSum != WEIGHT_SCALE) revert InvalidWeightSum(weightSum);
         commitment = Commitment({
@@ -226,12 +307,11 @@ library TrustComposeValidator {
         });
     }
 
-    function validatePolicyManifest(
-        bytes calldata manifest,
-        uint64 expectedChain,
-        bytes32 admittedProgramId,
-        uint64 maximumAge
-    ) internal pure returns (Commitment memory commitment) {
+    function validatePolicyManifest(bytes calldata manifest, uint64 expectedChain, uint64 maximumAge)
+        internal
+        pure
+        returns (Commitment memory commitment)
+    {
         uint256 length = manifest.length;
         if (length < HEADER_LENGTH) revert InvalidManifestLength(length, HEADER_LENGTH);
         bytes4 magic;
@@ -262,6 +342,7 @@ library TrustComposeValidator {
             address snapshot;
             bytes32 familyId;
             bytes32 programId;
+            bytes32 sourceOutputDomain;
             uint64 weight;
             uint64 maxAgeBlocks;
             uint8 required;
@@ -270,28 +351,31 @@ library TrustComposeValidator {
                 snapshot := shr(96, calldataload(add(add(manifest.offset, offset), 32)))
                 familyId := calldataload(add(add(manifest.offset, offset), 52))
                 programId := calldataload(add(add(manifest.offset, offset), 84))
-                weight := shr(192, calldataload(add(add(manifest.offset, offset), 116)))
-                maxAgeBlocks := shr(192, calldataload(add(add(manifest.offset, offset), 124)))
-                required := shr(248, calldataload(add(add(manifest.offset, offset), 132)))
+                sourceOutputDomain := calldataload(add(add(manifest.offset, offset), 116))
+                weight := shr(192, calldataload(add(add(manifest.offset, offset), 148)))
+                maxAgeBlocks := shr(192, calldataload(add(add(manifest.offset, offset), 156)))
+                required := shr(248, calldataload(add(add(manifest.offset, offset), 164)))
             }
-            if (sourceId == bytes32(0)) revert InvalidSourceId(i, sourceId);
-            if (sourceId <= previousId) revert SourceIdsNotAscending(i, previousId, sourceId);
-            if (snapshot == address(0)) revert InvalidSnapshot(i, snapshot);
-            for (uint8 j; j < i; ++j) {
-                if (snapshots[j] == snapshot) revert DuplicateSnapshot(i, snapshot);
-            }
-            if (familyId == bytes32(0)) revert InvalidFamilyId(i);
-            if (programId != admittedProgramId || programId == PROGRAM_ID) {
-                revert UnadmittedSourceProgram(i, programId);
-            }
-            if (weight == 0) revert InvalidSourceWeight(i);
-            if (maxAgeBlocks == 0 || maxAgeBlocks > maximumAge) revert InvalidSourceAge(i, maxAgeBlocks);
-            if (required != 1) revert OptionalSourceUnsupported(i);
-
+            _validateRecord(
+                i,
+                sourceId,
+                previousId,
+                snapshot,
+                snapshots,
+                familyId,
+                programId,
+                sourceOutputDomain,
+                weight,
+                maxAgeBlocks,
+                maximumAge,
+                required
+            );
             previousId = sourceId;
             snapshots[i] = snapshot;
             weightSum += weight;
-            level[i] = keccak256(abi.encode(sourceId, snapshot, familyId, programId, weight, maxAgeBlocks, required));
+            level[i] = keccak256(
+                abi.encode(sourceId, snapshot, familyId, programId, sourceOutputDomain, weight, maxAgeBlocks, required)
+            );
         }
         if (weightSum != WEIGHT_SCALE) revert InvalidWeightSum(weightSum);
         commitment = Commitment({

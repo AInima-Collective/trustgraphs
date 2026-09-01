@@ -5,16 +5,13 @@ import {
   type CompositionEntry,
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
+  MAX_COMPOSITION_BOUNDS,
   TRUST_GRAPH_SOURCE_PROGRAM_ID,
-  V1_COMPOSITION_BOUNDS,
   WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM_ID,
   canonicalCompositionBlob,
   compositionOutputRoot,
 } from './core'
 import { cidV1Raw, digestToHex, sha256Utf8 } from '../pagerank/cid'
-
-export const compositionFixtureProgramId =
-  '0x8e3fcb8fae37df610887f6a917ca956aedb723004354ba17aee222d07f47af10' as Hex
 
 const address = (byte: string) => `0x${byte.repeat(20)}` as Address
 const word = (byte: string) => `0x${byte.repeat(32)}` as Hex
@@ -23,7 +20,7 @@ const fixtureSource = ({
   idByte,
   snapshotByte,
   familyByte,
-  programId = compositionFixtureProgramId,
+  programId,
   stateIndex,
   freezeBlock,
   weight,
@@ -32,7 +29,7 @@ const fixtureSource = ({
   idByte: string
   snapshotByte: string
   familyByte: string
-  programId?: Hex
+  programId: Hex
   stateIndex: bigint
   freezeBlock: bigint
   weight: bigint
@@ -76,68 +73,13 @@ const fixtureSource = ({
   }
 }
 
-/** The cross-language A/B/C production fixture used by research, Rust, Solidity, and indexer. */
+/** The frozen mixed standard/weighted fixture shared with Rust, SP1, Solidity, and indexer. */
 export const compositionGoldenFixture = (): CompositionConfig => ({
   chainId: 10n,
   captureBlock: 1_000_000n,
   scopeHash: DEFAULT_COMPOSITION_SCOPE,
-  paramsVersion: 1,
-  admittedProgramId: compositionFixtureProgramId,
-  outputPool: 1_000_000n,
-  bounds: V1_COMPOSITION_BOUNDS,
-  sources: [
-    fixtureSource({
-      idByte: 'aa',
-      snapshotByte: 'a1',
-      familyByte: 'f1',
-      stateIndex: 7n,
-      freezeBlock: 999_900n,
-      weight: 333_000_000_000_000_000n,
-      entries: [
-        ['01', 369_963_739_927_479_854_959_709n],
-        ['02', 314_467_628_935_257_870_515_742n],
-        ['03', 315_568_631_137_262_274_524_549n],
-      ],
-    }),
-    fixtureSource({
-      idByte: 'bb',
-      snapshotByte: 'b1',
-      familyByte: 'f2',
-      stateIndex: 12n,
-      freezeBlock: 999_500n,
-      weight: 333_000_000_000_000_000n,
-      entries: [
-        ['02', 50n],
-        ['04', 30n],
-        ['05', 20n],
-      ],
-    }),
-    fixtureSource({
-      idByte: 'cc',
-      snapshotByte: 'c1',
-      familyByte: 'f3',
-      stateIndex: 3n,
-      freezeBlock: 999_999n,
-      weight: 334_000_000_000_000_000n,
-      entries: [
-        ['01', 1n],
-        ['05', 1n],
-        ['06', 2n],
-        ['07', 3n],
-      ],
-    }),
-  ],
-})
-
-/** The frozen mixed standard/weighted V2 fixture shared with Rust, SP1, Solidity, and indexer. */
-export const compositionMixedGoldenFixture = (): CompositionConfig => ({
-  chainId: 10n,
-  captureBlock: 1_000_000n,
-  scopeHash: DEFAULT_COMPOSITION_SCOPE,
-  paramsVersion: 2,
-  admittedProgramId: null,
   outputPool: 1_000n,
-  bounds: V1_COMPOSITION_BOUNDS,
+  bounds: MAX_COMPOSITION_BOUNDS,
   sources: [
     fixtureSource({
       idByte: 'aa',

@@ -28,7 +28,7 @@ import {
 const checkedIn = () =>
   JSON.parse(
     readFileSync(
-      new URL('../../tests/golden/trust-compose-v2.json', import.meta.url),
+      new URL('../../tests/golden/trust-compose.json', import.meta.url),
       'utf8'
     )
   )
@@ -46,8 +46,9 @@ test('mixed production vector is current', () => {
   )
 })
 
-// The decision record's independently calculated commitments, pinned literally
-// so a drifting shared helper cannot silently regenerate both sides.
+// The decision record's independently calculated commitments, re-derived with
+// version word 1 under the 2026-09-01 single-generation ruling and pinned
+// literally so a drifting shared helper cannot silently regenerate both sides.
 test('mixed vector matches the decision-record commitments byte for byte', () => {
   const generated = productionGoldenV2()
   assert.equal(
@@ -78,15 +79,15 @@ test('mixed vector matches the decision-record commitments byte for byte', () =>
   )
   assert.equal(
     generated.policyManifest.sha256,
-    '0x0395bec4154c5bc38dc80f47ed4372c3e5cc76e3c4db4d1434105bcb247b0728'
+    '0x5f1c94151e0cd9f431712aa583873a3c04e50dd2a60ea31f86209b4de63f5114'
   )
   assert.equal(
     generated.capture.manifestSha256,
-    '0xe9993e1104477f854e738ad059589e6d44deac19b4a757b9ba6f7332fb82d2f6'
+    '0x2a869abed59cc89efc3a46b4f10915a07411076bc989ff3fcd73725903f53015'
   )
   assert.equal(
     generated.params.paramsHash,
-    '0x24f4ced83ce995541c6cbbeb9ce5c93e4c18ad4020af26b374f9965302125f22'
+    '0xcd38f4bc0eab03d04fa0737c58ae999ad76d7147a45c4180467076cd5bcb1bb7'
   )
   assert.equal(
     generated.output.root,
@@ -94,7 +95,7 @@ test('mixed vector matches the decision-record commitments byte for byte', () =>
   )
   assert.equal(
     generated.journal.digest,
-    '0xdc5d9209f6b2beba3eb674ba89030cb11c83905bc12ce87a3b0b4d418deadd32'
+    '0x5ae5199892ecae427e549c3fa1abe80a38bf4126d20372456cbd766ddf524641'
   )
   assert.deepEqual(generated.sourceQuotas, [
     { sourceId: `0x${'aa'.repeat(32)}`, quota: '400' },

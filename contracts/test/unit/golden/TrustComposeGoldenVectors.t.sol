@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
+import {TrustComposeValidator} from "src/params/TrustComposeValidator.sol";
 
 contract TrustComposeParamsCodecHarness {
     function hash(TrustComposeParamsCodec.Params calldata params) external pure returns (bytes32) {
@@ -13,7 +14,8 @@ contract TrustComposeParamsCodecHarness {
     }
 }
 
-/// @notice Independent Solidity byte lock for `trust-compose` V1 params, capture, output, and journal.
+/// @notice Independent Solidity byte lock for `trust-compose` params, capture, output, journal,
+///         and the closed source compatibility class.
 contract TrustComposeGoldenVectorsTest is Test {
     using stdJson for string;
 
@@ -29,43 +31,80 @@ contract TrustComposeGoldenVectorsTest is Test {
         return vm.parseUint(json.readString(path));
     }
 
+    function test_CompatibilityClassAndAdmittedPairs() public view {
+        assertEq(
+            TrustComposeValidator.SOURCE_COMPATIBILITY_CLASS, json.readBytes32(".constants.sourceCompatibilityClass")
+        );
+        assertEq(TrustComposeValidator.SOURCE_COMPATIBILITY_CLASS, TrustComposeValidator.sourceCompatibilityClass());
+        assertEq(
+            TrustComposeValidator.admittedSourceOutputDomain(TrustComposeValidator.TRUST_GRAPH_PROGRAM_ID),
+            json.readBytes32(".constants.admittedPairs[0].sourceOutputDomain")
+        );
+        assertEq(
+            TrustComposeValidator.TRUST_GRAPH_PROGRAM_ID, json.readBytes32(".constants.admittedPairs[0].programId")
+        );
+        assertEq(
+            TrustComposeValidator.admittedSourceOutputDomain(TrustComposeValidator.WEIGHTED_TRUST_GRAPH_PROGRAM_ID),
+            json.readBytes32(".constants.admittedPairs[1].sourceOutputDomain")
+        );
+        assertEq(
+            TrustComposeValidator.WEIGHTED_TRUST_GRAPH_PROGRAM_ID,
+            json.readBytes32(".constants.admittedPairs[1].programId")
+        );
+        // Nothing else is admitted — not the composition program, not an unknown program.
+        assertEq(TrustComposeValidator.admittedSourceOutputDomain(keccak256("trust-compose")), bytes32(0));
+        assertEq(TrustComposeValidator.admittedSourceOutputDomain(keccak256("contributions")), bytes32(0));
+    }
+
     function test_PolicyManifestLeavesRootAndDigest() public view {
         bytes memory manifest = json.readBytes(".policyManifest.encoded");
-        assertEq(manifest.length, 15 + 3 * 133);
+        assertEq(manifest.length, 15 + 2 * 165);
         assertEq(bytes4(uint32(_readUint(manifest, 0, 4))), bytes4("TGCP"));
         assertEq(_readUint(manifest, 4, 2), 1);
         assertEq(_readUint(manifest, 6, 8), 10);
-        assertEq(_readUint(manifest, 14, 1), 3);
+        assertEq(_readUint(manifest, 14, 1), 2);
         assertEq(sha256(manifest), json.readBytes32(".policyManifest.sha256"));
 
-        bytes32[] memory leaves = new bytes32[](3);
-        for (uint256 i; i < 3; ++i) {
-            uint256 offset = 15 + i * 133;
+        bytes32[] memory leaves = new bytes32[](2);
+        for (uint256 i; i < 2; ++i) {
+            uint256 offset = 15 + i * 165;
             leaves[i] = keccak256(
                 abi.encode(
                     bytes32(_readUint(manifest, offset, 32)),
                     address(uint160(_readUint(manifest, offset + 32, 20))),
                     bytes32(_readUint(manifest, offset + 52, 32)),
                     bytes32(_readUint(manifest, offset + 84, 32)),
-                    uint64(_readUint(manifest, offset + 116, 8)),
-                    uint64(_readUint(manifest, offset + 124, 8)),
-                    uint8(_readUint(manifest, offset + 132, 1))
+                    bytes32(_readUint(manifest, offset + 116, 32)),
+                    uint64(_readUint(manifest, offset + 148, 8)),
+                    uint64(_readUint(manifest, offset + 156, 8)),
+                    uint8(_readUint(manifest, offset + 164, 1))
                 )
             );
             assertEq(leaves[i], json.readBytes32(string.concat(".policyManifest.leaves[", vm.toString(i), "]")));
         }
-        assertEq(_hashPair(_hashPair(leaves[0], leaves[1]), leaves[2]), json.readBytes32(".policyManifest.root"));
+        assertEq(_hashPair(leaves[0], leaves[1]), json.readBytes32(".policyManifest.root"));
     }
 
-    function test_CapturedManifestIsExactResearchCommitment() public view {
+    function test_CapturedManifestCarriesRealProgramsAndDomains() public view {
         bytes memory manifest = json.readBytes(".capture.manifest");
-        assertEq(manifest.length, 23 + 3 * 261);
+        assertEq(manifest.length, 23 + 2 * 293);
         assertEq(bytes4(uint32(_readUint(manifest, 0, 4))), bytes4("TGCM"));
         assertEq(_readUint(manifest, 4, 2), 1);
         assertEq(_readUint(manifest, 6, 8), 10);
         assertEq(_readUint(manifest, 14, 8), 1_000_000);
-        assertEq(_readUint(manifest, 22, 1), 3);
+        assertEq(_readUint(manifest, 22, 1), 2);
         assertEq(sha256(manifest), json.readBytes32(".capture.manifestSha256"));
+
+        // Record 0 is the standard source; record 1 the weighted source. Each carries its real
+        // program and its real output domain, never the class and never each other's identity.
+        assertEq(bytes32(_readUint(manifest, 23 + 84, 32)), TrustComposeValidator.TRUST_GRAPH_PROGRAM_ID);
+        assertEq(bytes32(_readUint(manifest, 23 + 116, 32)), TrustComposeValidator.TRUST_GRAPH_OUTPUT_DOMAIN);
+        assertEq(
+            bytes32(_readUint(manifest, 23 + 293 + 84, 32)), TrustComposeValidator.WEIGHTED_TRUST_GRAPH_PROGRAM_ID
+        );
+        assertEq(
+            bytes32(_readUint(manifest, 23 + 293 + 116, 32)), TrustComposeValidator.WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN
+        );
     }
 
     function test_ParamsEncodingAndHash() public view {
@@ -76,7 +115,7 @@ contract TrustComposeGoldenVectorsTest is Test {
             json.readBytes32(".params.identityDomain"),
             json.readBytes32(".params.outputKind"),
             json.readBytes32(".params.outputDomain"),
-            json.readBytes32(".params.admittedProgramId"),
+            json.readBytes32(".params.sourceCompatibilityClass"),
             uint64(_uintString(".params.weightScale")),
             uint128(_uintString(".params.outputPool")),
             json.readBytes32(".params.sourcePolicyRoot"),
@@ -109,7 +148,7 @@ contract TrustComposeGoldenVectorsTest is Test {
         assertTrue(
             MerkleProof.verify(json.readBytes32Array(".output.sampleProof"), json.readBytes32(".output.root"), leaf)
         );
-        bytes memory blob = json.readBytes(".output.blob");
+        bytes memory blob = bytes(json.readString(".output.blob"));
         assertEq(sha256(blob), json.readBytes32(".output.blobSha256"));
         assertEq(keccak256(bytes(json.readString(".output.cid"))), json.readBytes32(".output.cidDigest"));
     }
@@ -144,7 +183,7 @@ contract TrustComposeGoldenVectorsTest is Test {
         p.identityDomain = json.readBytes32(".params.identityDomain");
         p.outputKind = json.readBytes32(".params.outputKind");
         p.outputDomain = json.readBytes32(".params.outputDomain");
-        p.admittedProgramId = json.readBytes32(".params.admittedProgramId");
+        p.sourceCompatibilityClass = json.readBytes32(".params.sourceCompatibilityClass");
         p.weightScale = uint64(_uintString(".params.weightScale"));
         p.outputPool = uint128(_uintString(".params.outputPool"));
         p.sourcePolicyRoot = json.readBytes32(".params.sourcePolicyRoot");

@@ -118,9 +118,6 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // makes every tick long enough to look like a wedge from outside.
     let guests = guest_vkeys()?;
     verify_release_guest_identities(cfg.release_program_identities(), &guests)?;
-    // The registry program `trust-compose` is shared by two guest generations; the second one is
-    // keyed here by its own label because the map above is keyed by program.
-    let (compose_v2_vkey, compose_v2_elf) = composition_v2_guest_identity()?;
     logger.event(
         "vkeys",
         json!(guests
@@ -128,18 +125,10 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
             .map(|(p, (vkey, elf))| {
                 (p.name(), json!({ "vkey": format!("{vkey:#x}"), "elf_sha256": elf }))
             })
-            .chain(std::iter::once((
-                "trust-compose-v2",
-                json!({
-                    "vkey": format!("{compose_v2_vkey:#x}"),
-                    "elf_sha256": compose_v2_elf
-                }),
-            )))
             .collect::<BTreeMap<_, _>>()),
     );
     let vkeys = GuestKeys {
         by_program: guests.iter().map(|(program, (vkey, _))| (*program, *vkey)).collect(),
-        composition_v2: compose_v2_vkey,
     };
 
     // Which executable each input reconstruction will run, decided once and said out loud. A
@@ -632,7 +621,7 @@ fn tick(
             // The vkey check, per instance. `expected_zk_verifier` in the state is what makes
             // `plan` produce a `VerifierRotated` hold, so it has to reflect reality rather than
             // being copied from the chain read.
-            let ours = vkeys.for_entry(*program, entry);
+            let ours = vkeys.for_program(*program);
             let state = match build_state(
                 rpc,
                 cfg,
@@ -1903,31 +1892,15 @@ fn now() -> u64 {
 /// a container against the published release table is actually asking. Both are derived here,
 /// once, at startup — and the image ships the same digests at `/etc/trustgraph/elf-digests.txt`
 /// so the question can also be answered without starting anything.
-/// The vkey routing table: one per program, plus the second composition generation that shares
-/// the `trust-compose` registry program and is selected by an instance's typed params version.
+/// The vkey routing table: one per program.
 struct GuestKeys {
     by_program: BTreeMap<Program, B256>,
-    composition_v2: B256,
 }
 
 impl GuestKeys {
-    fn for_entry(&self, program: Program, entry: &CatalogEntry) -> Option<B256> {
-        if program == Program::Composition
-            && entry.composition_params.as_ref().is_some_and(|params| params.version() == 2)
-        {
-            return Some(self.composition_v2);
-        }
+    fn for_program(&self, program: Program) -> Option<B256> {
         self.by_program.get(&program).copied()
     }
-}
-
-fn composition_v2_guest_identity() -> Result<(B256, String)> {
-    let elf = trustgraph_prover::programs::composition_v2::elf();
-    let elf_sha256 = trustgraph_prover::common::elf_sha256(&elf);
-    let s = trustgraph_prover::common::vkey(elf)?;
-    let b = hex::decode(s.trim().trim_start_matches("0x"))?;
-    anyhow::ensure!(b.len() == 32, "vkey for trust-compose-v2 was not 32 bytes");
-    Ok((B256::from_slice(&b), elf_sha256))
 }
 
 fn guest_vkeys() -> Result<BTreeMap<Program, (B256, String)>> {

@@ -4,7 +4,7 @@ import {
   COMPOSITION_PROGRAM_ID,
   type CompositionConfig,
   type CompositionPreview,
-  V1_COMPOSITION_BOUNDS,
+  MAX_COMPOSITION_BOUNDS,
   WEIGHT_SCALE,
   admittedSourceOutputDomain,
   canonicalCompositionBlob,
@@ -170,25 +170,16 @@ export const compositionPreflight = ({
         })
       )
     }
-    const outsideAdmission =
-      config.paramsVersion === 1
-        ? config.admittedProgramId === null ||
-          !sameHex(source.programId, config.admittedProgramId)
-        : admittedSourceOutputDomain(source.programId) === null
-    if (outsideAdmission) {
+    if (admittedSourceOutputDomain(source.programId) === null) {
       issues.push(
         issue({
           code: 'wrong-program',
           level: 'error',
           title: `${source.name} has incompatible score semantics`,
           detail:
-            config.paramsVersion === 1
-              ? 'This V1 policy admits one authenticated source program; address width alone is not compatibility.'
-              : 'The composition admits standard and weighted TrustGraph allocation outputs and nothing else; address width alone is not compatibility.',
+            'The composition admits standard and weighted TrustGraph allocation outputs and nothing else; address width alone is not compatibility.',
           action:
-            config.paramsVersion === 1
-              ? 'Choose sources with the same program and allocation output semantics.'
-              : 'Choose standard or weighted TrustGraph sources with allocation output semantics.',
+            'Choose standard or weighted TrustGraph sources with allocation output semantics.',
         })
       )
     }
@@ -470,13 +461,13 @@ export const compositionPreflight = ({
   }
 
   // A malformed caller-supplied bound should remain visible even before the exact core runs.
-  for (const [key, maximum] of Object.entries(V1_COMPOSITION_BOUNDS)) {
+  for (const [key, maximum] of Object.entries(MAX_COMPOSITION_BOUNDS)) {
     if (config.bounds[key as keyof typeof config.bounds] > maximum) {
       issues.push(
         issue({
           code: 'entry-cap',
           level: 'error',
-          title: `${key} exceeds the V1 ceiling`,
+          title: `${key} exceeds the protocol ceiling`,
           detail: `Configured ${config.bounds[key as keyof typeof config.bounds]}; maximum ${maximum}.`,
           action: 'Use the audited V1 cap or a stricter value.',
         })

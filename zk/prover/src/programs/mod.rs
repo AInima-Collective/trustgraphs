@@ -3,7 +3,6 @@
 
 pub mod atproto_conformance;
 pub mod composition;
-pub mod composition_v2;
 pub mod contributions;
 pub mod hypercerts;
 pub mod nostr_workspace;
@@ -20,7 +19,6 @@ pub fn all() -> Vec<(&'static str, sp1_sdk::Elf)> {
         ("trust-graph", trust_graph::elf()),
         ("trust-graph-weighted", weighted::elf()),
         ("trust-compose", composition::elf()),
-        ("trust-compose-v2", composition_v2::elf()),
         ("signer-sync", signer::elf()),
         ("contributions", contributions::elf()),
         ("hypercerts", hypercerts::elf()),

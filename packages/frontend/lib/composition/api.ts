@@ -459,10 +459,8 @@ export type CompositionInstance = {
   distributor: Address | null
   epochLength: string
   programVKey: Hex
-  /** The trust-compose params generation (1 = single admitted program, 2 = closed class). */
-  paramsVersion: number
-  /** V2 only: the committed source compatibility class. */
-  sourceCompatibilityClass: Hex | null
+  /** The committed closed source compatibility class. */
+  sourceCompatibilityClass: Hex
   currentVersion: string
   currentParamsHash: Hex
   params: Record<string, unknown>
@@ -499,8 +497,8 @@ export type CompositionSourceEvidence = {
   snapshot: Address
   familyId: Hex
   programId: Hex
-  /** The source's real committed output domain; null on V1 epochs, which do not commit one. */
-  sourceOutputDomain: Hex | null
+  /** The source's real committed output domain. */
+  sourceOutputDomain: Hex
   adapter: Address
   deploymentProvenance: Hex
   stateIndex: string

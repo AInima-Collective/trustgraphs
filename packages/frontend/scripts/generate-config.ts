@@ -246,28 +246,6 @@ try {
       process.env.GOVERNED_COMPOSE_FACTORY_ADDRESS ||
       '',
   }
-  // The V2 (mixed standard/weighted source) trust-compose generation. Additive like V1:
-  // absent addresses keep creation on the newest generation that is actually deployed.
-  configOutput.trustComposeV2 = {
-    factory:
-      deployment.trustComposeFactoryV2?.trust_compose_factory ||
-      process.env.TRUST_COMPOSE_FACTORY_V2_ADDRESS ||
-      '',
-    governedFactory:
-      deployment.governedComposeFactoryV2?.governed_compose_factory ||
-      process.env.GOVERNED_COMPOSE_FACTORY_V2_ADDRESS ||
-      '',
-  }
-  configOutput.fastTrustComposeV2 = {
-    factory:
-      deployment.trustComposeFactoryV2Fast?.trust_compose_factory ||
-      process.env.TRUST_COMPOSE_FACTORY_V2_FAST_ADDRESS ||
-      '',
-    governedFactory:
-      deployment.governedComposeFactoryV2Fast?.governed_compose_factory ||
-      process.env.GOVERNED_COMPOSE_FACTORY_V2_FAST_ADDRESS ||
-      '',
-  }
   // The fast trust-compose generation, same rules as `fastWeightedFactory`.
   configOutput.fastTrustCompose = {
     factory:

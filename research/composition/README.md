@@ -1,16 +1,20 @@
-# Trust composition V1
+# Trust composition
 
-This directory contains both the accepted Phase-0 decision evidence from issue #36 and the
-independent TypeScript oracle for the production core/guest boundary implemented in issue #63.
-Issue #64 adds the atomic onchain capture, authenticated source provenance, timelocked policy
-lifecycle, and factory/deployment wiring described below. Operator/indexer integration and product
-UI remain separate child issues.
+This directory contains the accepted Phase-0 decision evidence from issue #36, the
+independent TypeScript oracle for the production core/guest boundary implemented in issue #63,
+and the mixed standard/weighted reference (`reference-v2.ts` / `production-v2.ts`, historical
+file names) whose output is the frozen `tests/golden/trust-compose.json` vector. Issue #64 added
+the atomic onchain capture, authenticated source provenance, timelocked policy lifecycle, and
+factory/deployment wiring described below.
 
-The side-by-side design for mixing standard and weighted TrustGraph sources is frozen in
-[`MIXED_COMPOSITION_V2.md`](../MIXED_COMPOSITION_V2.md). It preserves every V1 byte and deployment
-surface described here; no V2 production implementation lives in this directory yet.
+The mixed-source design record is [`MIXED_COMPOSITION_V2.md`](../MIXED_COMPOSITION_V2.md)
+(historical file name). Per the 2026-09-01 ruling there is ONE trust-compose generation: the
+mixed-class semantics are the program, the earlier single-program generation was deleted rather
+than kept beside it, and the encodings carry version word 1. The `reference.ts`/`production.ts`
+modules preserved here are the original single-program research evidence plus shared primitives;
+they are not a shipped format.
 
-## Production V1 implementation
+## Production implementation
 
 The implementation deliberately isolates the new program from every legacy guest:
 

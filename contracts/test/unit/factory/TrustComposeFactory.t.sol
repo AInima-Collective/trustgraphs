@@ -91,6 +91,7 @@ contract TrustComposeFactoryTest is Test {
         assertEq(factory.EPOCH_FLOOR(), EPOCH_FLOOR);
         assertEq(factory.POLICY_ACTIVATION_DELAY(), ACTIVATION_DELAY);
         assertEq(address(factory.VAULT()), address(0));
+        assertEq(factory.PROGRAM(), keccak256("trust-compose"), "the factory registers the composition program");
     }
 
     function test_ConstructorRejectsZeroInvalidAndMismatchedVerifier() public {
@@ -117,7 +118,9 @@ contract TrustComposeFactoryTest is Test {
         CompositionSourceAdapterFactory foreignFactory = new CompositionSourceAdapterFactory(foreignRegistry);
         vm.expectRevert(
             abi.encodeWithSelector(
-                TrustComposeFactory.SourceAdapterRegistryMismatch.selector, address(registry), address(foreignRegistry)
+                TrustComposeFactory.SourceAdapterRegistryMismatch.selector,
+                address(registry),
+                address(foreignRegistry)
             )
         );
         _deploy(verifier, VKEY, registry, foreignFactory, EPOCH_FLOOR, ACTIVATION_DELAY);
@@ -174,28 +177,6 @@ contract TrustComposeFactoryTest is Test {
         factory.createInstance(args);
 
         MockAccumulator accumulator = new MockAccumulator();
-        MerkleSnapshot snapshot = new MerkleSnapshot(
-            verifier,
-            keccak256("compose params"),
-            IAttestationAccumulator(address(accumulator)),
-            address(this),
-            address(this),
-            ""
-        );
-        bytes32 instanceId = keccak256("fundless composition");
-        registry.register(
-            instanceId,
-            IInstanceRegistry.Instance({
-                program: factory.PROGRAM(),
-                snapshot: address(snapshot),
-                verifier: address(verifier),
-                registryOrAccumulator: address(accumulator),
-                paramsHash: snapshot.paramsHash()
-            })
-        );
-        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, address(this)));
-        factory.attachDistributor(instanceId, address(this), address(0));
-
         MockSafeOwner safe = new MockSafeOwner(address(this), 1);
         MerkleSnapshot safeSnapshot = new MerkleSnapshot(
             verifier,

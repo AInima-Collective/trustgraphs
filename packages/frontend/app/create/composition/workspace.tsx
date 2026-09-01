@@ -52,7 +52,6 @@ import {
 import {
   compositionAdapterPayload,
   compositionCreateArgs,
-  compositionCreateArgsV2,
   compositionCreatePayload,
   compositionGovernedCreatePayload,
   compositionMetadataDigest,
@@ -62,20 +61,17 @@ import {
   compositionSourceSnapshotAbi,
   compositionVaultAbi,
   governedTrustComposeFactoryAbi,
-  governedTrustComposeFactoryV2Abi,
   trustComposeFactoryAbi,
-  trustComposeFactoryV2Abi,
   trustComposeParamsControllerAbi,
 } from '@/lib/composition/contracts'
 import {
   COMPOSITION_OUTPUT_KIND,
   type CompositionConfig,
-  type CompositionParamsVersion,
   type CompositionPreview,
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
   MAX_SOURCE_AGE_BLOCKS,
-  V1_COMPOSITION_BOUNDS,
+  MAX_COMPOSITION_BOUNDS,
   compositionSimplex,
   computeCompositionPreview,
   exactEqualWeights,
@@ -90,9 +86,7 @@ import { anchorCompositionPreview } from '@/lib/composition/workflow'
 import {
   APIS,
   FAST_TRUST_COMPOSE_CONFIG,
-  FAST_TRUST_COMPOSE_V2_CONFIG,
   TRUST_COMPOSE_CONFIG,
-  TRUST_COMPOSE_V2_CONFIG,
 } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
@@ -139,23 +133,15 @@ const factoryPair = (
     ? { factory, governedFactory }
     : null
 }
-// New compositions are created through the newest deployed generation, preferring V2 — the mixed
-// standard/weighted class — and preferring the fast (EPOCH_FLOOR = 1) pair inside a generation.
-// Pairs only: mixing generations would read the floor from one factory and create through a
-// wrapper that enforces another. Rotation stays instance-scoped, so existing compositions keep
-// their own recorded generation.
-const v2Generation =
-  factoryPair(FAST_TRUST_COMPOSE_V2_CONFIG) ??
-  factoryPair(TRUST_COMPOSE_V2_CONFIG)
-const v1Generation =
+// New compositions prefer the fast (EPOCH_FLOOR = 1) pair, whole pairs only: mixing pairs would
+// read the floor from one factory and create through a wrapper that enforces another.
+const selectedPair =
   factoryPair(FAST_TRUST_COMPOSE_CONFIG) ?? factoryPair(TRUST_COMPOSE_CONFIG)
-const selectedGeneration = v2Generation ?? v1Generation
-const creationParamsVersion: CompositionParamsVersion = v2Generation ? 2 : 1
-const factory = (selectedGeneration?.factory ??
+const factory = (selectedPair?.factory ??
   TRUST_COMPOSE_CONFIG?.factory ??
   '') as Address
 const factoryAvailable = isAddress(factory, { strict: false })
-const governedFactory = (selectedGeneration?.governedFactory ?? '') as Address
+const governedFactory = (selectedPair?.governedFactory ?? '') as Address
 const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {
@@ -544,23 +530,12 @@ export const CompositionWorkspace = ({
     try {
       if (!publicClient) throw new Error('Target-chain RPC is unavailable.')
       const captureBlock = await publicClient.getBlockNumber()
-      const paramsVersion: CompositionParamsVersion =
-        mode === 'rotate'
-          ? instance?.paramsVersion === 2
-            ? 2
-            : 1
-          : creationParamsVersion
       const next: CompositionConfig = {
         chainId: BigInt(targetChainId),
         captureBlock,
         scopeHash: DEFAULT_COMPOSITION_SCOPE,
-        paramsVersion,
-        admittedProgramId:
-          paramsVersion === 1
-            ? (sources[0]?.programId ?? (`0x${'00'.repeat(32)}` as Hex))
-            : null,
         outputPool: BigInt(outputPool),
-        bounds: V1_COMPOSITION_BOUNDS,
+        bounds: MAX_COMPOSITION_BOUNDS,
         sources: structuredClone(sources),
       }
       const exact = computeCompositionPreview(next)
@@ -958,53 +933,15 @@ export const CompositionWorkspace = ({
         if (withGovernance) {
           if (!initialPolicy)
             throw new Error('Fix the refresh prepayment fields first.')
-          if (previewConfig.paramsVersion === 2) {
-            await publicClient.simulateContract({
-              account: address,
-              address: governedFactory,
-              abi: governedTrustComposeFactoryV2Abi,
-              functionName: 'createGovernedInstance',
-              args: [
-                compositionCreateArgsV2(
-                  exactCreateFields,
-                  previewConfig,
-                  preview
-                ),
-                initialPolicy,
-                DISABLED_SIGNER_SYNC,
-              ],
-              ...(prepayWei > 0n ? { value: prepayWei } : {}),
-            })
-          } else {
-            await publicClient.simulateContract({
-              account: address,
-              address: governedFactory,
-              abi: governedTrustComposeFactoryAbi,
-              functionName: 'createGovernedInstance',
-              args: [
-                compositionCreateArgs(
-                  exactCreateFields,
-                  previewConfig,
-                  preview
-                ),
-                initialPolicy,
-                DISABLED_SIGNER_SYNC,
-              ],
-              ...(prepayWei > 0n ? { value: prepayWei } : {}),
-            })
-          }
-        } else if (previewConfig.paramsVersion === 2) {
           await publicClient.simulateContract({
             account: address,
-            address: factory,
-            abi: trustComposeFactoryV2Abi,
-            functionName: 'createInstance',
+            address: governedFactory,
+            abi: governedTrustComposeFactoryAbi,
+            functionName: 'createGovernedInstance',
             args: [
-              compositionCreateArgsV2(
-                exactCreateFields,
-                previewConfig,
-                preview
-              ),
+              compositionCreateArgs(exactCreateFields, previewConfig, preview),
+              initialPolicy,
+              DISABLED_SIGNER_SYNC,
             ],
             ...(prepayWei > 0n ? { value: prepayWei } : {}),
           })
@@ -1060,27 +997,14 @@ export const CompositionWorkspace = ({
         )
       }
       if (mode === 'create') {
-        const composeV2 = previewConfig.paramsVersion === 2
         const [receipt] = await txToast({
           tx: withGovernance
             ? ({
                 address: governedFactory,
-                abi: composeV2
-                  ? governedTrustComposeFactoryV2Abi
-                  : governedTrustComposeFactoryAbi,
+                abi: governedTrustComposeFactoryAbi,
                 functionName: 'createGovernedInstance',
                 args: [
-                  composeV2
-                    ? compositionCreateArgsV2(
-                        createFields,
-                        previewConfig,
-                        preview
-                      )
-                    : compositionCreateArgs(
-                        createFields,
-                        previewConfig,
-                        preview
-                      ),
+                  compositionCreateArgs(createFields, previewConfig, preview),
                   initialPolicy!,
                   DISABLED_SIGNER_SYNC,
                 ],
@@ -1088,22 +1012,10 @@ export const CompositionWorkspace = ({
               } as any)
             : ({
                 address: factory,
-                abi: composeV2
-                  ? trustComposeFactoryV2Abi
-                  : trustComposeFactoryAbi,
+                abi: trustComposeFactoryAbi,
                 functionName: 'createInstance',
                 args: [
-                  composeV2
-                    ? compositionCreateArgsV2(
-                        createFields,
-                        previewConfig,
-                        preview
-                      )
-                    : compositionCreateArgs(
-                        createFields,
-                        previewConfig,
-                        preview
-                      ),
+                  compositionCreateArgs(createFields, previewConfig, preview),
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
               } as any),

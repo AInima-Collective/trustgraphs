@@ -235,8 +235,8 @@ export const compositionSource = offchainSchema.table(
     snapshot: t.text().notNull(),
     familyId: t.text().notNull(),
     programId: t.text().notNull(),
-    /** The source's real committed output domain; null on V1 records, which carry none. */
-    sourceOutputDomain: t.text(),
+    /** The source's real committed output domain, derived from its program. */
+    sourceOutputDomain: t.text().notNull(),
     adapter: t.text().notNull(),
     deploymentProvenance: t.text().notNull(),
     stateIndex: t.bigint({ mode: 'bigint' }).notNull(),

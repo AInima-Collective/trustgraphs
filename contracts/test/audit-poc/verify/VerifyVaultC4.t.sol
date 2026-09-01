@@ -357,6 +357,7 @@ contract VerifyVaultC4 is Test {
                     adapter.snapshot(),
                     adapter.familyId(),
                     SOURCE_PROGRAM,
+                    keccak256("trustgraphs.output.trust-graph-account.v1"),
                     uint64(5e17),
                     uint64(5_000),
                     uint8(1)

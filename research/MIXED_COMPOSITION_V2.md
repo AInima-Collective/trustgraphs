@@ -1,7 +1,20 @@
 # Mixed TrustGraph composition V2
 
-Status: accepted implementation decision for issue #105, 2026-08-31. Production implementation
-has not started.
+Status: accepted implementation decision for issue #105, 2026-08-31; AMENDED and IMPLEMENTED
+2026-09-01. Jake's ruling on 2026-09-01 replaced this record's central deployment mandate: there
+is NO parallel V2 generation and NO backwards compatibility. The mixed-class semantics defined
+here are the ONLY `trust-compose` program — the earlier single-admitted-program generation was
+deleted from the tree entirely (contracts, guest, operator lane, indexer decode, frontend path),
+the testnet gets a fresh redeploy, and nothing carries a "V2" name. Concretely, relative to the
+sections below: the params version word is 1 (not 2), the TGCP/TGCM manifest version words are 1,
+every contract/crate/module keeps the plain un-suffixed name, and the "beside an untouched V1"
+coexistence sections are historical context only. The frozen mixed vector was re-derived with
+version word 1 into `tests/golden/trust-compose.json` and is byte-locked across Rust, SP1,
+Solidity, indexer, and frontend. Remaining before production: the reproducible release build must
+publish the new `trust-compose` vkey row (`SP1_COMPOSITION_PROGRAM_VKEY` is never pinned from a
+local build — see [`operations/addresses-and-vkeys.md`](./operations/addresses-and-vkeys.md)), a
+fresh verifier + factory deployment per chain, and the cold-stack walkthrough in section 10
+item 3.
 
 This record defines how one composition may blend standard `trust-graph` and
 `trust-graph-weighted` outputs without relabelling either source. It extends the final-distribution
@@ -337,7 +350,13 @@ This section assigns work; it does not authorize compatibility shortcuts between
 
 ## 9. Frozen mixed golden fixtures
 
-The V2 implementation must add an independent TypeScript exporter and checked-in vector consumed by
+> 2026-09-01 amendment: the commitments in this section were derived with version word 2. The
+> shipped vector re-derives them with version word 1 (same sources, weights, quotas, outputs,
+> class, and record layouts; only version-word-dependent hashes differ). The canonical byte
+> source is `tests/golden/trust-compose.json`, and the re-derived pins live in
+> `research/composition/production-v2.test.ts`.
+
+The implementation adds an independent TypeScript exporter and checked-in vector consumed by
 Rust, SP1, Solidity, operator/indexer, and frontend tests. Define `b32(x)` as `0x` followed by byte
 `x` repeated 32 times and `addr(x)` as `0x` followed by byte `x` repeated 20 times. This notation is
 exact, not illustrative.

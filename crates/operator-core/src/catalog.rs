@@ -18,7 +18,6 @@
 
 use alloy_primitives::{Address, B256};
 use composition_core::Params as CompositionParams;
-use composition_core_v2::Params as CompositionParamsV2;
 use contributions_core::Params as ContributionsParams;
 use pagerank_core::{encode, Params, SelectionParams};
 use weighted_prior_core::Params as WeightedParams;
@@ -152,62 +151,13 @@ pub struct WeightedControllerParams {
     pub params: WeightedParams,
 }
 
-/// One composition params tuple, carrying its own generation. The registry program ID is shared
-/// by both trust-compose generations, so the tuple's `version` word — not the program — selects
-/// the codec, guest, and verifier key. Serialization is untagged: the V1 tuple's
-/// `admittedProgramId` and the V2 tuple's `sourceCompatibilityClass` fields make the two shapes
-/// unambiguous.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-pub enum VersionedCompositionParams {
-    V1(CompositionParams),
-    V2(CompositionParamsV2),
-}
-
-impl VersionedCompositionParams {
-    pub fn version(&self) -> u32 {
-        match self {
-            Self::V1(_) => 1,
-            Self::V2(_) => 2,
-        }
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        match self {
-            Self::V1(params) => params.validate().map_err(|error| error.to_string()),
-            Self::V2(params) => params.validate().map_err(|error| error.to_string()),
-        }
-    }
-
-    pub fn params_hash(&self) -> B256 {
-        match self {
-            Self::V1(params) => composition_core::codec::params_hash(params),
-            Self::V2(params) => composition_core_v2::codec::params_hash(params),
-        }
-    }
-
-    pub fn accumulator(&self) -> Address {
-        match self {
-            Self::V1(params) => params.accumulator,
-            Self::V2(params) => params.accumulator,
-        }
-    }
-
-    pub fn chain_id(&self) -> u64 {
-        match self {
-            Self::V1(params) => params.chain_id,
-            Self::V2(params) => params.chain_id,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompositionControllerParams {
     pub instance_id: B256,
     pub snapshot: Address,
     pub version: u64,
     pub current_params_hash: B256,
-    pub params: VersionedCompositionParams,
+    pub params: CompositionParams,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -241,8 +191,8 @@ pub struct CatalogEntry {
     pub contributions_params: Option<ContributionsParams>,
     /// Complete frozen V1 tuple for the isolated weighted-prior program.
     pub weighted_params: Option<WeightedParams>,
-    /// Complete typed tuple for the isolated composition program, either generation.
-    pub composition_params: Option<VersionedCompositionParams>,
+    /// Complete typed tuple for the isolated composition program.
+    pub composition_params: Option<CompositionParams>,
     /// The hash our reconstruction produces. Equal to the snapshot's, or this would be a skip.
     pub reconstructed_params_hash: B256,
     /// Typed control metadata. Both are absent for legacy and manifest instances.
@@ -705,7 +655,7 @@ fn scan_one<R: ChainReader>(
                 "composition controller read failed: {e}"
             )),
         })?;
-        let reconstructed = current.params.params_hash();
+        let reconstructed = composition_core::codec::params_hash(&current.params);
         let snapshot_hash = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
             instance_id: id,
             snapshot: record.snapshot,
@@ -727,10 +677,10 @@ fn scan_one<R: ChainReader>(
                 current.snapshot, record.snapshot
             ));
         }
-        if current.params.accumulator() != record.registry_or_accumulator {
+        if current.params.accumulator != record.registry_or_accumulator {
             disagreements.push(format!(
                 "params accumulator {:#x} != registry accumulator {:#x}",
-                current.params.accumulator(),
+                current.params.accumulator,
                 record.registry_or_accumulator
             ));
         }

@@ -21,6 +21,9 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 /// @title TrustComposeFactory
 /// @notice Isolated one-transaction factory/registry path for the `trust-compose` program.
+///         Registers the same `trust-compose` program as V1 — a differently named composition
+///         program would be invisible to the immutable V1 adapters' nested-composition rejection —
+///         and is distinguished by its typed controller params, verifier, and program key.
 contract TrustComposeFactory is DistributorAttaching {
     struct CreateArgs {
         string name;
@@ -54,8 +57,7 @@ contract TrustComposeFactory is DistributorAttaching {
     );
     event TrustComposeParamsControllerCreated(bytes32 indexed instanceId, address indexed controller);
     event InstancePrepaid(bytes32 indexed instanceId, address indexed from, uint256 amount);
-    /// @notice A fund distributor was attached to an existing instance after creation.
-    ///         `distributorToken` is presentation only, exactly like the creation-time field.
+
     uint256 public constant MAX_NAME_BYTES = 64;
 
     IZkVerifier public immutable VERIFIER;
@@ -68,8 +70,6 @@ contract TrustComposeFactory is DistributorAttaching {
     uint64 public immutable EPOCH_FLOOR;
     uint48 public immutable POLICY_ACTIVATION_DELAY;
 
-    /// @notice The one fund distributor this factory knows per instance: the creation-time one,
-    ///         or the one `attachDistributor` deployed later. Zero means "none yet".
     error ZeroEpochFloor();
     error ZeroActivationDelay();
     error InvalidAdmin();
@@ -137,7 +137,7 @@ contract TrustComposeFactory is DistributorAttaching {
         TrustComposeParamsCodec.Params memory params = args.params;
         TrustComposeValidator.validateCreation(params);
         TrustComposeValidator.Commitment memory policy = TrustComposeValidator.validatePolicyManifest(
-            args.policyManifest, uint64(block.chainid), params.admittedProgramId, params.maxSourceAgeBlocks
+            args.policyManifest, uint64(block.chainid), params.maxSourceAgeBlocks
         );
         address admin = args.admin == address(0) ? msg.sender : args.admin;
         if (admin == address(this)) revert InvalidAdmin();
@@ -226,16 +226,11 @@ contract TrustComposeFactory is DistributorAttaching {
         controller.publishInitialPolicy(args.policyManifest, args.sourceAdapters);
     }
 
-    /// @notice Attach a fund distributor to an instance created without one. Permissionless to
-    ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
-    ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
-    ///         creation-time path: fee 0, `feeRecipient = owner`.
+    /// @notice View twin of `createInstance`'s validation for preflight callers.
     function validateCreation(TrustComposeParamsCodec.Params calldata params, bytes calldata manifest) external view {
         if (block.chainid > type(uint64).max) revert ChainIdTooLarge(block.chainid);
         TrustComposeParamsCodec.Params memory paramsMemory = params;
         TrustComposeValidator.validateCreation(paramsMemory);
-        TrustComposeValidator.validatePolicyManifest(
-            manifest, uint64(block.chainid), paramsMemory.admittedProgramId, paramsMemory.maxSourceAgeBlocks
-        );
+        TrustComposeValidator.validatePolicyManifest(manifest, uint64(block.chainid), paramsMemory.maxSourceAgeBlocks);
     }
 }

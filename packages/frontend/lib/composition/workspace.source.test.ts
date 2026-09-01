@@ -120,9 +120,12 @@ assert.match(
 assert.match(workspace, /cross-type pick keeps the current selection/)
 assert.doesNotMatch(workspace, /Use this score type/)
 assert.doesNotMatch(workspace, /clears the current source/)
-assert.match(workspace, /creationParamsVersion/)
-assert.match(workspace, /trustComposeFactoryV2Abi/)
+// One generation only: no version dispatch anywhere in the creation path, and the
+// frozen tuple's word 6 is the closed compatibility class.
+assert.doesNotMatch(workspace, /paramsVersion/)
+assert.doesNotMatch(workspace, /V2Abi/)
 assert.match(contracts, /sourceCompatibilityClass/)
+assert.doesNotMatch(contracts, /admittedProgramId/)
 assert.doesNotMatch(workspace, /I explicitly acknowledge/)
 assert.match(workspace, /DISABLED_SIGNER_SYNC/)
 

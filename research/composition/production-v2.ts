@@ -212,7 +212,7 @@ const paramsFor = (policy: CompositionPolicyV2): ProductionParamsV2 => {
   const sources = orderedSources(policy)
   const policyManifest = canonicalPolicyManifestV2(policy.chainId, sources)
   return {
-    version: 2,
+    version: 1,
     programId: PROGRAM_ID,
     scopeHash: policy.scopeHash,
     identityDomain: IDENTITY_DOMAIN,
@@ -285,7 +285,7 @@ export const productionGoldenV2 = () => {
   const proof = outputProof(current.result.output, 1)
 
   return bigintStrings({
-    schema: 'trust-compose-v2',
+    schema: 'trust-compose',
     constants: {
       programId: PROGRAM_ID,
       identityDomain: IDENTITY_DOMAIN,

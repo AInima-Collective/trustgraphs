@@ -62,7 +62,6 @@ const GUESTS: &[(&str, bool)] = &[
     ("../trust-graph-program", false),
     ("../weighted-program", false),
     ("../composition-program", false),
-    ("../composition-program-v2", false),
     // This one has always been built `--locked`; a guest whose dependency versions can move under
     // it is a guest whose vkey can move under it.
     ("../nostr-program/program", true),

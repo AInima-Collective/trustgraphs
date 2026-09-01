@@ -124,7 +124,7 @@ export const incompatibleSourceC = (
 })
 
 const basePolicy = (sources: CapturedSourceV2[]): CompositionPolicyV2 => ({
-  version: 2,
+  version: 1,
   chainId: 10n,
   captureBlock: 1_000_000n,
   scopeHash,

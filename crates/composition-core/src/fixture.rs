@@ -1,12 +1,14 @@
-//! Deterministic production/research fixtures used by tests, the prover CLI, and benchmarks.
+//! Deterministic fixtures used by tests, the prover CLI, and benchmarks.
+//! The mixed fixture reproduces the frozen `trust-compose` golden vector.
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 
 use crate::{
-    codec, identity_domain, output_domain, output_kind, program_id, Binding, CapturedManifest,
-    CapturedSource, GuestInput, Params, SourcePreimage, MAX_AGGREGATE_BLOB_BYTES,
-    MAX_AGGREGATE_ENTRIES, MAX_ENTRIES_PER_SOURCE, MAX_SOURCES, MAX_SOURCE_AGE_BLOCKS,
-    MAX_UNION_ACCOUNTS, PARAMS_VERSION, WEIGHT_SCALE,
+    codec, identity_domain, output_domain, output_kind, program_id, source_compatibility_class_v1,
+    trust_graph_output_domain, trust_graph_program_id, weighted_trust_graph_output_domain,
+    weighted_trust_graph_program_id, Binding, CapturedManifest, CapturedSource, GuestInput, Params,
+    SourcePreimage, MAX_AGGREGATE_BLOB_BYTES, MAX_AGGREGATE_ENTRIES, MAX_ENTRIES_PER_SOURCE,
+    MAX_SOURCES, MAX_SOURCE_AGE_BLOCKS, MAX_UNION_ACCOUNTS, PARAMS_VERSION, WEIGHT_SCALE,
 };
 
 fn address(byte: u8) -> Address {
@@ -28,6 +30,7 @@ fn make_source(
     snapshot: Address,
     family_id: B256,
     program_id: B256,
+    source_output_domain: B256,
     state_index: u64,
     freeze_block: u64,
     weight: u64,
@@ -52,6 +55,7 @@ fn make_source(
             snapshot,
             family_id,
             program_id,
+            source_output_domain,
             state_index,
             freeze_block,
             output_root,
@@ -66,6 +70,43 @@ fn make_source(
     )
 }
 
+fn standard_source_a(weight: u64) -> (CapturedSource, SourcePreimage) {
+    make_source(
+        word(0xAA),
+        address(0xA1),
+        word(0xF1),
+        trust_graph_program_id(),
+        trust_graph_output_domain(),
+        7,
+        999_900,
+        weight,
+        1_000,
+        vec![
+            (address(0x01), 900_000_000_000_000_000_000_000),
+            (address(0x02), 100_000_000_000_000_000_000_000),
+        ],
+    )
+}
+
+fn weighted_source_b(weight: u64) -> (CapturedSource, SourcePreimage) {
+    make_source(
+        word(0xBB),
+        address(0xB1),
+        word(0xF2),
+        weighted_trust_graph_program_id(),
+        weighted_trust_graph_output_domain(),
+        12,
+        999_500,
+        weight,
+        1_000,
+        vec![
+            (address(0x02), 166_666_666_666_666_667),
+            (address(0x03), 333_333_333_333_333_333),
+            (address(0x04), 500_000_000_000_000_000),
+        ],
+    )
+}
+
 fn input_from(
     chain_id: u64,
     capture_block: u64,
@@ -74,7 +115,6 @@ fn input_from(
 ) -> GuestInput {
     sources.sort_by_key(|(source, _)| source.source_id);
     let (source_refs, source_preimages): (Vec<_>, Vec<_>) = sources.into_iter().unzip();
-    let admitted_program_id = source_refs[0].program_id;
     let manifest_struct = CapturedManifest { chain_id, capture_block, sources: source_refs };
     let manifest = codec::capture_manifest_encoded(&manifest_struct);
     let policy_manifest = codec::policy_manifest_encoded(chain_id, &manifest_struct.sources);
@@ -85,7 +125,7 @@ fn input_from(
         identity_domain: identity_domain(),
         output_kind: output_kind(),
         output_domain: output_domain(),
-        admitted_program_id,
+        source_compatibility_class: source_compatibility_class_v1(),
         weight_scale: WEIGHT_SCALE,
         output_pool,
         source_policy_root: codec::source_policy_root(&manifest_struct.sources),
@@ -97,7 +137,7 @@ fn input_from(
         max_union_accounts: MAX_UNION_ACCOUNTS as u32,
         max_aggregate_blob_bytes: MAX_AGGREGATE_BLOB_BYTES as u32,
         max_source_age_blocks: MAX_SOURCE_AGE_BLOCKS,
-        accumulator: address(0xAC),
+        accumulator: address(0xC0),
         chain_id,
     };
     GuestInput {
@@ -106,98 +146,95 @@ fn input_from(
         capture_count: manifest_struct.sources.len() as u64,
         manifest,
         source_preimages,
-        binding: Binding {
-            recipient: address(0xBE),
-            instance_domain: zk_core::journal::instance_domain(address(0x5A), chain_id),
-        },
+        binding: Binding { recipient: address(0xD1), instance_domain: word(0xD2) },
     }
 }
 
-pub fn sample_input() -> GuestInput {
-    let admitted = keccak256(b"trustgraph-v1:eip155-address:allocation");
+/// The frozen mixed fixture: 40% standard `trust-graph` source A (1e24 pool)
+/// plus 60% `trust-graph-weighted` source B (1e18 pool) over a 1,000-point
+/// composite pool.
+pub fn mixed_input() -> GuestInput {
     input_from(
         10,
         1_000_000,
         vec![
-            make_source(
-                word(0xAA),
-                address(0xA1),
-                word(0xF1),
-                admitted,
-                7,
-                999_900,
-                333_000_000_000_000_000,
-                1_000,
-                vec![
-                    (address(0x01), 369_963_739_927_479_854_959_709),
-                    (address(0x02), 314_467_628_935_257_870_515_742),
-                    (address(0x03), 315_568_631_137_262_274_524_549),
-                ],
-            ),
-            make_source(
-                word(0xBB),
-                address(0xB1),
-                word(0xF2),
-                admitted,
-                12,
-                999_500,
-                333_000_000_000_000_000,
-                1_000,
-                vec![(address(0x02), 50), (address(0x04), 30), (address(0x05), 20)],
-            ),
-            make_source(
-                word(0xCC),
-                address(0xC1),
-                word(0xF3),
-                admitted,
-                3,
-                999_999,
-                334_000_000_000_000_000,
-                1_000,
-                vec![
-                    (address(0x01), 1),
-                    (address(0x05), 1),
-                    (address(0x06), 2),
-                    (address(0x07), 3),
-                ],
-            ),
+            standard_source_a(400_000_000_000_000_000),
+            weighted_source_b(600_000_000_000_000_000),
         ],
-        1_000_000,
+        1_000,
     )
 }
 
-pub fn post_trigger_input() -> GuestInput {
-    let mut current = sample_input();
-    let admitted = current.params.admitted_program_id;
-    let parsed = codec::parse_capture_manifest(&current.manifest, 10).expect("sample capture");
-    let preimages = current.source_preimages;
-    let sources = parsed
-        .sources
-        .into_iter()
-        .zip(preimages)
-        .map(|pair| {
-            if pair.0.source_id == word(0xBB) {
-                make_source(
-                    word(0xBB),
-                    address(0xB1),
-                    word(0xF2),
-                    admitted,
-                    13,
-                    1_000_010,
-                    333_000_000_000_000_000,
-                    1_000,
-                    vec![(address(0x09), 100)],
-                )
-            } else {
-                pair
-            }
-        })
-        .collect();
-    current = input_from(10, 1_000_010, sources, 1_000_000);
-    current
+/// Same semantic capture assembled from reverse source enumeration, proving
+/// builder canonicality.
+pub fn reversed_mixed_input() -> GuestInput {
+    input_from(
+        10,
+        1_000_000,
+        vec![
+            weighted_source_b(600_000_000_000_000_000),
+            standard_source_a(400_000_000_000_000_000),
+        ],
+        1_000,
+    )
 }
 
-/// Deterministic bounded shape with disjoint accounts and an exact aggregate entry count.
+/// A valid policy rotation of the mixed fixture: same class and sources with
+/// equal weights.
+pub fn rotated_mixed_input() -> GuestInput {
+    input_from(
+        10,
+        1_000_000,
+        vec![
+            standard_source_a(500_000_000_000_000_000),
+            weighted_source_b(500_000_000_000_000_000),
+        ],
+        1_000,
+    )
+}
+
+/// A/B reweighted to 35%/55% plus a structurally valid 10% third source whose
+/// program/output pair is outside the class. The third preimage is deliberately
+/// unusable: admission must reject the pair before any blob is decoded.
+pub fn incompatible_third_program_input(
+    program_id: B256,
+    source_output_domain: B256,
+) -> GuestInput {
+    let (source_c, _) = make_source(
+        word(0xCC),
+        address(0xC1),
+        word(0xF3),
+        program_id,
+        source_output_domain,
+        13,
+        999_800,
+        100_000_000_000_000_000,
+        1_000,
+        vec![(address(0x05), 1)],
+    );
+    input_from(
+        10,
+        1_000_000,
+        vec![
+            standard_source_a(350_000_000_000_000_000),
+            weighted_source_b(550_000_000_000_000_000),
+            (source_c, SourcePreimage { cid: String::new(), blob: Vec::new() }),
+        ],
+        1_000,
+    )
+}
+
+pub fn contributions_program_id() -> B256 {
+    keccak256(b"contributions")
+}
+
+pub fn contributions_output_domain() -> B256 {
+    keccak256(b"trustgraphs.output.contributions-recipient.v1")
+}
+
+/// Deterministic bounded shape with disjoint accounts, an exact aggregate entry
+/// count, and alternating standard/weighted source programs so maximum-shape
+/// measurements exercise mixed admission.
 pub fn benchmark_input(source_count: usize, aggregate_entries: usize) -> GuestInput {
     assert!((2..=MAX_SOURCES).contains(&source_count));
     assert!(aggregate_entries >= source_count && aggregate_entries <= MAX_AGGREGATE_ENTRIES);
@@ -206,7 +243,6 @@ pub fn benchmark_input(source_count: usize, aggregate_entries: usize) -> GuestIn
     let extra_entries = aggregate_entries % source_count;
     let base_weight = WEIGHT_SCALE / source_count as u64;
     let extra_weight = WEIGHT_SCALE % source_count as u64;
-    let admitted = keccak256(b"trust-graph");
     let mut next_account = 1u64;
     let mut sources = Vec::with_capacity(source_count);
     for index in 0..source_count {
@@ -218,11 +254,17 @@ pub fn benchmark_input(source_count: usize, aggregate_entries: usize) -> GuestIn
                 entry
             })
             .collect();
+        let (program, domain) = if index % 2 == 0 {
+            (trust_graph_program_id(), trust_graph_output_domain())
+        } else {
+            (weighted_trust_graph_program_id(), weighted_trust_graph_output_domain())
+        };
         sources.push(make_source(
             word(index as u8 + 1),
             address(0x80 + index as u8),
             word(0x40 + index as u8),
-            admitted,
+            program,
+            domain,
             index as u64 + 1,
             2_000_000 - index as u64,
             base_weight + u64::from((index as u64) < extra_weight),
@@ -231,82 +273,4 @@ pub fn benchmark_input(source_count: usize, aggregate_entries: usize) -> GuestIn
         ));
     }
     input_from(10, 2_000_000, sources, WEIGHT_SCALE as u128)
-}
-
-/// Same semantic capture assembled from reverse source enumeration, proving builder canonicality.
-pub fn reversed_sample_input() -> GuestInput {
-    let sample = sample_input();
-    let manifest = codec::parse_capture_manifest(&sample.manifest, 10).expect("sample capture");
-    let mut sources = manifest.sources.into_iter().zip(sample.source_preimages).collect::<Vec<_>>();
-    sources.reverse();
-    input_from(10, 1_000_000, sources, 1_000_000)
-}
-
-/// Every source quota equals that source's declared total, so the output reproduces the source
-/// entries exactly (including their bytes after canonical union ordering).
-pub fn reproduction_input() -> GuestInput {
-    let admitted = keccak256(b"trust-graph");
-    input_from(
-        10,
-        2_000_000,
-        vec![
-            make_source(
-                word(0x11),
-                address(0x91),
-                word(0x31),
-                admitted,
-                1,
-                2_000_000,
-                600_000_000_000_000_000,
-                100,
-                vec![(address(0x01), 1), (address(0x02), 2)],
-            ),
-            make_source(
-                word(0x22),
-                address(0x92),
-                word(0x32),
-                admitted,
-                2,
-                1_999_999,
-                400_000_000_000_000_000,
-                100,
-                vec![(address(0x03), 1), (address(0x04), 1)],
-            ),
-        ],
-        5,
-    )
-}
-
-/// Equal account remainders inside each positive source quota exercise address-ascending ties.
-pub fn remainder_tie_input() -> GuestInput {
-    let admitted = keccak256(b"trust-graph");
-    input_from(
-        10,
-        2_000_000,
-        vec![
-            make_source(
-                word(0x11),
-                address(0x91),
-                word(0x31),
-                admitted,
-                1,
-                2_000_000,
-                500_000_000_000_000_000,
-                100,
-                vec![(address(0x01), 1), (address(0x02), 1), (address(0x03), 1)],
-            ),
-            make_source(
-                word(0x22),
-                address(0x92),
-                word(0x32),
-                admitted,
-                2,
-                1_999_999,
-                500_000_000_000_000_000,
-                100,
-                vec![(address(0x04), 1), (address(0x05), 1), (address(0x06), 1)],
-            ),
-        ],
-        4,
-    )
 }

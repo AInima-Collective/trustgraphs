@@ -30,7 +30,11 @@ const previewCheck = compositionPreflight({
 assert.equal(previewCheck.blocked, false)
 assert.ok(previewCheck.issues.some((issue) => issue.code === 'raw-point-scale'))
 assert.ok(previewCheck.issues.some((issue) => issue.code === 'missing-account'))
-assert.ok(previewCheck.issues.some((issue) => issue.code === 'sparse-support'))
+// Two-source coverage is at least half the cells by construction, so the sparse-support
+// warning (< 50%) stays quiet on the mixed baseline.
+assert.ok(
+  !previewCheck.issues.some((issue) => issue.code === 'sparse-support')
+)
 assert.match(COMPOSITION_TRUTH_COPY.prior, /separate trust-compose program/)
 assert.doesNotMatch(COMPOSITION_TRUTH_COPY.weights, /objective truth/i)
 
@@ -108,7 +112,7 @@ const cloneCheck = compositionPreflight({
 assert.ok(cloneCheck.issues.some((issue) => issue.code === 'clone-correlation'))
 
 const tiny = structuredClone(baseline)
-tiny.outputPool = 2n
+tiny.outputPool = 1n
 assert.throws(() => computeCompositionPreview(tiny), /zero quota/)
 assert.ok(
   compositionPreflight({

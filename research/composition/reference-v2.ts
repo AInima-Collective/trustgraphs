@@ -16,7 +16,7 @@ import {
   type CompositionBounds,
 } from './reference'
 
-export const COMPOSITION_VERSION_V2 = 2
+export const MIXED_COMPOSITION_VERSION = 1
 
 export const COMPOSE_PROGRAM_ID = keccak256(stringToHex('trust-compose'))
 export const TRUST_GRAPH_PROGRAM_ID = keccak256(stringToHex('trust-graph'))
@@ -84,7 +84,7 @@ export type CapturedSourceV2 = {
 }
 
 export type CompositionPolicyV2 = {
-  version: 2
+  version: 1
   chainId: bigint
   captureBlock: bigint
   scopeHash: Hex
@@ -223,7 +223,7 @@ export const canonicalPolicyManifestV2 = (
   )
   return Buffer.concat([
     Buffer.from('TGCP'),
-    Buffer.from([0, COMPOSITION_VERSION_V2]),
+    Buffer.from([0, MIXED_COMPOSITION_VERSION]),
     u64be(chainId),
     Buffer.from([ordered.length]),
     ...ordered.map((source) =>
@@ -251,7 +251,7 @@ export const canonicalManifestV2 = (
   )
   const header = Buffer.concat([
     Buffer.from('TGCM'),
-    Buffer.from([0, COMPOSITION_VERSION_V2]),
+    Buffer.from([0, MIXED_COMPOSITION_VERSION]),
     u64be(policy.chainId),
     u64be(policy.captureBlock),
     Buffer.from([ordered.length]),
@@ -318,7 +318,7 @@ export const validateAdmittedPair = (
 }
 
 const validatePolicy = (policy: CompositionPolicyV2) => {
-  if (policy.version !== COMPOSITION_VERSION_V2) {
+  if (policy.version !== MIXED_COMPOSITION_VERSION) {
     fail('unsupported policy version')
   }
   assertU64(policy.chainId, 'chainId')
