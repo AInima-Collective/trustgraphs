@@ -402,11 +402,12 @@ task contributions:prove-round ID=<checkpoint>
   guard that makes `trigger()` the sole checkpoint mint, so both lanes are always frozen together
   (a directly-minted mirror checkpoint would otherwise leave the contribution lane at `(0,0)` and
   admit a contributions-blind proof — see [`research/audits/2026-07-M6.md`](../../../research/audits/2026-07-M6.md) M6-1).
-- **Stale `packages/frontend/lib/contracts.ts` / `contract-abis` after a redeploy** — start the frontend
-  before the indexer (§3): its `predev` runs `wagmi:generate` / `config:generate` off the fresh
-  deploy summary, and the indexer imports those ABIs. Or regenerate directly with
-  `pnpm frontend wagmi:generate`. Contract addresses are deterministic per deployer
-  nonce, so they only drift when the deploy script's tx sequence changes.
+- **Stale `packages/frontend/config.json` / `lib/contract-abis.ts` after a redeploy** — start the
+  frontend before the indexer (§3): its `predev` runs `config:generate` / `wagmi:generate` off
+  the fresh deploy summary, and the indexer imports those ABIs. Or regenerate directly with
+  `pnpm frontend config:generate && pnpm frontend wagmi:generate`. Contract addresses are
+  deterministic per deployer nonce, so they only drift when the deploy script's tx sequence
+  changes.
 - **Indexer crashes on a `MerkleRootUpdated` event (`Failed to fetch merkle tree from IPFS CID …`),
   and a fresh deploy / `forge clean` doesn't fix it?** The IPFS daemon is down. Each proven root
   pins its `{account: value}` blob to the local kubo node; the indexer *must* re-fetch that blob to

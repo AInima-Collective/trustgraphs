@@ -358,15 +358,16 @@ Everything below cost someone real time.
   whole thing, so every payout differs (EVE, unvouched in the fixture, has reputation here). If a
   number looks "wrong" against that guide, this is why. The structural facts still hold: the root
   verifies, the indexer independently re-derives it, and Σ payouts = pool − the 3% fee.
-- **The round driver reads wagmi-generated contract addresses, so `demo:seed-round` regenerates
-  them first — and then verifies it.** The driver's schema uids flow live from
-  `config/networks.development.json`, but `packages/frontend/lib/contracts.ts` (the EAS, distributor and
-  pool-token addresses) only changes when frontend codegen runs — so left stale it sends a
-  current schema uid to a previous deploy's EAS, which dies as a bare no-data revert.
-  `demo:seed-round` runs the codegen and then asserts the generated EAS address equals the one
-  this deploy wrote, because the failure that motivated the check was codegen that silently
-  no-opped: `pnpm --filter frontend …` matches nothing (the package is named
-  `trust-graph-frontend`) and pnpm treats an empty filter match as success. By hand it's
+- **The round driver reads generated config, so `demo:seed-round` regenerates it first — and
+  then verifies it.** The driver's schema uids flow live from
+  `config/networks.development.json`, and its contract addresses (EAS, distributor, pool token)
+  come from `packages/frontend/config.json` via `lib/config.ts` — both only change when frontend
+  codegen runs. Left stale, it sends a current schema uid to a previous deploy's EAS, which dies
+  as a bare no-data revert. `demo:seed-round` runs the codegen and then asserts the EAS address
+  behind the `config.json` symlink equals the one this deploy wrote, because the failure that
+  motivated the check was codegen that silently no-opped: `pnpm --filter frontend …` matches
+  nothing (the package is named `trustgraphs-frontend`) and pnpm treats an empty filter match as
+  success. By hand it's
   `pnpm frontend config:generate && pnpm frontend config:link && pnpm frontend wagmi:generate`.
 - **`demo:payout` needs the indexer; everything before it does not.** Funding pins `expectedRoot`
   from the round API and each claim fetches its merkle bundle from it — the payout page's exact

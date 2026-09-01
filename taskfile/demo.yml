@@ -295,12 +295,13 @@ tasks:
     preconditions: *local-only
     cmds:
       - |
-        # The round driver is frontend code (SchemaManager → EAS.attest), and while its SCHEMA
-        # uids flow live from config/networks.development.json (rewritten every deploy), its
-        # contract ADDRESSES are wagmi-generated into packages/frontend/lib/contracts.ts — which nothing
-        # else in `task demo` touches; normally the frontend dev server's predev regenerates it.
-        # config.json and networks.json are independent environment-selected symlinks, so refresh
-        # both: a previous testnet run can otherwise leave the round driver reading Sepolia's seed
+        # The round driver is frontend code (SchemaManager → EAS.attest). Its SCHEMA uids flow
+        # from config/networks.development.json (rewritten every deploy) and its contract
+        # ADDRESSES from packages/frontend/config.json via lib/config.ts — wagmi generates only
+        # ABIs (lib/contract-abis.ts), never addresses. Nothing else in `task demo` touches those
+        # files; normally the frontend dev server's predev regenerates them. config.json and
+        # networks.json are independent environment-selected symlinks, so refresh both: a
+        # previous testnet run can otherwise leave the round driver reading Sepolia's seed
         # networks while its contracts point at the new local deploy. Regenerate in predev's order.
         #
         # `pnpm frontend …` (the root script) and NOT `pnpm --filter frontend …`: --filter
@@ -317,7 +318,10 @@ tasks:
         # the EAS this deploy just wrote. Catches the no-op filter above, a half-run predev, and
         # a redeploy on a reused chain (shifted nonces move every address) alike.
         WANT=$(jq -r .eas .docker/eas_deploy.json | tr 'A-F' 'a-f')
-        GEN=$(grep -oE "easAddress = '0x[0-9a-fA-F]{40}'" packages/frontend/lib/contracts.ts | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f')
+        # Read through the config.json SYMLINK (what lib/config.ts imports), not
+        # config.development.json directly: that also catches a config:link that never ran or
+        # still points at another environment.
+        GEN=$(jq -r '.contracts.EAS // empty' packages/frontend/config.json 2>/dev/null | grep -oE '^0x[0-9a-fA-F]{40}$' | tr 'A-F' 'a-f')
         if [ -z "$GEN" ] || [ "$GEN" != "$WANT" ]; then
           echo "✗ frontend codegen is not tracking this deploy:" >&2
           echo "    generated easAddress  ${GEN:-<none>}" >&2
