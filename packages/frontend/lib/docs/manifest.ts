@@ -85,6 +85,7 @@ export const DOCS_SECTIONS: DocSection[] = [
           { slug: 'build/run-an-agent', label: 'Run an agent' },
           { slug: 'build/railway', label: 'Deploy the Sepolia testnet' },
           { slug: 'build/production', label: 'Deploy to Sepolia' },
+          { slug: 'build/governance-actions', label: 'Governance actions' },
           { slug: 'build/add-a-program', label: 'Add a program' },
         ],
       },

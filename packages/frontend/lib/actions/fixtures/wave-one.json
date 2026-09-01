@@ -1,0 +1,486 @@
+{
+  "version": 1,
+  "context": {
+    "snapshot": "0x1111111111111111111111111111111111111111",
+    "treasurySafe": "0x2222222222222222222222222222222222222222",
+    "fundDistributor": "0x3333333333333333333333333333333333333333",
+    "governanceModule": "0x4444444444444444444444444444444444444444"
+  },
+  "cases": [
+    {
+      "name": "send ETH",
+      "draft": {
+        "actionKey": "send-eth",
+        "values": {
+          "recipient": "0x6666666666666666666666666666666666666666",
+          "amountEth": "1.25"
+        }
+      },
+      "actions": [
+        {
+          "target": "0x6666666666666666666666666666666666666666",
+          "value": "1250000000000000000",
+          "data": "0x",
+          "operation": 0,
+          "description": "Send 1.25 ETH to 0x6666666666666666666666666666666666666666"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "send-eth",
+          "values": {
+            "recipient": "0x6666666666666666666666666666666666666666",
+            "value": "1250000000000000000",
+            "description": "Send 1.25 ETH to 0x6666666666666666666666666666666666666666"
+          },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "send ERC-20",
+      "draft": {
+        "actionKey": "send-erc20",
+        "values": {
+          "token": "0x5555555555555555555555555555555555555555",
+          "recipient": "0x6666666666666666666666666666666666666666",
+          "amountBaseUnits": "1234567"
+        }
+      },
+      "actions": [
+        {
+          "target": "0x5555555555555555555555555555555555555555",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000006666666666666666666666666666666666666666000000000000000000000000000000000000000000000000000000000012d687",
+          "operation": 0,
+          "description": "Transfer 1234567 token base units to 0x6666666666666666666666666666666666666666"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "send-erc20",
+          "values": {
+            "token": "0x5555555555555555555555555555555555555555",
+            "recipient": "0x6666666666666666666666666666666666666666",
+            "amount": "1234567"
+          },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "fund ERC-20 rewards",
+      "draft": {
+        "actionKey": "fund-rewards",
+        "values": {
+          "token": "0x5555555555555555555555555555555555555555",
+          "amountBaseUnits": "5000000",
+          "expectedRoot": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expectedTotalMerkleValue": "1000000000000000000",
+          "claimDeadline": "2000000000",
+          "maxFeeAmount": "125000",
+          "expectedFeeRecipient": "0x7777777777777777777777777777777777777777"
+        }
+      },
+      "spoofActionIndex": 1,
+      "actions": [
+        {
+          "target": "0x5555555555555555555555555555555555555555",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000333333333333333333333333333333333333333300000000000000000000000000000000000000000000000000000000004c4b40",
+          "operation": 0,
+          "description": "Approve 5000000 token base units for the rewards distributor"
+        },
+        {
+          "target": "0x3333333333333333333333333333333333333333",
+          "value": "0",
+          "data": "0xa7cd1342000000000000000000000000555555555555555555555555555555555555555500000000000000000000000000000000000000000000000000000000004c4b40aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000000000000000000000000000000000000de0b6b3a76400000000000000000000000000000000000000000000000000000000000077359400000000000000000000000000000000000000000000000000000000000001e8480000000000000000000000007777777777777777777777777777777777777777",
+          "operation": 0,
+          "description": "Fund rewards with 5000000 base units against 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "fund-rewards",
+          "values": {
+            "token": "0x5555555555555555555555555555555555555555",
+            "amount": "5000000",
+            "expectedRoot": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expectedTotalMerkleValue": "1000000000000000000",
+            "claimDeadline": "2000000000",
+            "maxFeeAmount": "125000",
+            "expectedFeeRecipient": "0x7777777777777777777777777777777777777777"
+          },
+          "consumed": 2
+        }
+      ]
+    },
+    {
+      "name": "pause rewards",
+      "draft": { "actionKey": "set-rewards-paused", "values": { "paused": true } },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x3333333333333333333333333333333333333333",
+          "value": "0",
+          "data": "0x8456cb59",
+          "operation": 0,
+          "description": "Pause reward distributions and claims"
+        }
+      ],
+      "matched": [
+        { "actionKey": "set-rewards-paused", "values": { "paused": true }, "consumed": 1 }
+      ]
+    },
+    {
+      "name": "set rewards fee recipient",
+      "draft": {
+        "actionKey": "set-rewards-fee-recipient",
+        "values": { "recipient": "0x7777777777777777777777777777777777777777" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x3333333333333333333333333333333333333333",
+          "value": "0",
+          "data": "0xe74b981b0000000000000000000000007777777777777777777777777777777777777777",
+          "operation": 0,
+          "description": "Set the rewards fee recipient to 0x7777777777777777777777777777777777777777"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-rewards-fee-recipient",
+          "values": { "recipient": "0x7777777777777777777777777777777777777777" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "set rewards fee percentage",
+      "draft": {
+        "actionKey": "set-rewards-fee-percentage",
+        "values": { "feePercent": "2.5" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x3333333333333333333333333333333333333333",
+          "value": "0",
+          "data": "0xae06c1b70000000000000000000000000000000000000000000000000058d15e17628000",
+          "operation": 0,
+          "description": "Set the rewards fee to 25000000000000000 / 1000000000000000000"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-rewards-fee-percentage",
+          "values": { "feePercentage": "25000000000000000" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "enable rewards allowlist",
+      "draft": {
+        "actionKey": "set-rewards-allowlist-enabled",
+        "values": { "enabled": true }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x3333333333333333333333333333333333333333",
+          "value": "0",
+          "data": "0xd7644ba20000000000000000000000000000000000000000000000000000000000000001",
+          "operation": 0,
+          "description": "Enable the rewards funder allowlist"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-rewards-allowlist-enabled",
+          "values": { "enabled": true },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "allow rewards funder",
+      "draft": {
+        "actionKey": "set-rewards-distributor-allowance",
+        "values": {
+          "distributor": "0x8888888888888888888888888888888888888888",
+          "allowed": true
+        }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x3333333333333333333333333333333333333333",
+          "value": "0",
+          "data": "0x1616624100000000000000000000000088888888888888888888888888888888888888880000000000000000000000000000000000000000000000000000000000000001",
+          "operation": 0,
+          "description": "Allow rewards funder 0x8888888888888888888888888888888888888888"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-rewards-distributor-allowance",
+          "values": {
+            "distributor": "0x8888888888888888888888888888888888888888",
+            "allowed": true
+          },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "update network profile",
+      "draft": {
+        "actionKey": "update-network-profile",
+        "values": { "metadataURI": "ipfs://bafy-wave-one-network-profile" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x1111111111111111111111111111111111111111",
+          "value": "0",
+          "data": "0x750521f500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000024697066733a2f2f626166792d776176652d6f6e652d6e6574776f726b2d70726f66696c6500000000000000000000000000000000000000000000000000000000",
+          "operation": 0,
+          "description": "Set the network metadata URI"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "update-network-profile",
+          "values": {
+            "snapshot": "0x1111111111111111111111111111111111111111",
+            "metadataURI": "ipfs://bafy-wave-one-network-profile"
+          },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "grant operational role",
+      "draft": {
+        "actionKey": "set-operational-role",
+        "values": {
+          "account": "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+          "granted": true
+        }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x1111111111111111111111111111111111111111",
+          "value": "0",
+          "data": "0x2f2ff15d62b695a3da77363a912e609c01f7fcecee884e8b21968a4e6ff0be61056ea8c9000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation": 0,
+          "description": "Grant operational role 0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-operational-role",
+          "values": {
+            "account": "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa",
+            "granted": true
+          },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "propose constitutional transfer",
+      "draft": {
+        "actionKey": "propose-constitutional-transfer",
+        "values": { "successor": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x1111111111111111111111111111111111111111",
+          "value": "0",
+          "data": "0xe634c98f000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "operation": 0,
+          "description": "Propose constitutional authority transfer to 0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "propose-constitutional-transfer",
+          "values": { "successor": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "cancel constitutional transfer",
+      "draft": { "actionKey": "cancel-constitutional-transfer", "values": {} },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x1111111111111111111111111111111111111111",
+          "value": "0",
+          "data": "0x82f1c732",
+          "operation": 0,
+          "description": "Cancel the pending constitutional authority transfer"
+        }
+      ],
+      "matched": [
+        { "actionKey": "cancel-constitutional-transfer", "values": {}, "consumed": 1 }
+      ]
+    },
+    {
+      "name": "set governance quorum",
+      "draft": {
+        "actionKey": "set-governance-quorum",
+        "values": { "quorumPercent": "15" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x4444444444444444444444444444444444444444",
+          "value": "0",
+          "data": "0xc1ba4e590000000000000000000000000000000000000000000000000214e8348c4f0000",
+          "operation": 0,
+          "description": "Set governance quorum to 150000000000000000 / 1000000000000000000"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-governance-quorum",
+          "values": { "quorum": "150000000000000000" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "set governance voting delay",
+      "draft": {
+        "actionKey": "set-governance-voting-delay",
+        "values": { "blocks": "10" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x4444444444444444444444444444444444444444",
+          "value": "0",
+          "data": "0x70b0f660000000000000000000000000000000000000000000000000000000000000000a",
+          "operation": 0,
+          "description": "Set voting delay: 10 blocks"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-governance-voting-delay",
+          "values": { "blocks": "10" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "set governance voting period",
+      "draft": {
+        "actionKey": "set-governance-voting-period",
+        "values": { "blocks": "7200" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x4444444444444444444444444444444444444444",
+          "value": "0",
+          "data": "0xea0217cf0000000000000000000000000000000000000000000000000000000000001c20",
+          "operation": 0,
+          "description": "Set voting period: 7200 blocks"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-governance-voting-period",
+          "values": { "blocks": "7200" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "set governance execution delay",
+      "draft": {
+        "actionKey": "set-governance-execution-delay",
+        "values": { "blocks": "300" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x4444444444444444444444444444444444444444",
+          "value": "0",
+          "data": "0xe4917d9f000000000000000000000000000000000000000000000000000000000000012c",
+          "operation": 0,
+          "description": "Set execution delay: 300 blocks"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-governance-execution-delay",
+          "values": { "blocks": "300" },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "allow governance delegatecall target",
+      "draft": {
+        "actionKey": "set-governance-delegatecall-target",
+        "values": {
+          "target": "0x9999999999999999999999999999999999999999",
+          "allowed": true
+        }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x4444444444444444444444444444444444444444",
+          "value": "0",
+          "data": "0x5edc5d3000000000000000000000000099999999999999999999999999999999999999990000000000000000000000000000000000000000000000000000000000000001",
+          "operation": 0,
+          "description": "Allow delegatecall target 0x9999999999999999999999999999999999999999"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "set-governance-delegatecall-target",
+          "values": {
+            "target": "0x9999999999999999999999999999999999999999",
+            "allowed": true
+          },
+          "consumed": 1
+        }
+      ]
+    },
+    {
+      "name": "cancel governance proposal",
+      "draft": {
+        "actionKey": "cancel-governance-proposal",
+        "values": { "proposalId": "42" }
+      },
+      "spoofActionIndex": 0,
+      "actions": [
+        {
+          "target": "0x4444444444444444444444444444444444444444",
+          "value": "0",
+          "data": "0x40e58ee5000000000000000000000000000000000000000000000000000000000000002a",
+          "operation": 0,
+          "description": "Cancel governance proposal 42"
+        }
+      ],
+      "matched": [
+        {
+          "actionKey": "cancel-governance-proposal",
+          "values": { "proposalId": "42" },
+          "consumed": 1
+        }
+      ]
+    }
+  ]
+}
