@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { compositionSimplex, computeCompositionPreview } from './core'
-import { compositionGoldenFixture } from './fixture'
+import {
+  compositionGoldenFixture,
+  compositionMixedGoldenFixture,
+} from './fixture'
 
 const research = JSON.parse(
   readFileSync(
@@ -110,3 +113,48 @@ assert.ok(simplex.every((sample) => sample.changedTopAccounts.length > 0))
 console.log(
   'composition frontend exact golden, attribution, disagreement, and A/B/C simplex: ok'
 )
+
+// The mixed standard/weighted V2 vector, byte-identical across every implementation.
+const mixed = JSON.parse(
+  readFileSync(
+    join(process.cwd(), '../../tests/golden/trust-compose-v2.json'),
+    'utf8'
+  )
+)
+const mixedPreview = computeCompositionPreview(compositionMixedGoldenFixture())
+assert.equal(mixedPreview.policyManifest, mixed.policyManifest.encoded)
+assert.equal(mixedPreview.policyManifestSha256, mixed.policyManifest.sha256)
+assert.equal(mixedPreview.sourcePolicyRoot, mixed.policyManifest.root)
+assert.equal(mixedPreview.captureManifest, mixed.capture.manifest)
+assert.equal(mixedPreview.captureManifestSha256, mixed.capture.manifestSha256)
+assert.equal(mixedPreview.outputBlobSha256, mixed.output.blobSha256)
+assert.equal(mixedPreview.outputCid, mixed.output.cid)
+assert.equal(mixedPreview.outputRoot, mixed.output.root)
+assert.equal(mixedPreview.totalValue.toString(), mixed.output.totalValue)
+assert.deepEqual(
+  mixedPreview.sourceAllocations.map((source) => ({
+    sourceId: source.sourceId,
+    quota: source.quota.toString(),
+  })),
+  mixed.sourceQuotas
+)
+assert.deepEqual(
+  mixedPreview.output.map((entry) => ({
+    account: entry.account,
+    value: entry.value.toString(),
+  })),
+  mixed.output.entries
+)
+
+// Admission is the closed class: an unknown third program fails even with an
+// otherwise valid structure, and V1 configs may not blend across programs.
+assert.throws(() => {
+  const crossed = compositionMixedGoldenFixture()
+  crossed.sources[0] = {
+    ...crossed.sources[0]!,
+    programId: `0x${'77'.repeat(32)}`,
+  }
+  computeCompositionPreview(crossed)
+}, /not in the compatibility class/)
+
+console.log('composition mixed V2 golden and class admission: ok')

@@ -52,6 +52,7 @@ import {
 import {
   compositionAdapterPayload,
   compositionCreateArgs,
+  compositionCreateArgsV2,
   compositionCreatePayload,
   compositionGovernedCreatePayload,
   compositionMetadataDigest,
@@ -61,12 +62,15 @@ import {
   compositionSourceSnapshotAbi,
   compositionVaultAbi,
   governedTrustComposeFactoryAbi,
+  governedTrustComposeFactoryV2Abi,
   trustComposeFactoryAbi,
+  trustComposeFactoryV2Abi,
   trustComposeParamsControllerAbi,
 } from '@/lib/composition/contracts'
 import {
   COMPOSITION_OUTPUT_KIND,
   type CompositionConfig,
+  type CompositionParamsVersion,
   type CompositionPreview,
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
@@ -86,7 +90,9 @@ import { anchorCompositionPreview } from '@/lib/composition/workflow'
 import {
   APIS,
   FAST_TRUST_COMPOSE_CONFIG,
+  FAST_TRUST_COMPOSE_V2_CONFIG,
   TRUST_COMPOSE_CONFIG,
+  TRUST_COMPOSE_V2_CONFIG,
 } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
@@ -123,21 +129,33 @@ type Mode = 'create' | 'rotate'
  * mixing generations would read the floor from one factory and create through a wrapper that
  * enforces another. Rotation stays instance-scoped, so existing compositions are untouched.
  */
-const fastFactory = (FAST_TRUST_COMPOSE_CONFIG?.factory || '') as Address
-const fastGovernedFactory = (FAST_TRUST_COMPOSE_CONFIG?.governedFactory ||
+const factoryPair = (
+  pair: { factory?: string; governedFactory?: string } | undefined
+): { factory: Address; governedFactory: Address } | null => {
+  const factory = (pair?.factory || '') as Address
+  const governedFactory = (pair?.governedFactory || '') as Address
+  return isAddress(factory, { strict: false }) &&
+    isAddress(governedFactory, { strict: false })
+    ? { factory, governedFactory }
+    : null
+}
+// New compositions are created through the newest deployed generation, preferring V2 — the mixed
+// standard/weighted class — and preferring the fast (EPOCH_FLOOR = 1) pair inside a generation.
+// Pairs only: mixing generations would read the floor from one factory and create through a
+// wrapper that enforces another. Rotation stays instance-scoped, so existing compositions keep
+// their own recorded generation.
+const v2Generation =
+  factoryPair(FAST_TRUST_COMPOSE_V2_CONFIG) ??
+  factoryPair(TRUST_COMPOSE_V2_CONFIG)
+const v1Generation =
+  factoryPair(FAST_TRUST_COMPOSE_CONFIG) ?? factoryPair(TRUST_COMPOSE_CONFIG)
+const selectedGeneration = v2Generation ?? v1Generation
+const creationParamsVersion: CompositionParamsVersion = v2Generation ? 2 : 1
+const factory = (selectedGeneration?.factory ??
+  TRUST_COMPOSE_CONFIG?.factory ??
   '') as Address
-const useFastGeneration =
-  isAddress(fastFactory, { strict: false }) &&
-  isAddress(fastGovernedFactory, { strict: false })
-const factory = (
-  useFastGeneration ? fastFactory : TRUST_COMPOSE_CONFIG?.factory || ''
-) as Address
 const factoryAvailable = isAddress(factory, { strict: false })
-const governedFactory = (
-  useFastGeneration
-    ? fastGovernedFactory
-    : TRUST_COMPOSE_CONFIG?.governedFactory || ''
-) as Address
+const governedFactory = (selectedGeneration?.governedFactory ?? '') as Address
 const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {
@@ -434,11 +452,9 @@ export const CompositionWorkspace = ({
       return
     }
     if (!publicClient) return setProblem('Target-chain RPC is unavailable.')
-    const switchingProgram =
-      sources.length > 0 &&
-      candidate.chainId === sources[0]!.chainId.toString() &&
-      candidate.programId.toLowerCase() !== sources[0]!.programId.toLowerCase()
-    const retainedSources = switchingProgram ? [] : sources
+    // Standard and weighted TrustGraph sources blend in one composition, so a
+    // cross-type pick keeps the current selection.
+    const retainedSources = sources
     setLoadingSource(candidate.instanceId)
     setProblem(null)
     try {
@@ -497,12 +513,7 @@ export const CompositionWorkspace = ({
         },
       })
       loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
-      setSelected(
-        rebalance([...retainedSources, loaded]),
-        switchingProgram
-          ? `Switched to ${candidate.programName} sources. Add at least one more graph of this score type.`
-          : undefined
-      )
+      setSelected(rebalance([...retainedSources, loaded]))
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -533,12 +544,21 @@ export const CompositionWorkspace = ({
     try {
       if (!publicClient) throw new Error('Target-chain RPC is unavailable.')
       const captureBlock = await publicClient.getBlockNumber()
+      const paramsVersion: CompositionParamsVersion =
+        mode === 'rotate'
+          ? instance?.paramsVersion === 2
+            ? 2
+            : 1
+          : creationParamsVersion
       const next: CompositionConfig = {
         chainId: BigInt(targetChainId),
         captureBlock,
         scopeHash: DEFAULT_COMPOSITION_SCOPE,
+        paramsVersion,
         admittedProgramId:
-          sources[0]?.programId ?? (`0x${'00'.repeat(32)}` as Hex),
+          paramsVersion === 1
+            ? (sources[0]?.programId ?? (`0x${'00'.repeat(32)}` as Hex))
+            : null,
         outputPool: BigInt(outputPool),
         bounds: V1_COMPOSITION_BOUNDS,
         sources: structuredClone(sources),
@@ -938,15 +958,53 @@ export const CompositionWorkspace = ({
         if (withGovernance) {
           if (!initialPolicy)
             throw new Error('Fix the refresh prepayment fields first.')
+          if (previewConfig.paramsVersion === 2) {
+            await publicClient.simulateContract({
+              account: address,
+              address: governedFactory,
+              abi: governedTrustComposeFactoryV2Abi,
+              functionName: 'createGovernedInstance',
+              args: [
+                compositionCreateArgsV2(
+                  exactCreateFields,
+                  previewConfig,
+                  preview
+                ),
+                initialPolicy,
+                DISABLED_SIGNER_SYNC,
+              ],
+              ...(prepayWei > 0n ? { value: prepayWei } : {}),
+            })
+          } else {
+            await publicClient.simulateContract({
+              account: address,
+              address: governedFactory,
+              abi: governedTrustComposeFactoryAbi,
+              functionName: 'createGovernedInstance',
+              args: [
+                compositionCreateArgs(
+                  exactCreateFields,
+                  previewConfig,
+                  preview
+                ),
+                initialPolicy,
+                DISABLED_SIGNER_SYNC,
+              ],
+              ...(prepayWei > 0n ? { value: prepayWei } : {}),
+            })
+          }
+        } else if (previewConfig.paramsVersion === 2) {
           await publicClient.simulateContract({
             account: address,
-            address: governedFactory,
-            abi: governedTrustComposeFactoryAbi,
-            functionName: 'createGovernedInstance',
+            address: factory,
+            abi: trustComposeFactoryV2Abi,
+            functionName: 'createInstance',
             args: [
-              compositionCreateArgs(exactCreateFields, previewConfig, preview),
-              initialPolicy,
-              DISABLED_SIGNER_SYNC,
+              compositionCreateArgsV2(
+                exactCreateFields,
+                previewConfig,
+                preview
+              ),
             ],
             ...(prepayWei > 0n ? { value: prepayWei } : {}),
           })
@@ -1002,28 +1060,53 @@ export const CompositionWorkspace = ({
         )
       }
       if (mode === 'create') {
+        const composeV2 = previewConfig.paramsVersion === 2
         const [receipt] = await txToast({
           tx: withGovernance
             ? ({
                 address: governedFactory,
-                abi: governedTrustComposeFactoryAbi,
+                abi: composeV2
+                  ? governedTrustComposeFactoryV2Abi
+                  : governedTrustComposeFactoryAbi,
                 functionName: 'createGovernedInstance',
                 args: [
-                  compositionCreateArgs(createFields, previewConfig, preview),
+                  composeV2
+                    ? compositionCreateArgsV2(
+                        createFields,
+                        previewConfig,
+                        preview
+                      )
+                    : compositionCreateArgs(
+                        createFields,
+                        previewConfig,
+                        preview
+                      ),
                   initialPolicy!,
                   DISABLED_SIGNER_SYNC,
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
               } as any)
-            : {
+            : ({
                 address: factory,
-                abi: trustComposeFactoryAbi,
+                abi: composeV2
+                  ? trustComposeFactoryV2Abi
+                  : trustComposeFactoryAbi,
                 functionName: 'createInstance',
                 args: [
-                  compositionCreateArgs(createFields, previewConfig, preview),
+                  composeV2
+                    ? compositionCreateArgsV2(
+                        createFields,
+                        previewConfig,
+                        preview
+                      )
+                    : compositionCreateArgs(
+                        createFields,
+                        previewConfig,
+                        preview
+                      ),
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
-              },
+              } as any),
           successMessage: withGovernance
             ? 'Composition created; its Safe holds it from the first block.'
             : 'Composition created.',
@@ -1499,9 +1582,9 @@ export const CompositionWorkspace = ({
             1. Compatible same-chain sources
           </h2>
           <p className="text-sm text-muted-foreground">
-            Choose 2–8 graphs from the same chain and score type. Standard and
-            weighted-score graphs are both supported; V1 keeps their source
-            types in separate compositions.
+            Choose 2–8 graphs from the same chain. Standard and weighted-score
+            graphs blend in one composition; each source keeps its own program
+            and provenance.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -1512,10 +1595,6 @@ export const CompositionWorkspace = ({
             const differentChain =
               sources.length > 0 &&
               candidate.chainId !== sources[0]!.chainId.toString()
-            const differentProgram =
-              sources.length > 0 &&
-              candidate.programId.toLowerCase() !==
-                sources[0]!.programId.toLowerCase()
             const sourceEligibility =
               eligibility[candidate.snapshot.toLowerCase()]
             const ineligible =
@@ -1543,9 +1622,7 @@ export const CompositionWorkspace = ({
                     disabled={
                       !!loadingSource ||
                       (!selected &&
-                        (differentChain ||
-                          ineligible ||
-                          (!differentProgram && sources.length >= 8)))
+                        (differentChain || ineligible || sources.length >= 8))
                     }
                     onClick={() => toggleCandidate(candidate)}
                   >
@@ -1553,8 +1630,6 @@ export const CompositionWorkspace = ({
                       <LoaderCircle className="h-4 w-4 animate-spin" />
                     ) : selected ? (
                       'Remove'
-                    ) : differentProgram ? (
-                      'Use this score type'
                     ) : (
                       'Add'
                     )}
@@ -1566,14 +1641,6 @@ export const CompositionWorkspace = ({
                 {!selected && sourceEligibility?.detail && (
                   <p className="text-xs text-muted-foreground">
                     {sourceEligibility.detail}
-                  </p>
-                )}
-                {!selected && differentProgram && !differentChain && (
-                  <p className="text-xs text-muted-foreground">
-                    This graph is compatible, but it uses{' '}
-                    {candidate.programName} scores. Selecting it starts a
-                    composition of that score type and clears the current source
-                    selection.
                   </p>
                 )}
               </Card>

@@ -1,6 +1,5 @@
 import { type Address, type Hex, encodeAbiParameters, keccak256 } from 'viem'
 
-import type { CompositionApiUnavailableError } from './api'
 import {
   type CompositionPreview,
   type LandedCompositionCommitments,

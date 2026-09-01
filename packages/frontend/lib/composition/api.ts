@@ -11,6 +11,7 @@ import {
 import {
   type CompositionEntry,
   type CompositionSource,
+  admittedSourceOutputDomain,
   canonicalCompositionBlob,
   compositionOutputRoot,
   compositionSourceId,
@@ -458,6 +459,10 @@ export type CompositionInstance = {
   distributor: Address | null
   epochLength: string
   programVKey: Hex
+  /** The trust-compose params generation (1 = single admitted program, 2 = closed class). */
+  paramsVersion: number
+  /** V2 only: the committed source compatibility class. */
+  sourceCompatibilityClass: Hex | null
   currentVersion: string
   currentParamsHash: Hex
   params: Record<string, unknown>
@@ -494,6 +499,8 @@ export type CompositionSourceEvidence = {
   snapshot: Address
   familyId: Hex
   programId: Hex
+  /** The source's real committed output domain; null on V1 epochs, which do not commit one. */
+  sourceOutputDomain: Hex | null
   adapter: Address
   deploymentProvenance: Hex
   stateIndex: string
@@ -627,14 +634,14 @@ export const requireCompatibleCandidate = (
   if (candidate.keyEncoding !== 'eip155-address') {
     throw new Error('Only address-keyed allocation outputs are compatible.')
   }
+  if (admittedSourceOutputDomain(candidate.programId as Hex) === null) {
+    throw new Error(
+      'The composition admits standard and weighted TrustGraph allocation outputs and nothing else.'
+    )
+  }
   if (selected.length === 0) return
   const first = selected[0]!
   if (candidate.chainId !== first.chainId) {
     throw new Error('All composition sources must be on the same chain.')
-  }
-  if (candidate.programId.toLowerCase() !== first.programId.toLowerCase()) {
-    throw new Error(
-      'V1 requires one admitted score program; choose sources with identical program semantics.'
-    )
   }
 }

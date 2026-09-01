@@ -110,7 +110,19 @@ assert.match(workspace, /Approve the second transaction/)
 assert.match(workspace, /Enable paid score refreshes/)
 assert.match(workspace, /funded, but paid refreshes are disabled/)
 assert.match(contracts, /function setPolicy\(bytes32 instanceId/)
-assert.match(workspace, /Use this score type/)
+// Mixed admission: standard and weighted sources blend in one composition, so
+// a cross-type pick keeps the current selection and the picker never offers a
+// clearing "switch score type" action.
+assert.match(
+  workspace,
+  /Standard and weighted-score\s+graphs blend in one composition/
+)
+assert.match(workspace, /cross-type pick keeps the current selection/)
+assert.doesNotMatch(workspace, /Use this score type/)
+assert.doesNotMatch(workspace, /clears the current source/)
+assert.match(workspace, /creationParamsVersion/)
+assert.match(workspace, /trustComposeFactoryV2Abi/)
+assert.match(contracts, /sourceCompatibilityClass/)
 assert.doesNotMatch(workspace, /I explicitly acknowledge/)
 assert.match(workspace, /DISABLED_SIGNER_SYNC/)
 

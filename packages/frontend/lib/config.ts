@@ -121,6 +121,23 @@ export const FAST_TRUST_COMPOSE_CONFIG = (
 ).fastTrustCompose as
   | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
   | undefined
+// The V2 (mixed standard/weighted source) trust-compose generation and its fast variant. When a
+// V2 pair is recorded, the composition workspace creates through it; existing instances keep
+// rotating through their own recorded generation.
+export const TRUST_COMPOSE_V2_CONFIG = (
+  CONFIG as {
+    trustComposeV2?: { factory?: string; governedFactory?: string }
+  }
+).trustComposeV2 as
+  | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
+  | undefined
+export const FAST_TRUST_COMPOSE_V2_CONFIG = (
+  CONFIG as {
+    fastTrustComposeV2?: { factory?: string; governedFactory?: string }
+  }
+).fastTrustComposeV2 as
+  | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
+  | undefined
 export const FAST_CONTRIBUTIONS_FACTORY = (
   CONFIG as { fastContributionsFactory?: string }
 ).fastContributionsFactory as `0x${string}` | '' | undefined

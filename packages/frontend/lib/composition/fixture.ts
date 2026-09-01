@@ -5,7 +5,9 @@ import {
   type CompositionEntry,
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
+  TRUST_GRAPH_SOURCE_PROGRAM_ID,
   V1_COMPOSITION_BOUNDS,
+  WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM_ID,
   canonicalCompositionBlob,
   compositionOutputRoot,
 } from './core'
@@ -21,6 +23,7 @@ const fixtureSource = ({
   idByte,
   snapshotByte,
   familyByte,
+  programId = compositionFixtureProgramId,
   stateIndex,
   freezeBlock,
   weight,
@@ -29,6 +32,7 @@ const fixtureSource = ({
   idByte: string
   snapshotByte: string
   familyByte: string
+  programId?: Hex
   stateIndex: bigint
   freezeBlock: bigint
   weight: bigint
@@ -49,7 +53,7 @@ const fixtureSource = ({
     sourceId: word(idByte),
     snapshot: address(snapshotByte),
     familyId: word(familyByte),
-    programId: compositionFixtureProgramId,
+    programId,
     controller: address(idByte),
     registry: address('92'),
     verifier: address('93'),
@@ -77,6 +81,7 @@ export const compositionGoldenFixture = (): CompositionConfig => ({
   chainId: 10n,
   captureBlock: 1_000_000n,
   scopeHash: DEFAULT_COMPOSITION_SCOPE,
+  paramsVersion: 1,
   admittedProgramId: compositionFixtureProgramId,
   outputPool: 1_000_000n,
   bounds: V1_COMPOSITION_BOUNDS,
@@ -119,6 +124,46 @@ export const compositionGoldenFixture = (): CompositionConfig => ({
         ['05', 1n],
         ['06', 2n],
         ['07', 3n],
+      ],
+    }),
+  ],
+})
+
+/** The frozen mixed standard/weighted V2 fixture shared with Rust, SP1, Solidity, and indexer. */
+export const compositionMixedGoldenFixture = (): CompositionConfig => ({
+  chainId: 10n,
+  captureBlock: 1_000_000n,
+  scopeHash: DEFAULT_COMPOSITION_SCOPE,
+  paramsVersion: 2,
+  admittedProgramId: null,
+  outputPool: 1_000n,
+  bounds: V1_COMPOSITION_BOUNDS,
+  sources: [
+    fixtureSource({
+      idByte: 'aa',
+      snapshotByte: 'a1',
+      familyByte: 'f1',
+      programId: TRUST_GRAPH_SOURCE_PROGRAM_ID,
+      stateIndex: 7n,
+      freezeBlock: 999_900n,
+      weight: 400_000_000_000_000_000n,
+      entries: [
+        ['01', 900_000_000_000_000_000_000_000n],
+        ['02', 100_000_000_000_000_000_000_000n],
+      ],
+    }),
+    fixtureSource({
+      idByte: 'bb',
+      snapshotByte: 'b1',
+      familyByte: 'f2',
+      programId: WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM_ID,
+      stateIndex: 12n,
+      freezeBlock: 999_500n,
+      weight: 600_000_000_000_000_000n,
+      entries: [
+        ['02', 166_666_666_666_666_667n],
+        ['03', 333_333_333_333_333_333n],
+        ['04', 500_000_000_000_000_000n],
       ],
     }),
   ],

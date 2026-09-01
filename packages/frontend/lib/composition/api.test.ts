@@ -220,16 +220,29 @@ const main = async () => {
         ]),
       /same chain/
     )
+    // Standard and weighted TrustGraph sources blend in one composition, so a
+    // cross-type candidate is admitted without clearing the selection…
+    assert.doesNotThrow(() =>
+      requireCompatibleCandidate(
+        {
+          ...candidate,
+          programId: SCORE_PROGRAM_IDS['trust-graph-weighted'],
+        },
+        [candidate]
+      )
+    )
+    // …while any program outside the closed class fails even with the right
+    // key encoding and chain.
     assert.throws(
       () =>
         requireCompatibleCandidate(
           {
             ...candidate,
-            programId: SCORE_PROGRAM_IDS['trust-graph-weighted'],
+            programId: SCORE_PROGRAM_IDS['contributions'],
           },
           [candidate]
         ),
-      /one admitted score program/
+      /standard and weighted TrustGraph allocation outputs/
     )
     const weightedCandidate = catalog.candidates.find(
       (row) => row.programName === 'trust-graph-weighted'

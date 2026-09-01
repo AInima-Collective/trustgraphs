@@ -12,7 +12,7 @@ import {
   COMPOSITION_OUTPUT_DOMAIN,
   COMPOSITION_OUTPUT_KIND,
   COMPOSITION_PROGRAM_ID,
-  COMPOSITION_VERSION,
+  COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
   type CompositionConfig,
   type CompositionPreview,
   type CompositionSource,
@@ -31,9 +31,17 @@ import type { InitialProvingPolicy } from '../proving-prepay'
 const PARAMS =
   '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
 
+/** The V2 tuple: the same 20 words with word 6 as the closed source compatibility class. */
+const PARAMS_V2 =
+  '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 sourceCompatibilityClass,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
+
 /** `TrustComposeFactory.CreateArgs`, shared by the base and governed creation paths. */
 const CREATE_ARGS =
   `(string name,string metadataURI,${PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
+
+/** `TrustComposeFactoryV2.CreateArgs`: identical layout with the V2-typed params. */
+const CREATE_ARGS_V2 =
+  `(string name,string metadataURI,${PARAMS_V2} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
 
 /** Base-factory and policy-validation errors surfaced by direct creation simulation. */
 const TRUST_COMPOSE_FACTORY_ERRORS = [
@@ -95,6 +103,9 @@ const TRUST_COMPOSE_FACTORY_ERRORS = [
   'error AdapterPolicyMismatch(uint8 index)',
   'error WrongOutputKind(uint8 index, bytes32 outputKind)',
   'error WrongAdapterChain(uint8 index, uint64 chainId)',
+  'error InvalidCompatibilityClass(bytes32 class)',
+  'error WrongSourceOutputDomain(uint8 index, bytes32 programId, bytes32 sourceOutputDomain)',
+  'error UnadmittedAdapterProgram(uint8 index, bytes32 programId)',
 ] as const
 
 export const trustComposeFactoryAbi = parseAbi([
@@ -120,6 +131,44 @@ export const governedTrustComposeFactoryAbi = parseAbi([
   'event GovernedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed safe,address merkleGovModule,address snapshot)',
   `function createGovernedInstance(${CREATE_ARGS} requested,${INITIAL_POLICY_TUPLE} policy,${SIGNER_SYNC_TUPLE} signerSync) payable returns (bytes32 instanceId,address safeAddress,address merkleGovModule,address snapshot)`,
   ...GOVERNED_WRAPPER_ERRORS,
+])
+
+export const trustComposeFactoryV2Abi = parseAbi([
+  `event TrustComposeInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address accumulator,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 programVKey,bytes32 metadataDigest,${PARAMS_V2} params)`,
+  'event TrustComposeParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
+  `function createInstance(${CREATE_ARGS_V2} args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
+  'function computeInstanceId(address creator,string name,bytes32 salt) pure returns (bytes32)',
+  `function validateCreation(${PARAMS_V2} params,bytes manifest) view`,
+  'function EPOCH_FLOOR() view returns (uint64)',
+  'function POLICY_ACTIVATION_DELAY() view returns (uint48)',
+  'function SOURCE_ADAPTER_FACTORY() view returns (address)',
+  'function VAULT() view returns (address)',
+  ...TRUST_COMPOSE_FACTORY_ERRORS,
+])
+
+export const governedTrustComposeFactoryV2Abi = parseAbi([
+  'event GovernedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed safe,address merkleGovModule,address snapshot)',
+  `function createGovernedInstance(${CREATE_ARGS_V2} requested,${INITIAL_POLICY_TUPLE} policy,${SIGNER_SYNC_TUPLE} signerSync) payable returns (bytes32 instanceId,address safeAddress,address merkleGovModule,address snapshot)`,
+  ...GOVERNED_WRAPPER_ERRORS,
+])
+
+/** The V2 controller: identical control surface with the V2-typed params tuple. */
+export const trustComposeParamsControllerV2Abi = parseAbi([
+  `event InitialPolicyPublished(bytes32 indexed instanceId,uint64 indexed version,bytes32 indexed paramsHash,bytes32 adapterSetHash,bytes32 metadataDigest,${PARAMS_V2} params)`,
+  'event PolicyProposed(bytes32 indexed instanceId,uint64 indexed version,bytes32 indexed proposalId,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 manifestSha256,bytes32 adapterSetHash,bytes32 metadataDigest,bytes32 paramsHash,uint48 readyAt)',
+  `event PolicyActivated(bytes32 indexed instanceId,uint64 indexed version,bytes32 indexed paramsHash,bytes32 previousParamsHash,bytes32 proposalId,bytes32 adapterSetHash,bytes32 metadataDigest,${PARAMS_V2} params)`,
+  'event PolicyProposalCancelled(bytes32 indexed instanceId,uint64 indexed version,bytes32 indexed proposalId)',
+  'function proposePolicy(bytes manifest,address[] adapters,bytes32 metadataDigest) returns (uint64 pendingVersion,bytes32 proposalId,uint48 readyAt)',
+  'function cancelPolicy()',
+  'function activatePolicy(uint64 expectedVersion,bytes manifest,address[] adapters) returns (bytes32 newHash)',
+  'function owner() view returns (address)',
+  'function activationDelay() view returns (uint48)',
+  'function version() view returns (uint64)',
+  'function latestVersion() view returns (uint64)',
+  'function currentParamsHash() view returns (bytes32)',
+  `function getCurrentParams() view returns (${PARAMS_V2})`,
+  'function getPendingPolicy() view returns ((uint64 version,uint48 readyAt,bytes32 proposalId,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 manifestSha256,bytes32 adapterSetHash,bytes32 metadataDigest,bytes32 paramsHash))',
+  'function versionCommitment(uint64 version) view returns ((bytes32 paramsHash,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 manifestSha256,bytes32 adapterSetHash,bytes32 metadataDigest,uint48 proposedAt,uint48 activatedAt,uint48 cancelledAt,uint8 status))',
 ])
 
 export const trustComposeParamsControllerAbi = parseAbi([
@@ -225,7 +274,31 @@ export const compositionMetadataDigest = (
     )
   )
 
-export const compositionCreateArgs = (
+const sharedParamsFields = (config: CompositionConfig) => ({
+  version: config.paramsVersion,
+  programId: COMPOSITION_PROGRAM_ID,
+  scopeHash: config.scopeHash,
+  identityDomain: COMPOSITION_IDENTITY_DOMAIN,
+  outputKind: COMPOSITION_OUTPUT_KIND,
+  outputDomain: COMPOSITION_OUTPUT_DOMAIN,
+  weightScale: WEIGHT_SCALE,
+  outputPool: config.outputPool,
+  // The factory derives these five fields after it deploys the accumulator. Supplying their
+  // preview values would make otherwise correct creation calldata revert.
+  sourcePolicyRoot: ZERO_HASH,
+  sourceCount: 0,
+  policyManifestSha256: ZERO_HASH,
+  maxSources: config.bounds.maxSources,
+  maxEntriesPerSource: config.bounds.maxEntriesPerSource,
+  maxAggregateEntries: config.bounds.maxAggregateEntries,
+  maxUnionAccounts: config.bounds.maxUnionAccounts,
+  maxAggregateBlobBytes: config.bounds.maxAggregateBlobBytes,
+  maxSourceAgeBlocks: MAX_SOURCE_AGE_BLOCKS,
+  accumulator: ZERO_ADDRESS,
+  chainId: 0n,
+})
+
+const sharedCreateFields = (
   fields: CompositionCreationFields,
   config: CompositionConfig,
   preview: CompositionPreview
@@ -234,30 +307,6 @@ export const compositionCreateArgs = (
   return {
     name: fields.name.trim(),
     metadataURI: fields.metadataURI.trim(),
-    params: {
-      version: COMPOSITION_VERSION,
-      programId: COMPOSITION_PROGRAM_ID,
-      scopeHash: config.scopeHash,
-      identityDomain: COMPOSITION_IDENTITY_DOMAIN,
-      outputKind: COMPOSITION_OUTPUT_KIND,
-      outputDomain: COMPOSITION_OUTPUT_DOMAIN,
-      admittedProgramId: config.admittedProgramId,
-      weightScale: WEIGHT_SCALE,
-      outputPool: config.outputPool,
-      // The factory derives these five fields after it deploys the accumulator. Supplying their
-      // preview values would make otherwise correct creation calldata revert.
-      sourcePolicyRoot: ZERO_HASH,
-      sourceCount: 0,
-      policyManifestSha256: ZERO_HASH,
-      maxSources: config.bounds.maxSources,
-      maxEntriesPerSource: config.bounds.maxEntriesPerSource,
-      maxAggregateEntries: config.bounds.maxAggregateEntries,
-      maxUnionAccounts: config.bounds.maxUnionAccounts,
-      maxAggregateBlobBytes: config.bounds.maxAggregateBlobBytes,
-      maxSourceAgeBlocks: MAX_SOURCE_AGE_BLOCKS,
-      accumulator: ZERO_ADDRESS,
-      chainId: 0n,
-    },
     policyManifest: preview.policyManifest,
     sourceAdapters: adapters,
     metadataDigest: compositionMetadataDigest(preview, adapters),
@@ -269,16 +318,56 @@ export const compositionCreateArgs = (
   }
 }
 
+export const compositionCreateArgs = (
+  fields: CompositionCreationFields,
+  config: CompositionConfig,
+  preview: CompositionPreview
+) => {
+  if (config.paramsVersion !== 1 || config.admittedProgramId === null) {
+    throw new Error('V1 creation calldata requires a V1 policy configuration.')
+  }
+  return {
+    ...sharedCreateFields(fields, config, preview),
+    params: {
+      ...sharedParamsFields(config),
+      admittedProgramId: config.admittedProgramId,
+    },
+  }
+}
+
+export const compositionCreateArgsV2 = (
+  fields: CompositionCreationFields,
+  config: CompositionConfig,
+  preview: CompositionPreview
+) => {
+  if (config.paramsVersion !== 2) {
+    throw new Error('V2 creation calldata requires a V2 policy configuration.')
+  }
+  return {
+    ...sharedCreateFields(fields, config, preview),
+    params: {
+      ...sharedParamsFields(config),
+      sourceCompatibilityClass: COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
+    },
+  }
+}
+
 export const compositionCreatePayload = (
   fields: CompositionCreationFields,
   config: CompositionConfig,
   preview: CompositionPreview
 ): Hex =>
-  encodeFunctionData({
-    abi: trustComposeFactoryAbi,
-    functionName: 'createInstance',
-    args: [compositionCreateArgs(fields, config, preview)],
-  })
+  config.paramsVersion === 2
+    ? encodeFunctionData({
+        abi: trustComposeFactoryV2Abi,
+        functionName: 'createInstance',
+        args: [compositionCreateArgsV2(fields, config, preview)],
+      })
+    : encodeFunctionData({
+        abi: trustComposeFactoryAbi,
+        functionName: 'createInstance',
+        args: [compositionCreateArgs(fields, config, preview)],
+      })
 
 /**
  * Calldata for the governed creation path. Signer-sync is plumbed in the wrapper but not offered
@@ -290,15 +379,25 @@ export const compositionGovernedCreatePayload = (
   preview: CompositionPreview,
   policy: InitialProvingPolicy
 ): Hex =>
-  encodeFunctionData({
-    abi: governedTrustComposeFactoryAbi,
-    functionName: 'createGovernedInstance',
-    args: [
-      compositionCreateArgs(fields, config, preview),
-      policy,
-      DISABLED_SIGNER_SYNC,
-    ],
-  })
+  config.paramsVersion === 2
+    ? encodeFunctionData({
+        abi: governedTrustComposeFactoryV2Abi,
+        functionName: 'createGovernedInstance',
+        args: [
+          compositionCreateArgsV2(fields, config, preview),
+          policy,
+          DISABLED_SIGNER_SYNC,
+        ],
+      })
+    : encodeFunctionData({
+        abi: governedTrustComposeFactoryAbi,
+        functionName: 'createGovernedInstance',
+        args: [
+          compositionCreateArgs(fields, config, preview),
+          policy,
+          DISABLED_SIGNER_SYNC,
+        ],
+      })
 
 export const compositionAdapterPayload = (source: CompositionSource): Hex =>
   encodeFunctionData({

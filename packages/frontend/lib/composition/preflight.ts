@@ -6,6 +6,7 @@ import {
   type CompositionPreview,
   V1_COMPOSITION_BOUNDS,
   WEIGHT_SCALE,
+  admittedSourceOutputDomain,
   canonicalCompositionBlob,
 } from './core'
 import { ZERO_ADDRESS, ZERO_HASH } from '../pagerank/words'
@@ -169,16 +170,25 @@ export const compositionPreflight = ({
         })
       )
     }
-    if (!sameHex(source.programId, config.admittedProgramId)) {
+    const outsideAdmission =
+      config.paramsVersion === 1
+        ? config.admittedProgramId === null ||
+          !sameHex(source.programId, config.admittedProgramId)
+        : admittedSourceOutputDomain(source.programId) === null
+    if (outsideAdmission) {
       issues.push(
         issue({
           code: 'wrong-program',
           level: 'error',
           title: `${source.name} has incompatible score semantics`,
           detail:
-            'V1 admits one authenticated source program per composition policy; address width alone is not compatibility.',
+            config.paramsVersion === 1
+              ? 'This V1 policy admits one authenticated source program; address width alone is not compatibility.'
+              : 'The composition admits standard and weighted TrustGraph allocation outputs and nothing else; address width alone is not compatibility.',
           action:
-            'Choose sources with the same program and allocation output semantics.',
+            config.paramsVersion === 1
+              ? 'Choose sources with the same program and allocation output semantics.'
+              : 'Choose standard or weighted TrustGraph sources with allocation output semantics.',
         })
       )
     }
