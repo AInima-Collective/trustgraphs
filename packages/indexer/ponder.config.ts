@@ -4,6 +4,7 @@ import path from 'path'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
+import { canonicalEasAbi, schemaRegistryAbi } from './abis/canonicalEas'
 import {
   compositionAccumulatorAbi,
   trustComposeFactoryAbi,
@@ -11,7 +12,6 @@ import {
 } from './abis/composition'
 import { contributionsFactoryAbi } from './abis/contributionsFactory'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
-import { canonicalEasAbi, schemaRegistryAbi } from './abis/canonicalEas'
 import { easOffchainAnchorRegistryAbi } from './abis/easOffchainAnchorRegistry'
 import { erc8004IdentityRegistryAbi } from './abis/erc8004IdentityRegistry'
 import { erc8004ReputationRegistryAbi } from './abis/erc8004ReputationRegistry'
@@ -96,6 +96,11 @@ type DeploymentSummary = {
    *  so their children ride the existing governed child sources. */
   governedWeightedFactory?: { governed_weighted_factory?: string }
   governedComposeFactory?: { governed_compose_factory?: string }
+  /** The V2 (mixed standard/weighted source) compose factory generation and its wrapper. */
+  trustComposeFactoryV2?: { trust_compose_factory?: string }
+  trustComposeFactoryV2Fast?: { trust_compose_factory?: string }
+  governedComposeFactoryV2?: { governed_compose_factory?: string }
+  governedComposeFactoryV2Fast?: { governed_compose_factory?: string }
   weightedFactory?: { weighted_factory?: string }
   // One summary key per factory, agreed by both consumers: this matches the contract name and
   // what packages/frontend/scripts/generate-config.ts reads (`trustComposeFactory.trust_compose_factory`),
@@ -302,6 +307,10 @@ const GOVERNED_COMPOSE_FACTORY = deploymentSummary.governedComposeFactory
   ?.governed_compose_factory as Hex | undefined
 const GOVERNED_COMPOSE_FACTORY_FAST = deploymentSummary
   .governedComposeFactoryFast?.governed_compose_factory as Hex | undefined
+const GOVERNED_COMPOSE_FACTORY_V2 = deploymentSummary.governedComposeFactoryV2
+  ?.governed_compose_factory as Hex | undefined
+const GOVERNED_COMPOSE_FACTORY_V2_FAST = deploymentSummary
+  .governedComposeFactoryV2Fast?.governed_compose_factory as Hex | undefined
 /**
  * Every governed wrapper on this chain, both generations of each. All emit the same
  * `GovernedInstanceCreated(instanceId, creator, safe, merkleGovModule, snapshot)` signature, so
@@ -316,6 +325,8 @@ const GOVERNED_WRAPPERS = [
   GOVERNED_WEIGHTED_FACTORY_FAST,
   GOVERNED_COMPOSE_FACTORY,
   GOVERNED_COMPOSE_FACTORY_FAST,
+  GOVERNED_COMPOSE_FACTORY_V2,
+  GOVERNED_COMPOSE_FACTORY_V2_FAST,
 ].filter((address): address is Hex => address !== undefined)
 /** Both governed trust-graph wrapper generations, one source: same ABI, same handlers. */
 const GOVERNED_TRUSTGRAPHS_FACTORIES = [
@@ -350,9 +361,24 @@ const COMPOSITION_FACTORY =
     | undefined)
 const COMPOSITION_FACTORY_FAST = deploymentSummary.trustComposeFactoryFast
   ?.trust_compose_factory as Hex | undefined
+// The V2 (mixed standard/weighted source) factory generation. Its creation,
+// controller, and policy events are ABI-identical to V1's, so both generations
+// ride the same contract configurations and handlers; the params tuple's own
+// version word selects the semantic decoder.
+const COMPOSITION_FACTORY_V2 =
+  (process.env[`TRUST_COMPOSE_FACTORY_V2_ADDRESS_${CHAIN_ID}`]?.trim() as
+    | Hex
+    | undefined) ??
+  (deploymentSummary.trustComposeFactoryV2?.trust_compose_factory as
+    | Hex
+    | undefined)
+const COMPOSITION_FACTORY_V2_FAST = deploymentSummary.trustComposeFactoryV2Fast
+  ?.trust_compose_factory as Hex | undefined
 const COMPOSITION_FACTORIES = [
   COMPOSITION_FACTORY,
   COMPOSITION_FACTORY_FAST,
+  COMPOSITION_FACTORY_V2,
+  COMPOSITION_FACTORY_V2_FAST,
 ].filter((address): address is Hex => address !== undefined)
 const CONTRIBUTIONS_FACTORY =
   (process.env[`CONTRIBUTIONS_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
@@ -783,16 +809,19 @@ export default createConfig({
     governedTrustComposeFactory: {
       abi: governedTrustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
-      chain: GOVERNED_COMPOSE_FACTORY
-        ? {
-            [CORE_CHAIN]: {
-              address: [
-                GOVERNED_COMPOSE_FACTORY,
-                GOVERNED_COMPOSE_FACTORY_FAST,
-              ].filter((address): address is Hex => address !== undefined),
-            },
-          }
-        : {},
+      chain:
+        GOVERNED_COMPOSE_FACTORY || GOVERNED_COMPOSE_FACTORY_V2
+          ? {
+              [CORE_CHAIN]: {
+                address: [
+                  GOVERNED_COMPOSE_FACTORY,
+                  GOVERNED_COMPOSE_FACTORY_FAST,
+                  GOVERNED_COMPOSE_FACTORY_V2,
+                  GOVERNED_COMPOSE_FACTORY_V2_FAST,
+                ].filter((address): address is Hex => address !== undefined),
+              },
+            }
+          : {},
     },
     signerSyncModuleDeployer: {
       abi: signerSyncModuleDeployerAbi,

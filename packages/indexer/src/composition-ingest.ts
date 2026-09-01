@@ -8,7 +8,7 @@ import { type Hex, bytesToHex, keccak256, sha256 } from 'viem'
 
 import { compositionCheckpointForEvent } from './composition-receipt'
 import {
-  type CompositionParamsJson,
+  type AnyCompositionParamsJson,
   compositionParamsFromJson,
   decodeCompositionScoreBlob,
   rawCompositionCid,
@@ -134,7 +134,7 @@ export const ingestCompositionScores = async (
     throw new Error('composition governance/source provenance is incomplete')
   const manifestBytes = capture.manifest as Hex
   const params = compositionParamsFromJson(
-    policy.params as CompositionParamsJson
+    policy.params as AnyCompositionParamsJson
   )
   const parsedSources = (policy.sources as Array<{ sourceId: Hex }>).length
   if (parsedSources !== sourceCheckpointIds.length)
@@ -143,12 +143,18 @@ export const ingestCompositionScores = async (
   // CIDs are derived from the TGCM sha256 fields by the recomputer, but source downloads need the
   // strings up front. rawCompositionCid is the only accepted derivation.
   const captureHex = manifestBytes.slice(2)
-  const captureRecordBytes = 261
+  // V2 records are 32 bytes wider: each carries its source's real output domain
+  // after the program ID, shifting every later field by one word.
+  const captureRecordBytes = params.version === 2 ? 293 : 261
+  const blobSha256Offset = params.version === 2 ? 196 : 164
   const captureHeaderBytes = 23
   const sourcePreimages = await Promise.all(
     sourceCheckpointIds.map(async (_sourceCheckpointId, position) => {
       const start =
-        (captureHeaderBytes + position * captureRecordBytes + 164) * 2
+        (captureHeaderBytes +
+          position * captureRecordBytes +
+          blobSha256Offset) *
+        2
       const blobSha256 = `0x${captureHex.slice(start, start + 64)}` as Hex
       const cid = rawCompositionCid(blobSha256)
       return { cid, blob: await fetchSource(cid) }
@@ -253,6 +259,7 @@ export const ingestCompositionScores = async (
         snapshot: source.snapshot,
         familyId: source.familyId,
         programId: source.programId,
+        sourceOutputDomain: source.sourceOutputDomain,
         adapter: adapter.adapter,
         deploymentProvenance: adapter.deploymentProvenance,
         stateIndex: source.stateIndex,

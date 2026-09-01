@@ -29,12 +29,72 @@ export const COMPOSITION_BOUNDS = {
   aggregateBlobBytes: 1_048_576,
 } as const
 
+export const TRUST_GRAPH_SOURCE_PROGRAM = keccak256(stringToHex('trust-graph'))
+export const WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM = keccak256(
+  stringToHex('trust-graph-weighted')
+)
+export const TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN = keccak256(
+  stringToHex('trustgraphs.output.trust-graph-account.v1')
+)
+export const WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN = keccak256(
+  stringToHex('trustgraphs.output.weighted-trust-graph-account.v1')
+)
+
+/**
+ * The one closed V2 compatibility class: class tag, shared key domain, shared
+ * output kind, then the standard and weighted program/output-domain pairs, in
+ * that normative order. Nothing else passes; adding a pair requires another
+ * reviewed class and a new params version.
+ */
+export const COMPOSITION_SOURCE_COMPATIBILITY_CLASS = keccak256(
+  encodeAbiParameters(
+    [
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+    ],
+    [
+      keccak256(stringToHex('trust-compose.source-compatibility.v1')),
+      COMPOSITION_IDENTITY_DOMAIN,
+      COMPOSITION_OUTPUT_KIND,
+      TRUST_GRAPH_SOURCE_PROGRAM,
+      TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN,
+      WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM,
+      WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN,
+    ]
+  )
+)
+
+/** The sole output domain a source program is admitted with under the V2 class. */
+export const admittedSourceOutputDomain = (programId: Hex): Hex | null => {
+  const lowered = programId.toLowerCase()
+  if (lowered === TRUST_GRAPH_SOURCE_PROGRAM)
+    return TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN
+  if (lowered === WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM)
+    return WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN
+  return null
+}
+
 const ZERO_WORD = `0x${'00'.repeat(32)}` as Hex
 const CAPTURE_HEADER_BYTES = 23
-const CAPTURE_RECORD_BYTES = 261
 const POLICY_HEADER_BYTES = 15
-const POLICY_RECORD_BYTES = 133
+const RECORD_BYTES = {
+  1: { capture: 261, policy: 133 },
+  2: { capture: 293, policy: 165 },
+} as const
 const U128_MAX = (1n << 128n) - 1n
+
+type ManifestVersion = keyof typeof RECORD_BYTES
+
+const manifestVersionOf = (version: number): ManifestVersion => {
+  if (version !== 1 && version !== 2)
+    fail(`unsupported params version ${version}`)
+  return version as ManifestVersion
+}
 
 export type CompositionParams = {
   version: number
@@ -59,6 +119,20 @@ export type CompositionParams = {
   chainId: bigint
 }
 
+export type CompositionParamsV2 = Omit<
+  CompositionParams,
+  'admittedProgramId'
+> & {
+  sourceCompatibilityClass: Hex
+}
+
+/** Both generations, discriminated by which word-6 field is present. */
+export type AnyCompositionParams = CompositionParams | CompositionParamsV2
+
+export const isCompositionParamsV2 = (
+  params: AnyCompositionParams
+): params is CompositionParamsV2 => 'sourceCompatibilityClass' in params
+
 export type CompositionParamsJson = Omit<
   CompositionParams,
   'weightScale' | 'outputPool' | 'maxSourceAgeBlocks' | 'chainId'
@@ -69,11 +143,27 @@ export type CompositionParamsJson = Omit<
   chainId: string
 }
 
+export type CompositionParamsV2Json = Omit<
+  CompositionParamsV2,
+  'weightScale' | 'outputPool' | 'maxSourceAgeBlocks' | 'chainId'
+> & {
+  weightScale: string
+  outputPool: string
+  maxSourceAgeBlocks: string
+  chainId: string
+}
+
+export type AnyCompositionParamsJson =
+  | CompositionParamsJson
+  | CompositionParamsV2Json
+
 export type CompositionPolicySource = {
   sourceId: Hex
   snapshot: Address
   familyId: Hex
   programId: Hex
+  /** The source's real committed output domain. V1 records do not carry one. */
+  sourceOutputDomain: Hex | null
   weight: bigint
   maxAgeBlocks: bigint
   required: boolean
@@ -208,8 +298,8 @@ export const rawCompositionCid = (digest: Hex) => {
   )}`
 }
 
-export const normalizeCompositionParams = (params: CompositionParams) => {
-  const paramsJson: CompositionParamsJson = {
+export const normalizeCompositionParams = (params: AnyCompositionParams) => {
+  const paramsJson: AnyCompositionParamsJson = {
     ...params,
     weightScale: params.weightScale.toString(),
     outputPool: params.outputPool.toString(),
@@ -247,7 +337,9 @@ export const normalizeCompositionParams = (params: CompositionParams) => {
         params.identityDomain,
         params.outputKind,
         params.outputDomain,
-        params.admittedProgramId,
+        isCompositionParamsV2(params)
+          ? params.sourceCompatibilityClass
+          : params.admittedProgramId,
         params.weightScale,
         params.outputPool,
         params.sourcePolicyRoot,
@@ -268,8 +360,8 @@ export const normalizeCompositionParams = (params: CompositionParams) => {
 }
 
 export const compositionParamsFromJson = (
-  params: CompositionParamsJson
-): CompositionParams => ({
+  params: AnyCompositionParamsJson
+): AnyCompositionParams => ({
   ...params,
   weightScale: BigInt(params.weightScale),
   outputPool: BigInt(params.outputPool),
@@ -278,10 +370,22 @@ export const compositionParamsFromJson = (
 })
 
 const validateParams = (
-  params: CompositionParams,
+  params: AnyCompositionParams,
   connectedChainId: bigint
 ) => {
-  if (params.version !== 1) fail(`unsupported params version ${params.version}`)
+  if (isCompositionParamsV2(params)) {
+    if (params.version !== 2)
+      fail(`V2-shaped params carry version ${params.version}`)
+    if (
+      !sameHex(
+        params.sourceCompatibilityClass,
+        COMPOSITION_SOURCE_COMPATIBILITY_CLASS
+      )
+    )
+      fail('unsupported source compatibility class')
+  } else if (params.version !== 1) {
+    fail(`unsupported params version ${params.version}`)
+  }
   if (!sameHex(params.programId, COMPOSITION_PROGRAM)) fail('wrong program id')
   if (!sameHex(params.identityDomain, COMPOSITION_IDENTITY_DOMAIN))
     fail('wrong identity domain')
@@ -289,10 +393,11 @@ const validateParams = (
     fail('wrong output kind')
   if (!sameHex(params.outputDomain, COMPOSITION_OUTPUT_DOMAIN))
     fail('wrong output domain')
+  if (params.scopeHash === ZERO_WORD) fail('invalid scope')
   if (
-    params.scopeHash === ZERO_WORD ||
-    params.admittedProgramId === ZERO_WORD ||
-    sameHex(params.admittedProgramId, COMPOSITION_PROGRAM)
+    !isCompositionParamsV2(params) &&
+    (params.admittedProgramId === ZERO_WORD ||
+      sameHex(params.admittedProgramId, COMPOSITION_PROGRAM))
   )
     fail('invalid scope or admitted program')
   if (params.weightScale !== COMPOSITION_WEIGHT_SCALE)
@@ -326,58 +431,90 @@ const validateParams = (
 
 export const parseCompositionPolicy = (
   manifest: Hex,
-  expectedChainId: bigint
+  expectedChainId: bigint,
+  version: number = 1
 ): CompositionPolicySource[] => {
+  const manifestVersion = manifestVersionOf(version)
+  const recordBytes = RECORD_BYTES[manifestVersion].policy
   const bytes = hexToBytes(manifest)
   if (bytes.length < POLICY_HEADER_BYTES) fail('policy manifest is too short')
   if (magic(bytes) !== 'TGCP') fail('invalid policy manifest magic')
-  if (readUint(bytes, 4, 2) !== 1n) fail('unsupported policy manifest version')
+  if (readUint(bytes, 4, 2) !== BigInt(manifestVersion))
+    fail('unsupported policy manifest version')
   if (readUint(bytes, 6, 8) !== expectedChainId)
     fail('policy manifest chain mismatch')
   const count = Number(bytes[14])
   if (count < 2 || count > COMPOSITION_BOUNDS.sources)
     fail('invalid policy source count')
-  const expectedLength = POLICY_HEADER_BYTES + count * POLICY_RECORD_BYTES
+  const expectedLength = POLICY_HEADER_BYTES + count * recordBytes
   if (bytes.length !== expectedLength) fail('policy manifest length mismatch')
   const sources: CompositionPolicySource[] = []
   for (let position = 0; position < count; position++) {
-    const start = POLICY_HEADER_BYTES + position * POLICY_RECORD_BYTES
+    const start = POLICY_HEADER_BYTES + position * recordBytes
+    const wide = manifestVersion === 2 ? 32 : 0
     sources.push({
       sourceId: sliceHex(bytes, start, 32),
       snapshot: sliceHex(bytes, start + 32, 20) as Address,
       familyId: sliceHex(bytes, start + 52, 32),
       programId: sliceHex(bytes, start + 84, 32),
-      weight: readUint(bytes, start + 116, 8),
-      maxAgeBlocks: readUint(bytes, start + 124, 8),
-      required: bytes[start + 132] === 1,
+      sourceOutputDomain:
+        manifestVersion === 2 ? sliceHex(bytes, start + 116, 32) : null,
+      weight: readUint(bytes, start + 116 + wide, 8),
+      maxAgeBlocks: readUint(bytes, start + 124 + wide, 8),
+      required: bytes[start + 132 + wide] === 1,
     })
   }
   return sources
 }
 
 const policyLeaf = (source: CompositionPolicySource): Hex =>
-  keccak256(
-    encodeAbiParameters(
-      [
-        { type: 'bytes32' },
-        { type: 'address' },
-        { type: 'bytes32' },
-        { type: 'bytes32' },
-        { type: 'uint64' },
-        { type: 'uint64' },
-        { type: 'uint8' },
-      ],
-      [
-        source.sourceId,
-        source.snapshot,
-        source.familyId,
-        source.programId,
-        source.weight,
-        source.maxAgeBlocks,
-        source.required ? 1 : 0,
-      ]
-    )
-  )
+  source.sourceOutputDomain === null
+    ? keccak256(
+        encodeAbiParameters(
+          [
+            { type: 'bytes32' },
+            { type: 'address' },
+            { type: 'bytes32' },
+            { type: 'bytes32' },
+            { type: 'uint64' },
+            { type: 'uint64' },
+            { type: 'uint8' },
+          ],
+          [
+            source.sourceId,
+            source.snapshot,
+            source.familyId,
+            source.programId,
+            source.weight,
+            source.maxAgeBlocks,
+            source.required ? 1 : 0,
+          ]
+        )
+      )
+    : keccak256(
+        encodeAbiParameters(
+          [
+            { type: 'bytes32' },
+            { type: 'address' },
+            { type: 'bytes32' },
+            { type: 'bytes32' },
+            { type: 'bytes32' },
+            { type: 'uint64' },
+            { type: 'uint64' },
+            { type: 'uint8' },
+          ],
+          [
+            source.sourceId,
+            source.snapshot,
+            source.familyId,
+            source.programId,
+            source.sourceOutputDomain,
+            source.weight,
+            source.maxAgeBlocks,
+            source.required ? 1 : 0,
+          ]
+        )
+      )
 
 const hashPair = (left: Hex, right: Hex): Hex =>
   keccak256(
@@ -399,13 +536,38 @@ export const compositionPolicyRoot = (
   return level[0] ?? ZERO_WORD
 }
 
+/** Admission for one policy/capture record, by generation. */
+const validateSourceAdmission = (
+  source: Pick<CompositionPolicySource, 'programId' | 'sourceOutputDomain'>,
+  params: AnyCompositionParams
+) => {
+  if (sameHex(source.programId, COMPOSITION_PROGRAM))
+    fail('composite sources are forbidden')
+  if (isCompositionParamsV2(params)) {
+    const admittedDomain =
+      admittedSourceOutputDomain(source.programId) ??
+      fail('unadmitted source program')
+    const committedDomain =
+      source.sourceOutputDomain ??
+      fail('source record carries no output domain')
+    if (!sameHex(committedDomain, admittedDomain))
+      fail('source output domain does not match its program')
+  } else if (!sameHex(source.programId, params.admittedProgramId)) {
+    fail('unadmitted source program')
+  }
+}
+
 export const verifyCompositionPolicy = (
   manifest: Hex,
-  params: CompositionParams,
+  params: AnyCompositionParams,
   connectedChainId: bigint
 ) => {
   validateParams(params, connectedChainId)
-  const sources = parseCompositionPolicy(manifest, params.chainId)
+  const sources = parseCompositionPolicy(
+    manifest,
+    params.chainId,
+    params.version
+  )
   if (sources.length !== params.sourceCount)
     fail('policy source count mismatch')
   let previous: string | undefined
@@ -422,8 +584,7 @@ export const verifyCompositionPolicy = (
       fail('zero or duplicate policy snapshot')
     snapshots.add(source.snapshot)
     if (source.familyId === ZERO_WORD) fail('zero source family')
-    if (!sameHex(source.programId, params.admittedProgramId))
-      fail('unadmitted source program')
+    validateSourceAdmission(source, params)
     if (!source.required) fail('optional source is unsupported')
     if (
       source.weight <= 0n ||
@@ -445,35 +606,42 @@ export const verifyCompositionPolicy = (
 
 export const parseCompositionCapture = (
   manifest: Hex,
-  expectedChainId: bigint
+  expectedChainId: bigint,
+  version: number = 1
 ) => {
+  const manifestVersion = manifestVersionOf(version)
+  const recordBytes = RECORD_BYTES[manifestVersion].capture
   const bytes = hexToBytes(manifest)
   if (bytes.length < CAPTURE_HEADER_BYTES) fail('capture manifest is too short')
   if (magic(bytes) !== 'TGCM') fail('invalid capture manifest magic')
-  if (readUint(bytes, 4, 2) !== 1n) fail('unsupported capture version')
+  if (readUint(bytes, 4, 2) !== BigInt(manifestVersion))
+    fail('unsupported capture version')
   const chainId = readUint(bytes, 6, 8)
   if (chainId !== expectedChainId) fail('capture chain mismatch')
   const captureBlock = readUint(bytes, 14, 8)
   const count = Number(bytes[22])
-  const expectedLength = CAPTURE_HEADER_BYTES + count * CAPTURE_RECORD_BYTES
+  const expectedLength = CAPTURE_HEADER_BYTES + count * recordBytes
   if (bytes.length !== expectedLength) fail('capture manifest length mismatch')
   const sources: CompositionCapturedSource[] = []
   for (let position = 0; position < count; position++) {
-    const start = CAPTURE_HEADER_BYTES + position * CAPTURE_RECORD_BYTES
+    const start = CAPTURE_HEADER_BYTES + position * recordBytes
+    const wide = manifestVersion === 2 ? 32 : 0
     sources.push({
       sourceId: sliceHex(bytes, start, 32),
       snapshot: sliceHex(bytes, start + 32, 20) as Address,
       familyId: sliceHex(bytes, start + 52, 32),
       programId: sliceHex(bytes, start + 84, 32),
-      stateIndex: readUint(bytes, start + 116, 8),
-      freezeBlock: readUint(bytes, start + 124, 8),
-      outputRoot: sliceHex(bytes, start + 132, 32),
-      blobSha256: sliceHex(bytes, start + 164, 32),
-      cidDigest: sliceHex(bytes, start + 196, 32),
-      totalValue: readUint(bytes, start + 228, 16),
-      weight: readUint(bytes, start + 244, 8),
-      maxAgeBlocks: readUint(bytes, start + 252, 8),
-      required: bytes[start + 260] === 1,
+      sourceOutputDomain:
+        manifestVersion === 2 ? sliceHex(bytes, start + 116, 32) : null,
+      stateIndex: readUint(bytes, start + 116 + wide, 8),
+      freezeBlock: readUint(bytes, start + 124 + wide, 8),
+      outputRoot: sliceHex(bytes, start + 132 + wide, 32),
+      blobSha256: sliceHex(bytes, start + 164 + wide, 32),
+      cidDigest: sliceHex(bytes, start + 196 + wide, 32),
+      totalValue: readUint(bytes, start + 228 + wide, 16),
+      weight: readUint(bytes, start + 244 + wide, 8),
+      maxAgeBlocks: readUint(bytes, start + 252 + wide, 8),
+      required: bytes[start + 260 + wide] === 1,
     })
   }
   return { captureBlock, sources }
@@ -609,7 +777,7 @@ const sourceDisagreement = (
 
 /** Production, guest-identical recomputation. No research module is imported by this path. */
 export const computeComposition = (
-  params: CompositionParams,
+  params: AnyCompositionParams,
   manifest: Hex,
   preimages: CompositionSourcePreimage[],
   connectedChainId: bigint
@@ -620,7 +788,11 @@ export const computeComposition = (
     params,
     connectedChainId
   )
-  const parsed = parseCompositionCapture(manifest, params.chainId)
+  const parsed = parseCompositionCapture(
+    manifest,
+    params.chainId,
+    params.version
+  )
   const sources = parsed.sources
   if (sources.length !== params.sourceCount)
     fail('capture source count mismatch')
@@ -639,6 +811,7 @@ export const computeComposition = (
       source.snapshot !== policySource.snapshot ||
       source.familyId !== policySource.familyId ||
       source.programId !== policySource.programId ||
+      source.sourceOutputDomain !== policySource.sourceOutputDomain ||
       source.weight !== policySource.weight ||
       source.maxAgeBlocks !== policySource.maxAgeBlocks ||
       source.required !== policySource.required
@@ -649,12 +822,9 @@ export const computeComposition = (
     previous = source.sourceId
     if (snapshots.has(source.snapshot)) fail('duplicate source snapshot')
     snapshots.add(source.snapshot)
-    if (
-      !source.required ||
-      !sameHex(source.programId, params.admittedProgramId) ||
-      source.totalValue <= 0n
-    )
+    if (!source.required || source.totalValue <= 0n)
       fail('invalid captured source')
+    validateSourceAdmission(source, params)
     if (
       source.freezeBlock > parsed.captureBlock ||
       parsed.captureBlock - source.freezeBlock > source.maxAgeBlocks
@@ -804,22 +974,35 @@ export const computeComposition = (
 export const policyManifestFromCapture = (capture: Hex): Hex => {
   const bytes = hexToBytes(capture)
   if (bytes.length < CAPTURE_HEADER_BYTES) fail('capture manifest is too short')
+  const rawVersion = readUint(bytes, 4, 2)
+  if (rawVersion !== 1n && rawVersion !== 2n)
+    fail('unsupported capture version')
+  const manifestVersion = manifestVersionOf(Number(rawVersion))
+  const captureRecordBytes = RECORD_BYTES[manifestVersion].capture
+  const policyRecordBytes = RECORD_BYTES[manifestVersion].policy
+  // The static prefix of one record: through programId for V1, and additionally
+  // the committed source output domain for V2.
+  const staticPrefixBytes = manifestVersion === 2 ? 148 : 116
   const count = Number(bytes[22])
-  if (bytes.length !== CAPTURE_HEADER_BYTES + count * CAPTURE_RECORD_BYTES)
+  if (bytes.length !== CAPTURE_HEADER_BYTES + count * captureRecordBytes)
     fail('capture manifest length mismatch')
-  const output = new Uint8Array(
-    POLICY_HEADER_BYTES + count * POLICY_RECORD_BYTES
-  )
+  const output = new Uint8Array(POLICY_HEADER_BYTES + count * policyRecordBytes)
   output.set(new TextEncoder().encode('TGCP'), 0)
   output.set(bytes.slice(4, 14), 4)
   output[14] = count
   for (let position = 0; position < count; position++) {
-    const captureStart = CAPTURE_HEADER_BYTES + position * CAPTURE_RECORD_BYTES
-    const policyStart = POLICY_HEADER_BYTES + position * POLICY_RECORD_BYTES
-    output.set(bytes.slice(captureStart, captureStart + 116), policyStart)
+    const captureStart = CAPTURE_HEADER_BYTES + position * captureRecordBytes
+    const policyStart = POLICY_HEADER_BYTES + position * policyRecordBytes
     output.set(
-      bytes.slice(captureStart + 244, captureStart + 261),
-      policyStart + 116
+      bytes.slice(captureStart, captureStart + staticPrefixBytes),
+      policyStart
+    )
+    output.set(
+      bytes.slice(
+        captureStart + staticPrefixBytes + 128,
+        captureStart + captureRecordBytes
+      ),
+      policyStart + staticPrefixBytes
     )
   }
   return bytesToHex(output)
@@ -839,7 +1022,7 @@ const attributionDigest = (result: CompositionResult) =>
 
 /** Refusal boundary used by live ingestion and its complete negative test matrix. */
 export const verifyCompositionAcceptance = (
-  params: CompositionParams,
+  params: AnyCompositionParams,
   manifest: Hex,
   preimages: CompositionSourcePreimage[],
   accepted: CompositionAcceptedState,

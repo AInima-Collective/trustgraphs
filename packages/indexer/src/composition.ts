@@ -17,9 +17,9 @@ import {
 
 import { compositionPolicyFromCalldata } from './composition-calldata'
 import {
+  type AnyCompositionParams,
+  type AnyCompositionParamsJson,
   COMPOSITION_OUTPUT_KIND,
-  type CompositionParams,
-  type CompositionParamsJson,
   compositionParamsFromJson,
   normalizeCompositionParams,
   parseCompositionCapture,
@@ -36,28 +36,39 @@ import {
 const sameHex = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase()
 
-export const compositionParamsFromChain = (params: any): CompositionParams => ({
-  version: Number(params.version),
-  programId: params.programId,
-  scopeHash: params.scopeHash,
-  identityDomain: params.identityDomain,
-  outputKind: params.outputKind,
-  outputDomain: params.outputDomain,
-  admittedProgramId: params.admittedProgramId,
-  weightScale: BigInt(params.weightScale),
-  outputPool: BigInt(params.outputPool),
-  sourcePolicyRoot: params.sourcePolicyRoot,
-  sourceCount: Number(params.sourceCount),
-  policyManifestSha256: params.policyManifestSha256,
-  maxSources: Number(params.maxSources),
-  maxEntriesPerSource: Number(params.maxEntriesPerSource),
-  maxAggregateEntries: Number(params.maxAggregateEntries),
-  maxUnionAccounts: Number(params.maxUnionAccounts),
-  maxAggregateBlobBytes: Number(params.maxAggregateBlobBytes),
-  maxSourceAgeBlocks: BigInt(params.maxSourceAgeBlocks),
-  accumulator: params.accumulator,
-  chainId: BigInt(params.chainId),
-})
+export const compositionParamsFromChain = (
+  params: any
+): AnyCompositionParams => {
+  // Both factory generations share the 20-word ABI shape, so the decoder names
+  // word 6 by the V1 field; under version 2 it is the source compatibility
+  // class and must never surface under the V1 name.
+  const wordSix: Hex =
+    params.admittedProgramId ?? params.sourceCompatibilityClass
+  const base = {
+    version: Number(params.version),
+    programId: params.programId,
+    scopeHash: params.scopeHash,
+    identityDomain: params.identityDomain,
+    outputKind: params.outputKind,
+    outputDomain: params.outputDomain,
+    weightScale: BigInt(params.weightScale),
+    outputPool: BigInt(params.outputPool),
+    sourcePolicyRoot: params.sourcePolicyRoot,
+    sourceCount: Number(params.sourceCount),
+    policyManifestSha256: params.policyManifestSha256,
+    maxSources: Number(params.maxSources),
+    maxEntriesPerSource: Number(params.maxEntriesPerSource),
+    maxAggregateEntries: Number(params.maxAggregateEntries),
+    maxUnionAccounts: Number(params.maxUnionAccounts),
+    maxAggregateBlobBytes: Number(params.maxAggregateBlobBytes),
+    maxSourceAgeBlocks: BigInt(params.maxSourceAgeBlocks),
+    accumulator: params.accumulator,
+    chainId: BigInt(params.chainId),
+  }
+  return base.version === 2
+    ? { ...base, sourceCompatibilityClass: wordSix }
+    : { ...base, admittedProgramId: wordSix }
+}
 
 const policyFromTransaction = async (
   context: any,
@@ -74,7 +85,7 @@ const recoverPolicy = async (
   context: any,
   transactionHash: Hex,
   kind: 'create' | 'propose',
-  params: CompositionParams,
+  params: AnyCompositionParams,
   expectedAdapterSetHash: Hex
 ) => {
   try {
@@ -239,6 +250,11 @@ ponder.on(
           distributorToken === zeroAddress ? null : distributorToken,
         epochLength,
         programVKey,
+        paramsVersion: params.version,
+        sourceCompatibilityClass:
+          'sourceCompatibilityClass' in params
+            ? params.sourceCompatibilityClass
+            : null,
         currentVersion: 1n,
         currentParamsHash: normalized.hash,
         params: normalized.paramsJson,
@@ -369,7 +385,7 @@ ponder.on(
     if (!instance)
       throw new Error(`composition proposal for unknown ${instanceId}`)
     const params = {
-      ...compositionParamsFromJson(instance.params as CompositionParamsJson),
+      ...compositionParamsFromJson(instance.params as AnyCompositionParamsJson),
       sourcePolicyRoot,
       sourceCount: Number(sourceCount),
       policyManifestSha256: manifestSha256,
@@ -560,7 +576,7 @@ ponder.on(
         context,
         policy.proposedTxHash,
         policy.proposalId === null ? 'create' : 'propose',
-        compositionParamsFromJson(policy.params as CompositionParamsJson),
+        compositionParamsFromJson(policy.params as AnyCompositionParamsJson),
         adapterSetHash
       )
       if (recovered.availability !== 'available') {
@@ -592,7 +608,7 @@ ponder.on(
       )
     }
     const params = compositionParamsFromJson(
-      policy.params as CompositionParamsJson
+      policy.params as AnyCompositionParamsJson
     )
     verifyCompositionPolicy(
       policyManifestFromCapture(manifest),

@@ -7,8 +7,14 @@ import { type Hex, hexToBytes } from 'viem'
 import {
   COMPOSITION_OUTPUT_DOMAIN,
   COMPOSITION_PROGRAM,
+  COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
   type CompositionAcceptedState,
   type CompositionParams,
+  type CompositionParamsV2,
+  TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN,
+  TRUST_GRAPH_SOURCE_PROGRAM,
+  WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN,
+  WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM,
   computeComposition,
   serializeCompositionAttribution,
   verifyCompositionAcceptance,
@@ -23,6 +29,12 @@ const production = JSON.parse(
 const research = JSON.parse(
   readFileSync(
     new URL('../../../research/composition/golden.json', import.meta.url),
+    'utf8'
+  )
+) as any
+const mixed = JSON.parse(
+  readFileSync(
+    new URL('../../../tests/golden/trust-compose-v2.json', import.meta.url),
     'utf8'
   )
 ) as any
@@ -258,6 +270,173 @@ test('the acceptance verifier refuses every composition commitment boundary', ()
           10n,
           `${attribution}tampered`
         ),
+    ],
+  ]
+  for (const [name, run] of cases) {
+    assert.throws(run, /trust-compose verification refused/, name)
+  }
+})
+
+const mixedParams = (): CompositionParamsV2 => ({
+  version: mixed.params.version,
+  programId: mixed.params.programId,
+  scopeHash: mixed.params.scopeHash,
+  identityDomain: mixed.params.identityDomain,
+  outputKind: mixed.params.outputKind,
+  outputDomain: mixed.params.outputDomain,
+  sourceCompatibilityClass: mixed.params.sourceCompatibilityClass,
+  weightScale: BigInt(mixed.params.weightScale),
+  outputPool: BigInt(mixed.params.outputPool),
+  sourcePolicyRoot: mixed.params.sourcePolicyRoot,
+  sourceCount: mixed.params.sourceCount,
+  policyManifestSha256: mixed.params.policyManifestSha256,
+  maxSources: mixed.params.maxSources,
+  maxEntriesPerSource: mixed.params.maxEntriesPerSource,
+  maxAggregateEntries: mixed.params.maxAggregateEntries,
+  maxUnionAccounts: mixed.params.maxUnionAccounts,
+  maxAggregateBlobBytes: mixed.params.maxAggregateBlobBytes,
+  maxSourceAgeBlocks: BigInt(mixed.params.maxSourceAgeBlocks),
+  accumulator: mixed.params.accumulator,
+  chainId: BigInt(mixed.params.chainId),
+})
+
+const mixedManifest = mixed.capture.manifest as Hex
+
+const mixedPreimages = () =>
+  mixed.sourceStates.map((state: any) => ({
+    cid: state.cid as string,
+    blob: new TextEncoder().encode(state.blob as string),
+  }))
+
+const mixedAccepted = (): CompositionAcceptedState => ({
+  programId: COMPOSITION_PROGRAM,
+  outputDomain: COMPOSITION_OUTPUT_DOMAIN,
+  paramsHash: mixed.params.paramsHash,
+  captureCommitment: mixed.capture.manifestSha256,
+  captureCount: BigInt(mixed.capture.count),
+  outputRoot: mixed.output.root,
+  outputBlobSha256: mixed.output.blobSha256,
+  outputCid: mixed.output.cid,
+  totalValue: BigInt(mixed.output.totalValue),
+  acceptedRoot: mixed.output.root,
+  acceptedBlobSha256: mixed.output.blobSha256,
+  acceptedCid: mixed.output.cid,
+  acceptedTotalValue: BigInt(mixed.output.totalValue),
+})
+
+test('the class constant matches the frozen mixed vector', () => {
+  assert.equal(
+    COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
+    mixed.constants.sourceCompatibilityClass
+  )
+})
+
+test('mixed V2 recompute reproduces the frozen golden and both real source identities', () => {
+  const result = computeComposition(
+    mixedParams(),
+    mixedManifest,
+    mixedPreimages(),
+    10n
+  )
+  assert.equal(result.manifestSha256, mixed.capture.manifestSha256)
+  assert.equal(result.outputRoot, mixed.output.root)
+  assert.equal(result.outputBlobSha256, mixed.output.blobSha256)
+  assert.equal(result.outputCid, mixed.output.cid)
+  assert.equal(result.totalValue, 1_000n)
+  assert.deepEqual(
+    result.sourceAllocations.map(({ sourceId, quota }) => ({
+      sourceId,
+      quota: quota.toString(),
+    })),
+    mixed.sourceQuotas
+  )
+  assert.equal(result.sources[0]!.programId, TRUST_GRAPH_SOURCE_PROGRAM)
+  assert.equal(
+    result.sources[0]!.sourceOutputDomain,
+    TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN
+  )
+  assert.equal(
+    result.sources[1]!.programId,
+    WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM
+  )
+  assert.equal(
+    result.sources[1]!.sourceOutputDomain,
+    WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN
+  )
+  verifyCompositionAcceptance(
+    mixedParams(),
+    mixedManifest,
+    mixedPreimages(),
+    mixedAccepted(),
+    10n
+  )
+})
+
+test('mixed V2 admission refuses crossed pairs, foreign classes, and generation replay', () => {
+  const mutated = (offset: number, value: Uint8Array) => {
+    const bytes = hexToBytes(mixedManifest)
+    bytes.set(value, offset)
+    return `0x${Buffer.from(bytes).toString('hex')}` as Hex
+  }
+  const record = (position: number) => 23 + position * 293
+
+  const cases: Array<[string, () => void]> = [
+    [
+      'standard source borrowing the weighted domain',
+      () =>
+        computeComposition(
+          mixedParams(),
+          mutated(
+            record(0) + 116,
+            hexToBytes(WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN)
+          ),
+          mixedPreimages(),
+          10n
+        ),
+    ],
+    [
+      'weighted source borrowing the standard domain',
+      () =>
+        computeComposition(
+          mixedParams(),
+          mutated(
+            record(1) + 116,
+            hexToBytes(TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN)
+          ),
+          mixedPreimages(),
+          10n
+        ),
+    ],
+    [
+      'unknown program copying an allowed domain',
+      () =>
+        computeComposition(
+          mixedParams(),
+          mutated(record(0) + 84, new Uint8Array(32).fill(0x77)),
+          mixedPreimages(),
+          10n
+        ),
+    ],
+    [
+      'a foreign compatibility class',
+      () =>
+        computeComposition(
+          {
+            ...mixedParams(),
+            sourceCompatibilityClass: `0x${'11'.repeat(32)}`,
+          },
+          mixedManifest,
+          mixedPreimages(),
+          10n
+        ),
+    ],
+    [
+      'V2 capture bytes replayed under a V1 tuple',
+      () => computeComposition(params(), mixedManifest, mixedPreimages(), 10n),
+    ],
+    [
+      'V1 capture bytes replayed under a V2 tuple',
+      () => computeComposition(mixedParams(), manifest, preimages(), 10n),
     ],
   ]
   for (const [name, run] of cases) {
