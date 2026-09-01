@@ -19,6 +19,8 @@ import {
 import { networkProfileAction } from './profile'
 import { createContributionRoundAction } from './programs'
 import {
+  recoveryCancelAction,
+  recoveryProposerAction,
   safeDisableModuleAction,
   safeEnableModuleAction,
   safeGuardAction,
@@ -69,6 +71,8 @@ export const governanceActionRegistry: readonly MatchableGovernanceAction[] = [
   safeDisableModuleAction,
   safeGuardAction,
   safeSwapOwnerAction,
+  recoveryProposerAction,
+  recoveryCancelAction,
   weightedPriorRotationAction,
   weightedPriorCancelAction,
   compositionPolicyAction,

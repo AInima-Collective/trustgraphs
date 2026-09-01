@@ -68,6 +68,8 @@ export interface WeightedApiInstanceDetail extends WeightedApiInstance {
   governance: {
     module: Hex
     safe: Hex
+    recoveryModule?: Hex | null
+    executionGuard?: Hex | null
   } | null
   epochLength: string
   currentVersion: string

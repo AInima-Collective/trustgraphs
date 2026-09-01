@@ -17,6 +17,8 @@ import {
 import { createContributionRoundAction } from './programs'
 import { walkGovernanceActions } from './registry'
 import {
+  recoveryCancelAction,
+  recoveryProposerAction,
   safeDisableModuleAction,
   safeEnableModuleAction,
   safeGuardAction,
@@ -49,6 +51,7 @@ const context: GovernanceActionContext = {
   compositionParamsController: address('5'),
   provingVault: address('6'),
   contributionsFactory: address('7'),
+  recoveryModule: address('a'),
 }
 
 const tuple = (action: SafeAction) => ({
@@ -97,6 +100,8 @@ roundTrip(safeSwapOwnerAction, {
   oldOwner: address('d'),
   newOwner: address('e'),
 })
+roundTrip(recoveryProposerAction, { address: address('b') })
+roundTrip(recoveryCancelAction, { actionId: bytes32('d') })
 roundTrip(vaultPolicyAction, {
   minPaidIntervalBlocks: '300',
   maxPerRootUsd: '250000000',

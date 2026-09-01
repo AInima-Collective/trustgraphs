@@ -679,13 +679,15 @@ export function GovernanceActionEditor({ draft, onChange }: EditorProps) {
     case 'set-snapshot-accumulator':
     case 'set-snapshot-anchor-registry':
     case 'enable-safe-module':
-    case 'set-safe-guard': {
+    case 'set-safe-guard':
+    case 'set-recovery-proposer': {
       const labels = {
         'set-snapshot-verifier': 'New proof verifier',
         'set-snapshot-accumulator': 'New attestation accumulator',
         'set-snapshot-anchor-registry': 'New anchor registry',
         'enable-safe-module': 'Module to enable',
         'set-safe-guard': 'New guard (zero address clears it)',
+        'set-recovery-proposer': 'New recovery proposer',
       } as const
       return (
         <div className="space-y-2">
@@ -748,6 +750,20 @@ export function GovernanceActionEditor({ draft, onChange }: EditorProps) {
               />
             </div>
           ))}
+        </div>
+      )
+    case 'cancel-recovery-action':
+      return (
+        <div className="space-y-2">
+          <label className={fieldLabel}>Queued recovery action ID</label>
+          <input
+            value={text(values, 'actionId')}
+            onChange={(event) =>
+              onChange({ ...values, actionId: event.target.value })
+            }
+            className={`${inputClassName} font-mono`}
+            placeholder="0x…"
+          />
         </div>
       )
     case 'set-vault-policy':

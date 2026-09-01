@@ -34,6 +34,8 @@ export type GovernanceActionContext = {
   snapshot?: Address
   paramsController?: Address
   signerSyncModule?: Address
+  recoveryModule?: Address
+  executionGuard?: Address
   weightedParamsController?: Address
   compositionParamsController?: Address
   treasurySafe?: Address
@@ -126,6 +128,10 @@ export type VaultWithdrawalExecuteActionValues = {
 
 export type SafetyAddressActionValues = {
   address: Address
+}
+
+export type RecoveryCancelActionValues = {
+  actionId: Hex
 }
 
 export type SafeDisableModuleActionValues = {

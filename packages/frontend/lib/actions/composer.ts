@@ -32,6 +32,8 @@ import {
 import { networkProfileAction } from './profile'
 import { createContributionRoundAction } from './programs'
 import {
+  recoveryCancelAction,
+  recoveryProposerAction,
   safeDisableModuleAction,
   safeEnableModuleAction,
   safeGuardAction,
@@ -288,6 +290,20 @@ export const governanceComposerRegistry = [
     danger: true,
   },
   {
+    key: 'set-recovery-proposer',
+    category: 'safety',
+    label: 'Rotate recovery proposer',
+    summary: 'Replace who may schedule delayed recovery actions.',
+    danger: true,
+  },
+  {
+    key: 'cancel-recovery-action',
+    category: 'safety',
+    label: 'Cancel recovery action',
+    summary: 'Veto one exact queued recovery action.',
+    danger: true,
+  },
+  {
     key: 'set-vault-policy',
     category: 'vault',
     label: 'Set proving-vault policy',
@@ -396,6 +412,9 @@ export const governanceComposerActionAvailable = (
     case 'set-safe-guard':
     case 'swap-safe-owner':
       return !!context.treasurySafe
+    case 'set-recovery-proposer':
+    case 'cancel-recovery-action':
+      return !!context.recoveryModule
     case 'set-vault-policy':
     case 'request-vault-withdrawal':
     case 'cancel-vault-withdrawal':
@@ -476,6 +495,10 @@ export const defaultGovernanceActionValues = (
       return { previousModule: '', module: '' }
     case 'swap-safe-owner':
       return { previousOwner: '', oldOwner: '', newOwner: '' }
+    case 'set-recovery-proposer':
+      return { address: '' }
+    case 'cancel-recovery-action':
+      return { actionId: '' }
     case 'set-vault-policy':
       return { minPaidIntervalBlocks: '', maxPerRootUsd: '' }
     case 'request-vault-withdrawal':
@@ -869,6 +892,18 @@ export const encodeGovernanceActionDraft = async (
         },
         context
       )
+    case 'set-recovery-proposer':
+      return recoveryProposerAction.encode(
+        { address: addressValue(values, 'address', 'Recovery proposer') },
+        context
+      )
+    case 'cancel-recovery-action': {
+      const actionId = stringValue(values, 'actionId').trim()
+      if (actionId.length !== 66 || !isHex(actionId, { strict: true })) {
+        throw new Error('Recovery action id must be 32-byte hex')
+      }
+      return recoveryCancelAction.encode({ actionId }, context)
+    }
     case 'set-vault-policy':
       return vaultPolicyAction.encode(
         {

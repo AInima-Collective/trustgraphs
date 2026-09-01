@@ -416,7 +416,7 @@ export const parseFixed = (input: string, scale = PARAMS_SCALE): bigint => {
   if (fraction.length > digits) {
     throw new Error(`Use at most ${digits} decimal places`)
   }
-  return BigInt(match[1]) * scale + BigInt(fraction.padEnd(digits, '0') || '0')
+  return BigInt(match[1]!) * scale + BigInt(fraction.padEnd(digits, '0') || '0')
 }
 
 const stableObject = (params: Params) => {

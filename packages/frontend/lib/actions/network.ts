@@ -16,6 +16,12 @@ export const governanceActionContextFor = (
   const controller = contractAddress(
     network.contracts.trustgraphsParamsController
   )
+  const recoveryModule = contractAddress(network.contracts.safe?.recoveryModule)
+  const executionGuard = contractAddress(network.contracts.safe?.executionGuard)
+  const provingVault = contractAddress(network.contracts.provingVault)
+  const contributionsFactory = contractAddress(
+    network.contracts.contributionsFactory
+  )
   return {
     ...(network.instanceId ? { instanceId: network.instanceId } : {}),
     snapshot: contractAddress(network.contracts.merkleSnapshot),
@@ -27,18 +33,12 @@ export const governanceActionContextFor = (
     signerSyncModule: contractAddress(
       network.contracts.safe?.signerSyncManager
     ),
+    ...(recoveryModule ? { recoveryModule } : {}),
+    ...(executionGuard ? { executionGuard } : {}),
     treasurySafe: contractAddress(network.contracts.safe?.proxy),
     fundDistributor: contractAddress(network.contracts.merkleFundDistributor),
     governanceModule: contractAddress(network.contracts.merkleGovModule),
-    ...(contractAddress(network.contracts.provingVault)
-      ? { provingVault: contractAddress(network.contracts.provingVault) }
-      : {}),
-    ...(contractAddress(network.contracts.contributionsFactory)
-      ? {
-          contributionsFactory: contractAddress(
-            network.contracts.contributionsFactory
-          ),
-        }
-      : {}),
+    ...(provingVault ? { provingVault } : {}),
+    ...(contributionsFactory ? { contributionsFactory } : {}),
   }
 }

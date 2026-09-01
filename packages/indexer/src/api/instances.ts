@@ -54,7 +54,7 @@ const MAX_LIMIT = 200
 type InstanceRow = typeof instance.$inferSelect
 type GovernanceRow = Pick<
   typeof merkleGovModule.$inferSelect,
-  'address' | 'merkleSnapshot' | 'target'
+  'address' | 'merkleSnapshot' | 'target' | 'recoveryModule' | 'executionGuard'
 >
 type SignerRow = typeof signerSyncModule.$inferSelect
 type SignerRotationRow = typeof signerSyncRotation.$inferSelect
@@ -116,6 +116,8 @@ const serialize = (
         ? {
             proxy: governance?.target ?? signer!.safe,
             signerSyncManager: signer?.address ?? null,
+            recoveryModule: governance?.recoveryModule ?? null,
+            executionGuard: governance?.executionGuard ?? null,
           }
         : null,
   },
@@ -236,6 +238,8 @@ const governanceFor = async (rows: InstanceRow[]) => {
       address: merkleGovModule.address,
       merkleSnapshot: merkleGovModule.merkleSnapshot,
       target: merkleGovModule.target,
+      recoveryModule: merkleGovModule.recoveryModule,
+      executionGuard: merkleGovModule.executionGuard,
     })
     .from(merkleGovModule)
     .where(

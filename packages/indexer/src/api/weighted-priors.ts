@@ -24,7 +24,7 @@ const MAX_LIMIT = 500
 
 type GovernanceRow = Pick<
   typeof merkleGovModule.$inferSelect,
-  'address' | 'merkleSnapshot' | 'target'
+  'address' | 'merkleSnapshot' | 'target' | 'recoveryModule' | 'executionGuard'
 >
 
 const idParam = (value: string) =>
@@ -40,6 +40,8 @@ const serializeInstance = (
     ? {
         module: governance.address,
         safe: governance.target,
+        recoveryModule: governance.recoveryModule,
+        executionGuard: governance.executionGuard,
       }
     : null,
   epochLength: row.epochLength.toString(),
@@ -65,6 +67,8 @@ const governanceFor = async (
       address: merkleGovModule.address,
       merkleSnapshot: merkleGovModule.merkleSnapshot,
       target: merkleGovModule.target,
+      recoveryModule: merkleGovModule.recoveryModule,
+      executionGuard: merkleGovModule.executionGuard,
     })
     .from(merkleGovModule)
     .where(

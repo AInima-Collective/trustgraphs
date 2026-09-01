@@ -3,6 +3,7 @@ import { decodeFunctionData, encodeFunctionData, parseAbi } from 'viem'
 import { isCall, isZeroValue, requiredAddress, targetMatches } from './shared'
 import type {
   GovernanceActionDefinition,
+  RecoveryCancelActionValues,
   SafeDisableModuleActionValues,
   SafeSwapOwnerActionValues,
   SafetyAddressActionValues,
@@ -19,6 +20,11 @@ const safetyAbi = parseAbi([
   'function disableModule(address prevModule,address module)',
   'function setGuard(address guard)',
   'function swapOwner(address prevOwner,address oldOwner,address newOwner)',
+])
+
+const recoveryAbi = parseAbi([
+  'function setProposer(address newProposer)',
+  'function cancel(bytes32 actionId)',
 ])
 
 type AddressSafetySpec = {
@@ -212,6 +218,93 @@ export const safeSwapOwnerAction: GovernanceActionDefinition<SafeSwapOwnerAction
           },
           consumed: 1,
         }
+      } catch {
+        return null
+      }
+    },
+  }
+
+export const recoveryProposerAction: GovernanceActionDefinition<SafetyAddressActionValues> =
+  {
+    key: 'set-recovery-proposer',
+    category: 'safety',
+    label: 'Rotate recovery proposer',
+    summary:
+      'Replace the identity allowed to schedule delayed recovery actions.',
+    danger: true,
+    encode: (values, context) => [
+      {
+        target: requiredAddress(context.recoveryModule, 'Recovery module'),
+        value: '0',
+        data: encodeFunctionData({
+          abi: recoveryAbi,
+          functionName: 'setProposer',
+          args: [values.address],
+        }),
+        operation: 0,
+        description: `Set recovery proposer to ${values.address}`,
+      },
+    ],
+    match: (actions, index, context) => {
+      const action = actions[index]
+      if (
+        !targetMatches(action, context.recoveryModule) ||
+        !isCall(action) ||
+        !isZeroValue(action)
+      ) {
+        return null
+      }
+      try {
+        const decoded = decodeFunctionData({
+          abi: recoveryAbi,
+          data: action!.data,
+        })
+        return decoded.functionName === 'setProposer'
+          ? { values: { address: decoded.args[0] }, consumed: 1 }
+          : null
+      } catch {
+        return null
+      }
+    },
+  }
+
+export const recoveryCancelAction: GovernanceActionDefinition<RecoveryCancelActionValues> =
+  {
+    key: 'cancel-recovery-action',
+    category: 'safety',
+    label: 'Cancel recovery action',
+    summary: 'Veto one exact action queued through delayed recovery.',
+    danger: true,
+    encode: (values, context) => [
+      {
+        target: requiredAddress(context.recoveryModule, 'Recovery module'),
+        value: '0',
+        data: encodeFunctionData({
+          abi: recoveryAbi,
+          functionName: 'cancel',
+          args: [values.actionId],
+        }),
+        operation: 0,
+        description: `Cancel queued recovery action ${values.actionId}`,
+      },
+    ],
+    match: (actions, index, context) => {
+      const action = actions[index]
+      if (
+        !targetMatches(action, context.recoveryModule) ||
+        !isCall(action) ||
+        !isZeroValue(action)
+      ) {
+        return null
+      }
+      try {
+        const decoded = decodeFunctionData({
+          abi: recoveryAbi,
+          data: action!.data,
+        })
+        return decoded.functionName === 'cancel'
+          ? { values: { actionId: decoded.args[0] }, consumed: 1 }
+          : null
       } catch {
         return null
       }

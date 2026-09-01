@@ -447,7 +447,12 @@ export type CompositionInstance = {
     image: string
     applicationUrl: string
   } | null
-  governance: { module: Address; safe: Address } | null
+  governance: {
+    module: Address
+    safe: Address
+    recoveryModule?: Address | null
+    executionGuard?: Address | null
+  } | null
   accumulator: Address
   snapshot: Address
   distributor: Address | null

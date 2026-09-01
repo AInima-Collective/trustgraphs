@@ -75,7 +75,12 @@ export type InstanceRow = {
     merkleFundDistributor: Hex | null
     trustgraphsParamsController: Hex | null
     merkleGovModule: Hex | null
-    safe: { proxy: Hex; signerSyncManager: Hex | null } | null
+    safe: {
+      proxy: Hex
+      signerSyncManager: Hex | null
+      recoveryModule?: Hex | null
+      executionGuard?: Hex | null
+    } | null
   }
   offchainLane: {
     registry: Hex
@@ -290,6 +295,12 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
                 ? {
                     signerSyncManager: row.contracts.safe.signerSyncManager,
                   }
+                : {}),
+              ...(row.contracts.safe.recoveryModule
+                ? { recoveryModule: row.contracts.safe.recoveryModule }
+                : {}),
+              ...(row.contracts.safe.executionGuard
+                ? { executionGuard: row.contracts.safe.executionGuard }
                 : {}),
             },
           }

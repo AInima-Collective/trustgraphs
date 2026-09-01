@@ -95,6 +95,8 @@ export type Network = {
       singleton?: Hex
       proxy: Hex
       signerSyncManager?: Hex
+      recoveryModule?: Hex
+      executionGuard?: Hex
     }
   }
   schemas: NetworkSchema[]

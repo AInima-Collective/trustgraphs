@@ -1620,6 +1620,9 @@ export const merkleGovModule = onchainTable(
     votingDelay: t.bigint().notNull(),
     votingPeriod: t.bigint().notNull(),
     quorum: t.bigint().notNull(),
+    /** Factory-authenticated constitutional recovery and guard addresses (null for legacy rows). */
+    recoveryModule: t.hex(),
+    executionGuard: t.hex(),
   }),
   (t) => ({
     avatarIdx: index().on(t.avatar),

@@ -30,6 +30,7 @@ import type {
   MatchedGovernanceAction,
   NetworkProfileActionValues,
   OperationalRoleActionValues,
+  RecoveryCancelActionValues,
   RewardDistributionActionValues,
   RewardsAllowlistActionValues,
   RewardsDistributorAllowanceActionValues,
@@ -441,6 +442,32 @@ const presentAction = (
         icon: ShieldCheck,
         detailLabel: 'New owner',
         detailValue: values.newOwner,
+      }
+    }
+    case 'set-recovery-proposer': {
+      const values = matched.values as SafetyAddressActionValues
+      return {
+        kind: 'safety',
+        title: 'Rotate the recovery proposer',
+        summary:
+          'Replace the identity allowed to queue arbitrary delayed Safe recovery actions.',
+        badge: 'Recovery control',
+        icon: ShieldCheck,
+        detailLabel: 'New recovery proposer',
+        detailValue: values.address,
+      }
+    }
+    case 'cancel-recovery-action': {
+      const values = matched.values as RecoveryCancelActionValues
+      return {
+        kind: 'safety',
+        title: 'Cancel a queued recovery action',
+        summary:
+          'Veto this exact action before delayed recovery can execute it.',
+        badge: 'Recovery control',
+        icon: PauseCircle,
+        detailLabel: 'Recovery action ID',
+        detailValue: values.actionId,
       }
     }
     case 'set-vault-policy': {

@@ -35,7 +35,7 @@ const page = (limit: string | undefined, offset: string | undefined) => ({
 
 type GovernanceRow = Pick<
   typeof merkleGovModule.$inferSelect,
-  'address' | 'merkleSnapshot' | 'target'
+  'address' | 'merkleSnapshot' | 'target' | 'recoveryModule' | 'executionGuard'
 >
 
 const serializeInstance = (
@@ -45,7 +45,12 @@ const serializeInstance = (
   ...row,
   program: 'trust-compose',
   governance: governance
-    ? { module: governance.address, safe: governance.target }
+    ? {
+        module: governance.address,
+        safe: governance.target,
+        recoveryModule: governance.recoveryModule,
+        executionGuard: governance.executionGuard,
+      }
     : null,
   epochLength: row.epochLength.toString(),
   currentVersion: row.currentVersion.toString(),
@@ -70,6 +75,8 @@ const governanceFor = async (
       address: merkleGovModule.address,
       merkleSnapshot: merkleGovModule.merkleSnapshot,
       target: merkleGovModule.target,
+      recoveryModule: merkleGovModule.recoveryModule,
+      executionGuard: merkleGovModule.executionGuard,
     })
     .from(merkleGovModule)
     .where(

@@ -61,7 +61,15 @@ export const compositionAsNetwork = (
     ...(instance.governance
       ? {
           merkleGovModule: instance.governance.module,
-          safe: { proxy: instance.governance.safe },
+          safe: {
+            proxy: instance.governance.safe,
+            ...(instance.governance.recoveryModule
+              ? { recoveryModule: instance.governance.recoveryModule }
+              : {}),
+            ...(instance.governance.executionGuard
+              ? { executionGuard: instance.governance.executionGuard }
+              : {}),
+          },
         }
       : {}),
     ...(instance.distributor
