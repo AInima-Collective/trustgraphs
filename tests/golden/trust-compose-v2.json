@@ -1,0 +1,264 @@
+{
+  "schema": "trust-compose-v2",
+  "constants": {
+    "programId": "0xf21b8f73c590106e82fb255eb77cb874c0610b9db9e2ea9c2be36eda57b44102",
+    "identityDomain": "0xbe297acfcdfeb941c947581e60a05f869a3ff1133b88bef7735bdab1c28e3bef",
+    "outputKind": "0xf96f9891e6ddd310141c323b55c40e1ccf0fcb5560f755b3387240dee7f177a1",
+    "outputDomain": "0xa5df42a9d061bedde1153250a461a5fa10945a6458a7e9a2e9217eb2a1cf0cc4",
+    "sourceCompatibilityClass": "0x5426d501d31705b306bf65d6260a564441ff6b3b98a4375766c76348b7cca9e2",
+    "weightScale": "1000000000000000000",
+    "admittedPairs": [
+      {
+        "programId": "0xdb036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380",
+        "sourceOutputDomain": "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5"
+      },
+      {
+        "programId": "0xbab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b2",
+        "sourceOutputDomain": "0x0509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f"
+      }
+    ]
+  },
+  "sourceStates": [
+    {
+      "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "programId": "0xdb036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380",
+      "sourceOutputDomain": "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5",
+      "blob": "{\"0x0101010101010101010101010101010101010101\":\"900000000000000000000000\",\"0x0202020202020202020202020202020202020202\":\"100000000000000000000000\"}",
+      "blobSha256": "0x4f7c1a78dfd030c3dc6bf82cf45f4477edde82ad70b1dc9982ff947456a752fd",
+      "cid": "bafkreicppqnhrx6qgdb5y27yft2f6rdx5xpifllqwhojtax7sr2fnj2s7u",
+      "cidDigest": "0x2419b0a12f35ad1d6bf90c6beee28e0affbda0fc8d362ec2bcc55027bd8f3359",
+      "outputRoot": "0x3c828dd1608eed7f434d9db38d03a8f1d9d01a28aaef834724745a22ad70458c",
+      "totalValue": "1000000000000000000000000"
+    },
+    {
+      "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "programId": "0xbab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b2",
+      "sourceOutputDomain": "0x0509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f",
+      "blob": "{\"0x0202020202020202020202020202020202020202\":\"166666666666666667\",\"0x0303030303030303030303030303030303030303\":\"333333333333333333\",\"0x0404040404040404040404040404040404040404\":\"500000000000000000\"}",
+      "blobSha256": "0xafa56aa8298452660746335868b3d72f3d574c1fc69e2fd9741be53ae26a1f7e",
+      "cid": "bafkreifpuvvkqkmekjtaorrtlbulhvzphvluyh6gtyx5s5a34u5oe2q7py",
+      "cidDigest": "0x5026781b0bbec73371bb334079b864a452a4f0eb02e75e67480392d096af309d",
+      "outputRoot": "0xecb321b678ebf9586f6144498da2f890468ddede659fee84a5b06fcaef8808bb",
+      "totalValue": "1000000000000000000"
+    }
+  ],
+  "policyManifest": {
+    "encoded": "0x544743500002000000000000000a02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1db036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380a8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5058d15e17628000000000000000003e801bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2bab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b20509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f0853a0d2313c000000000000000003e801",
+    "sha256": "0x0395bec4154c5bc38dc80f47ed4372c3e5cc76e3c4db4d1434105bcb247b0728",
+    "root": "0x400d406845f7147a06660c33eb0806722308107e1aba2681d05bded4ed444a82",
+    "leaves": [
+      "0xc898cb07f1b5531c33e2f3452eb578c2051f09d51a48166908ac0fc8827ed7be",
+      "0x88765c6d8e1f91fad0891d7862dfcb9bc8e047a37816e02d3cd28d349b01aa52"
+    ],
+    "entries": [
+      {
+        "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "snapshot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "familyId": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+        "programId": "0xdb036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380",
+        "sourceOutputDomain": "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5",
+        "weight": "400000000000000000",
+        "maxAgeBlocks": "1000",
+        "required": true
+      },
+      {
+        "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "snapshot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+        "familyId": "0xf2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2",
+        "programId": "0xbab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b2",
+        "sourceOutputDomain": "0x0509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f",
+        "weight": "600000000000000000",
+        "maxAgeBlocks": "1000",
+        "required": true
+      }
+    ],
+    "count": 2
+  },
+  "capture": {
+    "manifest": "0x5447434d0002000000000000000a00000000000f424002aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1db036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380a8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5000000000000000700000000000f41dc3c828dd1608eed7f434d9db38d03a8f1d9d01a28aaef834724745a22ad70458c4f7c1a78dfd030c3dc6bf82cf45f4477edde82ad70b1dc9982ff947456a752fd2419b0a12f35ad1d6bf90c6beee28e0affbda0fc8d362ec2bcc55027bd8f3359000000000000d3c21bcecceda1000000058d15e17628000000000000000003e801bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2bab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b20509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f000000000000000c00000000000f404cecb321b678ebf9586f6144498da2f890468ddede659fee84a5b06fcaef8808bbafa56aa8298452660746335868b3d72f3d574c1fc69e2fd9741be53ae26a1f7e5026781b0bbec73371bb334079b864a452a4f0eb02e75e67480392d096af309d00000000000000000de0b6b3a76400000853a0d2313c000000000000000003e801",
+    "manifestSha256": "0xe9993e1104477f854e738ad059589e6d44deac19b4a757b9ba6f7332fb82d2f6",
+    "count": 2,
+    "captureBlock": "1000000"
+  },
+  "params": {
+    "version": 2,
+    "programId": "0xf21b8f73c590106e82fb255eb77cb874c0610b9db9e2ea9c2be36eda57b44102",
+    "scopeHash": "0xb0993679504f19d518e9dac8362d3e2bc12d2c42f41606dad6d44c53af667e9d",
+    "identityDomain": "0xbe297acfcdfeb941c947581e60a05f869a3ff1133b88bef7735bdab1c28e3bef",
+    "outputKind": "0xf96f9891e6ddd310141c323b55c40e1ccf0fcb5560f755b3387240dee7f177a1",
+    "outputDomain": "0xa5df42a9d061bedde1153250a461a5fa10945a6458a7e9a2e9217eb2a1cf0cc4",
+    "sourceCompatibilityClass": "0x5426d501d31705b306bf65d6260a564441ff6b3b98a4375766c76348b7cca9e2",
+    "weightScale": "1000000000000000000",
+    "outputPool": "1000",
+    "sourcePolicyRoot": "0x400d406845f7147a06660c33eb0806722308107e1aba2681d05bded4ed444a82",
+    "sourceCount": 2,
+    "policyManifestSha256": "0x0395bec4154c5bc38dc80f47ed4372c3e5cc76e3c4db4d1434105bcb247b0728",
+    "maxSources": 8,
+    "maxEntriesPerSource": 4096,
+    "maxAggregateEntries": 8192,
+    "maxUnionAccounts": 8192,
+    "maxAggregateBlobBytes": 1048576,
+    "maxSourceAgeBlocks": "500000",
+    "accumulator": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+    "chainId": "10",
+    "encoded": "0x0000000000000000000000000000000000000000000000000000000000000002f21b8f73c590106e82fb255eb77cb874c0610b9db9e2ea9c2be36eda57b44102b0993679504f19d518e9dac8362d3e2bc12d2c42f41606dad6d44c53af667e9dbe297acfcdfeb941c947581e60a05f869a3ff1133b88bef7735bdab1c28e3beff96f9891e6ddd310141c323b55c40e1ccf0fcb5560f755b3387240dee7f177a1a5df42a9d061bedde1153250a461a5fa10945a6458a7e9a2e9217eb2a1cf0cc45426d501d31705b306bf65d6260a564441ff6b3b98a4375766c76348b7cca9e20000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000000000000000000003e8400d406845f7147a06660c33eb0806722308107e1aba2681d05bded4ed444a8200000000000000000000000000000000000000000000000000000000000000020395bec4154c5bc38dc80f47ed4372c3e5cc76e3c4db4d1434105bcb247b072800000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000007a120000000000000000000000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0000000000000000000000000000000000000000000000000000000000000000a",
+    "paramsHash": "0x24f4ced83ce995541c6cbbeb9ce5c93e4c18ad4020af26b374f9965302125f22"
+  },
+  "sourceQuotas": [
+    {
+      "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "quota": "400"
+    },
+    {
+      "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "quota": "600"
+    }
+  ],
+  "sourceAllocations": [
+    {
+      "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "quota": "400",
+      "allocations": [
+        {
+          "account": "0x0101010101010101010101010101010101010101",
+          "value": "360"
+        },
+        {
+          "account": "0x0202020202020202020202020202020202020202",
+          "value": "40"
+        }
+      ]
+    },
+    {
+      "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "quota": "600",
+      "allocations": [
+        {
+          "account": "0x0202020202020202020202020202020202020202",
+          "value": "100"
+        },
+        {
+          "account": "0x0303030303030303030303030303030303030303",
+          "value": "200"
+        },
+        {
+          "account": "0x0404040404040404040404040404040404040404",
+          "value": "300"
+        }
+      ]
+    }
+  ],
+  "output": {
+    "entries": [
+      {
+        "account": "0x0101010101010101010101010101010101010101",
+        "value": "360"
+      },
+      {
+        "account": "0x0202020202020202020202020202020202020202",
+        "value": "140"
+      },
+      {
+        "account": "0x0303030303030303030303030303030303030303",
+        "value": "200"
+      },
+      {
+        "account": "0x0404040404040404040404040404040404040404",
+        "value": "300"
+      }
+    ],
+    "blob": "{\"0x0101010101010101010101010101010101010101\":\"360\",\"0x0202020202020202020202020202020202020202\":\"140\",\"0x0303030303030303030303030303030303030303\":\"200\",\"0x0404040404040404040404040404040404040404\":\"300\"}",
+    "blobSha256": "0x5cfdef4b909ae09453deb122ed0e106f962fd2d6bbdac610bde9e8963c6b44d9",
+    "cid": "bafkreic47xxuxee24ckfhxvrelwq4edpsyx5fvv33ldbbppj5cldy22e3e",
+    "cidDigest": "0xb77f2e825b7085261bf16af8e627ac97f560f5fc4451003bcf997d5f9a7ba455",
+    "root": "0xb69aa6c6afaac5433398e4f4d870ffce07e89584c5d224ba6a24e2916974ddd6",
+    "totalValue": "1000",
+    "sampleAccount": "0x0202020202020202020202020202020202020202",
+    "sampleValue": "140",
+    "sampleLeaf": "0x6c20a8d49d951eaea263ede877b3318fc1e2b975fc9a56f3cbc6e501021d66e5",
+    "sampleProof": [
+      "0xc2cedc9cd7c44a17a4168d1e461b5418c2ff7708554719d34888805a5a4093cb",
+      "0xc685b6f8c521c0232e19887309f8f1cfebb1d0b20c260dff4e8796b4275ecd69"
+    ]
+  },
+  "journal": {
+    "acc": "0xe9993e1104477f854e738ad059589e6d44deac19b4a757b9ba6f7332fb82d2f6",
+    "leafCount": "2",
+    "anchorAcc": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "anchorCount": "0",
+    "paramsHash": "0x24f4ced83ce995541c6cbbeb9ce5c93e4c18ad4020af26b374f9965302125f22",
+    "outputRoot": "0xb69aa6c6afaac5433398e4f4d870ffce07e89584c5d224ba6a24e2916974ddd6",
+    "ipfsHash": "0x5cfdef4b909ae09453deb122ed0e106f962fd2d6bbdac610bde9e8963c6b44d9",
+    "cidDigest": "0xb77f2e825b7085261bf16af8e627ac97f560f5fc4451003bcf997d5f9a7ba455",
+    "totalValue": "1000",
+    "skippedDigest": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "recipient": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+    "instanceDomain": "0xd2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+    "encoded": "0xe9993e1104477f854e738ad059589e6d44deac19b4a757b9ba6f7332fb82d2f600000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024f4ced83ce995541c6cbbeb9ce5c93e4c18ad4020af26b374f9965302125f22b69aa6c6afaac5433398e4f4d870ffce07e89584c5d224ba6a24e2916974ddd65cfdef4b909ae09453deb122ed0e106f962fd2d6bbdac610bde9e8963c6b44d9b77f2e825b7085261bf16af8e627ac97f560f5fc4451003bcf997d5f9a7ba45500000000000000000000000000000000000000000000000000000000000003e80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+    "digest": "0xdc5d9209f6b2beba3eb674ba89030cb11c83905bc12ce87a3b0b4d418deadd32"
+  },
+  "binding": {
+    "accumulator": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+    "recipient": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+    "instanceDomain": "0xd2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"
+  },
+  "rotation": {
+    "weights": [
+      {
+        "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "weight": "500000000000000000"
+      },
+      {
+        "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "weight": "500000000000000000"
+      }
+    ],
+    "policyManifest": "0x544743500002000000000000000a02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1db036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380a8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea506f05b59d3b2000000000000000003e801bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2bab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b20509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f06f05b59d3b2000000000000000003e801",
+    "policyManifestSha256": "0x61636ff95079d87cbfdecb126223c9fcc1a079a09d5f557771188af848441479",
+    "sourcePolicyRoot": "0xdd2129ba0be251a06a174058fd0aa1d70b6876d7fff9c8f47a467c3aeec9a88e",
+    "paramsHash": "0xc5641d38eb31fc54806cf40b7d8fcbfe7355263dc63cbfa073e8c5211a0c091b",
+    "outputRoot": "0x66a7f4c16c0ae8fba3cb0d4a797e496f3227cfd0c5b01ef65dcdfeed49ee16e5",
+    "sourceQuotas": [
+      {
+        "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quota": "500"
+      },
+      {
+        "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quota": "500"
+      }
+    ]
+  },
+  "rejections": {
+    "incompatibleThirdProgram": {
+      "programId": "0x5c883795f9585e31baccff3867399dcf995294cc54a208a2d3785eb3ec1fb323",
+      "sourceOutputDomain": "0x52c9abae38394805336d80b3217a45f59effdcc6258b6a062e0b00d7bc392c5f",
+      "error": "program is not in the compatibility class"
+    },
+    "crossedPairStandardDomain": {
+      "programId": "0x5c883795f9585e31baccff3867399dcf995294cc54a208a2d3785eb3ec1fb323",
+      "sourceOutputDomain": "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5",
+      "error": "program is not in the compatibility class"
+    },
+    "crossedPairWeightedDomain": {
+      "programId": "0x5c883795f9585e31baccff3867399dcf995294cc54a208a2d3785eb3ec1fb323",
+      "sourceOutputDomain": "0x0509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f",
+      "error": "program is not in the compatibility class"
+    },
+    "standardProgramWeightedDomain": {
+      "programId": "0xdb036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380",
+      "sourceOutputDomain": "0x0509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f",
+      "error": "output domain does not match its program"
+    },
+    "weightedProgramStandardDomain": {
+      "programId": "0xbab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b2",
+      "sourceOutputDomain": "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5",
+      "error": "output domain does not match its program"
+    },
+    "composeProgram": {
+      "programId": "0xf21b8f73c590106e82fb255eb77cb874c0610b9db9e2ea9c2be36eda57b44102",
+      "sourceOutputDomain": "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5",
+      "error": "composite source"
+    }
+  }
+}
