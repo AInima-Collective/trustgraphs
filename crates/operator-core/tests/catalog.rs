@@ -5,7 +5,7 @@ use alloy_primitives::{address, Address, B256, U256};
 use operator_core::catalog::{
     scan, Catalog, ChainReader, CompositionControllerParams, ContributionsControllerParams,
     ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor, SkipCause,
-    WeightedControllerParams, WeightedCreatedParams,
+    VersionedCompositionParams, WeightedControllerParams, WeightedCreatedParams,
 };
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::types::Program;
@@ -369,13 +369,65 @@ fn composition_params(accumulator: Address) -> composition_core::Params {
     params
 }
 
+fn composition_params_v2(accumulator: Address) -> composition_core_v2::Params {
+    let mixed = composition_core_v2::fixture::mixed_input();
+    let capture =
+        composition_core_v2::codec::parse_capture_manifest(&mixed.manifest, mixed.params.chain_id)
+            .unwrap();
+    let mut params = mixed.params;
+    params.chain_id = 31_337;
+    params.accumulator = accumulator;
+    params.source_policy_root = composition_core_v2::codec::source_policy_root(&capture.sources);
+    params.policy_manifest_sha256 = composition_core_v2::codec::manifest_digest(
+        &composition_core_v2::codec::policy_manifest_encoded(31_337, &capture.sources),
+    );
+    params
+}
+
+fn add_composition_versioned(
+    chain: &mut FakeChain,
+    seed: u8,
+    params: VersionedCompositionParams,
+) -> B256 {
+    let id = B256::from([seed; 32]);
+    let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
+    let accumulator = params.accumulator();
+    let controller = Address::from([seed.wrapping_add(0x40); 20]);
+    let hash = params.params_hash();
+    chain.ids.push(id);
+    chain.records.insert(
+        id,
+        RegistryRecord {
+            program: Program::Composition.id(),
+            snapshot,
+            verifier: Address::from([seed.wrapping_add(0x30); 20]),
+            registry_or_accumulator: accumulator,
+            params_hash: hash,
+        },
+    );
+    chain.snapshot_hashes.insert(snapshot, hash);
+    chain.authorities.insert(id, controller);
+    chain.registration_blocks.insert(id, 99);
+    chain.composition_controllers.insert(
+        controller,
+        CompositionControllerParams {
+            instance_id: id,
+            snapshot,
+            version: 1,
+            current_params_hash: hash,
+            params,
+        },
+    );
+    id
+}
+
 fn add_composition(chain: &mut FakeChain, seed: u8) -> B256 {
     let id = B256::from([seed; 32]);
     let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
     let accumulator = Address::from([seed.wrapping_add(0x20); 20]);
     let controller = Address::from([seed.wrapping_add(0x40); 20]);
-    let params = composition_params(accumulator);
-    let hash = composition_core::codec::params_hash(&params);
+    let params = VersionedCompositionParams::V1(composition_params(accumulator));
+    let hash = params.params_hash();
     chain.ids.push(id);
     chain.records.insert(
         id,
@@ -535,7 +587,36 @@ fn composition_is_discovered_only_through_its_typed_controller_and_program_id() 
     assert!(entry.params.is_none());
     assert!(entry.weighted_params.is_none());
     let params = entry.composition_params.as_ref().expect("composition tuple");
-    assert_eq!(composition_core::codec::params_hash(params), entry.reconstructed_params_hash);
+    assert_eq!(params.version(), 1);
+    assert_eq!(params.params_hash(), entry.reconstructed_params_hash);
+}
+
+#[test]
+fn composition_v2_is_discovered_with_its_own_generation_intact() {
+    let mut chain = FakeChain::default();
+    let accumulator = Address::from([0x2F; 20]);
+    let id = add_composition_versioned(
+        &mut chain,
+        15,
+        VersionedCompositionParams::V2(composition_params_v2(accumulator)),
+    );
+
+    let catalog = scan(&chain, Program::Composition, &Manifest::default()).unwrap();
+    assert!(catalog.skipped.is_empty());
+    let entry = catalog.get(id).expect("chain-described V2 composition instance");
+    assert_eq!(entry.program, Program::Composition);
+    let params = entry.composition_params.as_ref().expect("composition tuple");
+    assert_eq!(params.version(), 2);
+    assert_eq!(params.params_hash(), entry.reconstructed_params_hash);
+    match params {
+        VersionedCompositionParams::V2(inner) => {
+            assert_eq!(
+                inner.source_compatibility_class,
+                composition_core_v2::source_compatibility_class_v1()
+            );
+        }
+        VersionedCompositionParams::V1(_) => panic!("V2 tuple was relabelled as V1"),
+    }
 }
 
 #[test]
@@ -543,7 +624,10 @@ fn composition_controller_or_registry_drift_fails_closed() {
     let mut chain = FakeChain::default();
     let id = add_composition(&mut chain, 13);
     let controller = chain.authorities[&id];
-    chain.composition_controllers.get_mut(&controller).unwrap().params.max_sources = 9;
+    match &mut chain.composition_controllers.get_mut(&controller).unwrap().params {
+        VersionedCompositionParams::V1(params) => params.max_sources = 9,
+        VersionedCompositionParams::V2(params) => params.max_sources = 9,
+    }
 
     let catalog = scan(&chain, Program::Composition, &Manifest::default()).unwrap();
     assert!(catalog.get(id).is_none());

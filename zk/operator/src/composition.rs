@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use alloy_primitives::{keccak256, Address, B256};
 use anyhow::{anyhow, bail, Context, Result};
-use composition_core::{codec, compute::compute, Binding, GuestInput, SourcePreimage};
-use operator_core::catalog::CatalogEntry;
+use composition_core::{codec, Binding, GuestInput, SourcePreimage};
+use operator_core::catalog::{CatalogEntry, VersionedCompositionParams};
 use operator_core::types::Program;
 
 use crate::chain::{read_checkpoint, read_composition_manifest, Rpc};
@@ -35,8 +35,31 @@ pub struct WorkShape {
     pub measured_cycles: u64,
 }
 
+/// One recovered witness, carrying its generation. The scheduler prices both identically; the
+/// prover routes each to its own immutable ELF.
+pub enum PreparedInput {
+    V1(GuestInput),
+    V2(composition_core_v2::GuestInput),
+}
+
+impl PreparedInput {
+    pub fn version(&self) -> u32 {
+        match self {
+            Self::V1(_) => 1,
+            Self::V2(_) => 2,
+        }
+    }
+
+    pub fn to_json_pretty(&self) -> Result<Vec<u8>> {
+        Ok(match self {
+            Self::V1(input) => serde_json::to_vec_pretty(input)?,
+            Self::V2(input) => serde_json::to_vec_pretty(input)?,
+        })
+    }
+}
+
 pub struct Prepared {
-    pub input: GuestInput,
+    pub input: PreparedInput,
     pub work: WorkShape,
 }
 
@@ -84,13 +107,36 @@ pub fn classify_work(
     })
 }
 
-pub fn work_shape(input: &GuestInput) -> Result<WorkShape> {
+pub fn work_shape(input: &PreparedInput) -> Result<WorkShape> {
+    match input {
+        PreparedInput::V1(input) => work_shape_v1(input),
+        PreparedInput::V2(input) => work_shape_v2(input),
+    }
+}
+
+pub fn work_shape_v1(input: &GuestInput) -> Result<WorkShape> {
     let mut entries = 0usize;
     let mut accounts = BTreeSet::new();
     let mut bytes = 0usize;
     for source in &input.source_preimages {
         bytes = bytes.checked_add(source.blob.len()).context("source byte sum overflow")?;
         let decoded = composition_core::blob::decode_canonical_score_blob(&source.blob)
+            .map_err(|error| anyhow!("source blob is not canonical: {error}"))?;
+        entries = entries.checked_add(decoded.len()).context("source entry sum overflow")?;
+        accounts.extend(decoded.into_iter().map(|(account, _)| account));
+    }
+    classify_work(input.source_preimages.len(), entries, accounts.len(), bytes)
+}
+
+/// Mixed source programs do not change the Hamilton cost, so V2 shares V1's measured bands; the
+/// wider V2 manifest bytes remain part of the witness the shape prices.
+pub fn work_shape_v2(input: &composition_core_v2::GuestInput) -> Result<WorkShape> {
+    let mut entries = 0usize;
+    let mut accounts = BTreeSet::new();
+    let mut bytes = 0usize;
+    for source in &input.source_preimages {
+        bytes = bytes.checked_add(source.blob.len()).context("source byte sum overflow")?;
+        let decoded = composition_core_v2::blob::decode_canonical_score_blob(&source.blob)
             .map_err(|error| anyhow!("source blob is not canonical: {error}"))?;
         entries = entries.checked_add(decoded.len()).context("source entry sum overflow")?;
         accounts.extend(decoded.into_iter().map(|(account, _)| account));
@@ -114,16 +160,90 @@ pub fn prepare(
         .ok_or_else(|| anyhow!("{} has no authenticated composition params", entry.name))?;
     params.validate().map_err(|error| anyhow!("invalid composition params: {error}"))?;
     anyhow::ensure!(
-        params.accumulator == entry.accumulator,
+        params.accumulator() == entry.accumulator,
         "composition params accumulator {:#x} != catalog {:#x}",
-        params.accumulator,
+        params.accumulator(),
         entry.accumulator
     );
 
     let manifest = read_composition_manifest(rpc, entry.accumulator, checkpoint_id)?;
-    let digest = codec::manifest_digest(&manifest);
-    let parsed = codec::parse_capture_manifest(&manifest, params.chain_id)
-        .map_err(|error| anyhow!("invalid checkpoint TGCM: {error}"))?;
+    let binding = Binding {
+        recipient,
+        instance_domain: crate::chain::expected_instance_domain(
+            entry.snapshot,
+            rpc.eth_chain_id()?,
+        ),
+    };
+    match params {
+        VersionedCompositionParams::V1(params) => {
+            let digest = codec::manifest_digest(&manifest);
+            let parsed = codec::parse_capture_manifest(&manifest, params.chain_id)
+                .map_err(|error| anyhow!("invalid checkpoint TGCM: {error}"))?;
+            assert_checkpoint(rpc, entry, checkpoint_id, digest, parsed.sources.len())?;
+            let source_preimages = parsed
+                .sources
+                .iter()
+                .map(|source| {
+                    fetch_source(cfg, source.source_id, source.blob_sha256, source.cid_digest)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let input = GuestInput {
+                params,
+                manifest,
+                source_preimages,
+                capture_commitment: digest,
+                capture_count: parsed.sources.len() as u64,
+                binding,
+            };
+            let work = work_shape_v1(&input)?;
+            composition_core::compute::compute(&input)
+                .map_err(|error| anyhow!("composition consensus refusal: {error}"))?;
+            Ok(Prepared { input: PreparedInput::V1(input), work })
+        }
+        VersionedCompositionParams::V2(params) => {
+            let digest = composition_core_v2::codec::manifest_digest(&manifest);
+            let parsed =
+                composition_core_v2::codec::parse_capture_manifest(&manifest, params.chain_id)
+                    .map_err(|error| anyhow!("invalid checkpoint TGCM: {error}"))?;
+            assert_checkpoint(rpc, entry, checkpoint_id, digest, parsed.sources.len())?;
+            let source_preimages = parsed
+                .sources
+                .iter()
+                .map(|source| {
+                    fetch_source(cfg, source.source_id, source.blob_sha256, source.cid_digest).map(
+                        |preimage| composition_core_v2::SourcePreimage {
+                            cid: preimage.cid,
+                            blob: preimage.blob,
+                        },
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let input = composition_core_v2::GuestInput {
+                params,
+                manifest,
+                source_preimages,
+                capture_commitment: digest,
+                capture_count: parsed.sources.len() as u64,
+                binding: composition_core_v2::Binding {
+                    recipient: binding.recipient,
+                    instance_domain: binding.instance_domain,
+                },
+            };
+            let work = work_shape_v2(&input)?;
+            composition_core_v2::compute::compute(&input)
+                .map_err(|error| anyhow!("composition consensus refusal: {error}"))?;
+            Ok(Prepared { input: PreparedInput::V2(input), work })
+        }
+    }
+}
+
+fn assert_checkpoint(
+    rpc: &Rpc,
+    entry: &CatalogEntry,
+    checkpoint_id: Option<u64>,
+    digest: B256,
+    source_count: usize,
+) -> Result<()> {
     if let Some(id) = checkpoint_id {
         let checkpoint = read_checkpoint(rpc, entry.snapshot, id)?;
         anyhow::ensure!(
@@ -132,35 +252,13 @@ pub fn prepare(
             checkpoint.commitments.acc
         );
         anyhow::ensure!(
-            checkpoint.commitments.leaf_count == parsed.sources.len() as u64,
+            checkpoint.commitments.leaf_count == source_count as u64,
             "checkpoint {id} source count {} != TGCM {}",
             checkpoint.commitments.leaf_count,
-            parsed.sources.len()
+            source_count
         );
     }
-
-    let source_preimages = parsed
-        .sources
-        .iter()
-        .map(|source| fetch_source(cfg, source.source_id, source.blob_sha256, source.cid_digest))
-        .collect::<Result<Vec<_>>>()?;
-    let input = GuestInput {
-        params,
-        manifest,
-        source_preimages,
-        capture_commitment: digest,
-        capture_count: parsed.sources.len() as u64,
-        binding: Binding {
-            recipient,
-            instance_domain: crate::chain::expected_instance_domain(
-                entry.snapshot,
-                rpc.eth_chain_id()?,
-            ),
-        },
-    };
-    let work = work_shape(&input)?;
-    compute(&input).map_err(|error| anyhow!("composition consensus refusal: {error}"))?;
-    Ok(Prepared { input, work })
+    Ok(())
 }
 
 fn fetch_source(
@@ -252,18 +350,40 @@ mod tests {
     #[test]
     fn two_source_and_exact_maximum_guest_fixtures_select_authenticated_bands() {
         let two = composition_core::fixture::benchmark_input(2, 128);
-        assert_eq!(work_shape(&two).unwrap().band, 1);
+        assert_eq!(work_shape_v1(&two).unwrap().band, 1);
 
         let maximum = composition_core::fixture::benchmark_input(
             composition_core::MAX_SOURCES,
             composition_core::MAX_AGGREGATE_ENTRIES,
         );
-        let shape = work_shape(&maximum).unwrap();
+        let shape = work_shape_v1(&maximum).unwrap();
         assert_eq!(shape.source_count, 8);
         assert_eq!(shape.aggregate_entries, 8_192);
         assert_eq!(shape.union_accounts, 8_192);
         assert_eq!(shape.band, 4);
         composition_core::compute::compute(&maximum).expect("maximum fixture remains provable");
+    }
+
+    #[test]
+    fn mixed_v2_fixtures_share_the_measured_bands_and_remain_provable() {
+        let mixed = composition_core_v2::fixture::mixed_input();
+        assert_eq!(work_shape_v2(&mixed).unwrap().band, 1);
+        assert_eq!(
+            work_shape(&PreparedInput::V2(mixed.clone())).unwrap(),
+            work_shape_v2(&mixed).unwrap()
+        );
+
+        let maximum = composition_core_v2::fixture::benchmark_input(
+            composition_core_v2::MAX_SOURCES,
+            composition_core_v2::MAX_AGGREGATE_ENTRIES,
+        );
+        let shape = work_shape_v2(&maximum).unwrap();
+        assert_eq!(shape.source_count, 8);
+        assert_eq!(shape.aggregate_entries, 8_192);
+        assert_eq!(shape.union_accounts, 8_192);
+        assert_eq!(shape.band, 4);
+        composition_core_v2::compute::compute(&maximum)
+            .expect("maximum mixed fixture remains provable");
     }
 
     fn serve_once(status: &'static str, body: Vec<u8>) -> String {
@@ -334,8 +454,15 @@ gateway = "{gateway}"
         let mut noncanonical = composition_core::fixture::sample_input();
         noncanonical.source_preimages[0].blob.insert(1, b' ');
         assert!(
-            work_shape(&noncanonical).unwrap_err().to_string().contains("not canonical"),
+            work_shape_v1(&noncanonical).unwrap_err().to_string().contains("not canonical"),
             "authenticated work sizing must refuse malformed canonical bytes"
+        );
+
+        let mut noncanonical_v2 = composition_core_v2::fixture::mixed_input();
+        noncanonical_v2.source_preimages[0].blob.insert(1, b' ');
+        assert!(
+            work_shape_v2(&noncanonical_v2).unwrap_err().to_string().contains("not canonical"),
+            "V2 work sizing must refuse malformed canonical bytes"
         );
     }
 }

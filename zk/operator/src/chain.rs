@@ -8,7 +8,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::{
     CatalogEntry, ChainReader, CompositionControllerParams, ContributionsControllerParams,
     ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor,
-    WeightedControllerParams, WeightedCreatedParams,
+    VersionedCompositionParams, WeightedControllerParams, WeightedCreatedParams,
 };
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::{Params, SelectionParams};
@@ -807,7 +807,7 @@ impl ChainReader for RpcCatalog<'_> {
             snapshot,
             version,
             current_params_hash,
-            params: to_composition_params(&params),
+            params: to_composition_params(&params)?,
         })
     }
 
@@ -912,28 +912,57 @@ fn to_weighted_params(p: &SolWeightedParams) -> weighted_prior_core::Params {
     }
 }
 
-fn to_composition_params(p: &SolCompositionParams) -> composition_core::Params {
-    composition_core::Params {
-        version: p.version,
-        program_id: p.programId,
-        scope_hash: p.scopeHash,
-        identity_domain: p.identityDomain,
-        output_kind: p.outputKind,
-        output_domain: p.outputDomain,
-        admitted_program_id: p.admittedProgramId,
-        weight_scale: p.weightScale,
-        output_pool: p.outputPool,
-        source_policy_root: p.sourcePolicyRoot,
-        source_count: p.sourceCount,
-        policy_manifest_sha256: p.policyManifestSha256,
-        max_sources: p.maxSources,
-        max_entries_per_source: p.maxEntriesPerSource,
-        max_aggregate_entries: p.maxAggregateEntries,
-        max_union_accounts: p.maxUnionAccounts,
-        max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
-        max_source_age_blocks: p.maxSourceAgeBlocks,
-        accumulator: p.accumulator,
-        chain_id: p.chainId,
+/// Both trust-compose generations share this 20-word ABI shape; word 0 selects the semantic
+/// decoder. Under V1 the sixth word is the singular admitted program; under V2 it is the closed
+/// source compatibility class and must never surface under the V1 field name. An unknown version
+/// fails before any witness work or proof spend — there is no "latest composition" fallback.
+fn to_composition_params(p: &SolCompositionParams) -> Result<VersionedCompositionParams> {
+    match p.version {
+        1 => Ok(VersionedCompositionParams::V1(composition_core::Params {
+            version: p.version,
+            program_id: p.programId,
+            scope_hash: p.scopeHash,
+            identity_domain: p.identityDomain,
+            output_kind: p.outputKind,
+            output_domain: p.outputDomain,
+            admitted_program_id: p.admittedProgramId,
+            weight_scale: p.weightScale,
+            output_pool: p.outputPool,
+            source_policy_root: p.sourcePolicyRoot,
+            source_count: p.sourceCount,
+            policy_manifest_sha256: p.policyManifestSha256,
+            max_sources: p.maxSources,
+            max_entries_per_source: p.maxEntriesPerSource,
+            max_aggregate_entries: p.maxAggregateEntries,
+            max_union_accounts: p.maxUnionAccounts,
+            max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
+            max_source_age_blocks: p.maxSourceAgeBlocks,
+            accumulator: p.accumulator,
+            chain_id: p.chainId,
+        })),
+        2 => Ok(VersionedCompositionParams::V2(composition_core_v2::Params {
+            version: p.version,
+            program_id: p.programId,
+            scope_hash: p.scopeHash,
+            identity_domain: p.identityDomain,
+            output_kind: p.outputKind,
+            output_domain: p.outputDomain,
+            source_compatibility_class: p.admittedProgramId,
+            weight_scale: p.weightScale,
+            output_pool: p.outputPool,
+            source_policy_root: p.sourcePolicyRoot,
+            source_count: p.sourceCount,
+            policy_manifest_sha256: p.policyManifestSha256,
+            max_sources: p.maxSources,
+            max_entries_per_source: p.maxEntriesPerSource,
+            max_aggregate_entries: p.maxAggregateEntries,
+            max_union_accounts: p.maxUnionAccounts,
+            max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
+            max_source_age_blocks: p.maxSourceAgeBlocks,
+            accumulator: p.accumulator,
+            chain_id: p.chainId,
+        })),
+        other => bail!("unsupported composition params version {other}"),
     }
 }
 
@@ -1391,11 +1420,11 @@ pub fn entry_at_params_hash(
             if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
                 continue;
             }
-            let params = to_composition_params(&event.params);
+            let params = to_composition_params(&event.params)?;
             params
                 .validate()
                 .map_err(|error| anyhow!("invalid historical composition params: {error}"))?;
-            let reconstructed = composition_core::codec::params_hash(&params);
+            let reconstructed = params.params_hash();
             anyhow::ensure!(
                 reconstructed == params_hash,
                 "composition activation tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
@@ -1421,12 +1450,14 @@ pub fn entry_at_params_hash(
             if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
                 continue;
             }
-            let params = to_composition_params(&event.params);
-            params.validate().map_err(|error| anyhow!("invalid composition V1 params: {error}"))?;
-            let reconstructed = composition_core::codec::params_hash(&params);
+            let params = to_composition_params(&event.params)?;
+            params
+                .validate()
+                .map_err(|error| anyhow!("invalid initial composition params: {error}"))?;
+            let reconstructed = params.params_hash();
             anyhow::ensure!(
                 reconstructed == params_hash,
-                "composition V1 event tuple hash mismatch"
+                "initial composition event tuple hash mismatch"
             );
             let mut historical = entry.clone();
             historical.params = None;

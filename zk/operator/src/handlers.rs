@@ -323,7 +323,7 @@ pub fn build_input(
                     .with_context(|| {
                         format!("recovering exact composition capture for {}", entry.name)
                     })?;
-            std::fs::write(&input_path, serde_json::to_vec_pretty(&prepared.input)?)?;
+            std::fs::write(&input_path, prepared.input.to_json_pretty()?)?;
         }
         Program::NostrWorkspace => {
             let manifest = entry.manifest.as_ref().ok_or_else(|| {
@@ -423,6 +423,18 @@ pub fn uses_strict_envelope0(cfg: &Config, rpc: &Rpc, entry: &CatalogEntry) -> R
     Ok(params.envelope0_domain_separators.len() == 2 && params.lane2_max_head_age == 0)
 }
 
+/// The composition input's own params version. Both trust-compose generations share one registry
+/// program, so this word — never a length or shape guess — routes core, ELF, and vkey.
+fn composition_input_version(text: &str) -> Result<u32> {
+    let value: serde_json::Value = serde_json::from_str(text)?;
+    let version = value
+        .get("params")
+        .and_then(|params| params.get("version"))
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| anyhow!("composition input carries no params version"))?;
+    Ok(u32::try_from(version).context("composition params version exceeds uint32")?)
+}
+
 /// Compute the journal natively, before asking anyone to prove it.
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
     let built = (|| -> Result<Built> {
@@ -485,45 +497,95 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
             });
         }
         if program == Program::Composition {
-            let input: composition_core::GuestInput = serde_json::from_str(&text)?;
-            let result = composition_core::compute::compute(&input)?;
-            let shape = crate::composition::work_shape(&input)?;
+            // Both generations share the registry program; the input's own params version — not a
+            // guess — selects the core and the immutable ELF whose vkey the verifier must accept.
+            let version = composition_input_version(&text)?;
+            let (result_journal, scores_len, capture_count, cid, blob, measured, vk) = match version
+            {
+                1 => {
+                    let input: composition_core::GuestInput = serde_json::from_str(&text)?;
+                    let result = composition_core::compute::compute(&input)?;
+                    let shape = crate::composition::work_shape_v1(&input)?;
+                    let vk = trustgraph_prover::common::vkey(
+                        trustgraph_prover::programs::composition::elf(),
+                    )?;
+                    let encoded = composition_core::codec::journal_encoded(&result.journal);
+                    (
+                        (
+                            encoded,
+                            result.journal.recipient,
+                            result.journal.output_root,
+                            result.journal.ipfs_hash,
+                            result.journal.total_value,
+                            result.journal.skipped_digest,
+                        ),
+                        result.scores.len(),
+                        input.capture_count,
+                        result.cid,
+                        result.blob,
+                        shape.measured_cycles,
+                        vk,
+                    )
+                }
+                2 => {
+                    let input: composition_core_v2::GuestInput = serde_json::from_str(&text)?;
+                    let result = composition_core_v2::compute::compute(&input)?;
+                    let shape = crate::composition::work_shape_v2(&input)?;
+                    let vk = trustgraph_prover::common::vkey(
+                        trustgraph_prover::programs::composition_v2::elf(),
+                    )?;
+                    let encoded = composition_core_v2::codec::journal_encoded(&result.journal);
+                    (
+                        (
+                            encoded,
+                            result.journal.recipient,
+                            result.journal.output_root,
+                            result.journal.ipfs_hash,
+                            result.journal.total_value,
+                            result.journal.skipped_digest,
+                        ),
+                        result.scores.len(),
+                        input.capture_count,
+                        result.cid,
+                        result.blob,
+                        shape.measured_cycles,
+                        vk,
+                    )
+                }
+                other => bail!("unsupported composition params version {other}"),
+            };
+            let (encoded, journal_recipient, output_root, ipfs_hash, total_value, skipped_digest) =
+                result_journal;
             let work = WorkProfile {
                 version: COST_MODEL_VERSION,
                 program,
-                raw_records: input.capture_count,
+                raw_records: capture_count,
                 live_edges: 0,
-                unique_nodes: count(result.scores.len()),
+                unique_nodes: count(scores_len),
                 max_out_degree: 0,
                 witness_bytes: count(text.len()),
                 lane2_anchors: 0,
                 signature_checks: 0,
                 max_iterations: 0,
                 iterations_run: 0,
-                output_leaves: count(result.scores.len()),
-                authenticated_cycle_bound: Some(shape.measured_cycles),
+                output_leaves: count(scores_len),
+                authenticated_cycle_bound: Some(measured),
             };
-            if result.journal.recipient != recipient {
-                bail!(
-                    "input names recipient {:#x}, config says {recipient:#x}",
-                    result.journal.recipient
-                );
+            if journal_recipient != recipient {
+                bail!("input names recipient {journal_recipient:#x}, config says {recipient:#x}");
             }
-            let vk =
-                trustgraph_prover::common::vkey(trustgraph_prover::programs::composition::elf())?;
-            let encoded = composition_core::codec::journal_encoded(&result.journal);
             return Ok(Built {
                 program,
                 input_path: input_path.clone(),
                 public_values_hash: keccak256(&encoded),
                 vk_hash: parse_b256(&vk)?,
-                output_root: result.journal.output_root,
-                ipfs_hash: result.journal.ipfs_hash,
-                cid: result.cid,
-                total_value: result.journal.total_value,
-                skipped_digest: result.journal.skipped_digest,
-                recipient: result.journal.recipient,
-                blob: result.blob,
+                output_root,
+                ipfs_hash,
+                cid,
+                total_value,
+                skipped_digest,
+                recipient: journal_recipient,
+                blob,
                 signers: Vec::new(),
                 target_threshold: U256::ZERO,
                 activity_checkpoint_id: 0,
@@ -929,15 +991,27 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
             trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
             (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
         }
-        Program::Composition => {
-            let input: composition_core::GuestInput = serde_json::from_str(&text)?;
-            let native = composition_core::codec::journal_encoded(
-                &composition_core::compute::compute(&input)?.journal,
-            );
-            let elf = trustgraph_prover::programs::composition::elf();
-            trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
-            (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
-        }
+        Program::Composition => match composition_input_version(&text)? {
+            1 => {
+                let input: composition_core::GuestInput = serde_json::from_str(&text)?;
+                let native = composition_core::codec::journal_encoded(
+                    &composition_core::compute::compute(&input)?.journal,
+                );
+                let elf = trustgraph_prover::programs::composition::elf();
+                trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
+                (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
+            }
+            2 => {
+                let input: composition_core_v2::GuestInput = serde_json::from_str(&text)?;
+                let native = composition_core_v2::codec::journal_encoded(
+                    &composition_core_v2::compute::compute(&input)?.journal,
+                );
+                let elf = trustgraph_prover::programs::composition_v2::elf();
+                trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
+                (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
+            }
+            other => bail!("unsupported composition params version {other}"),
+        },
         Program::NostrWorkspace => {
             let input: nostr_workspace_core::compute::GuestInput = serde_json::from_str(&text)?;
             let result = nostr_workspace_core::compute::compute(&input)

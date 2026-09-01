@@ -1913,6 +1913,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "composition-core-v2"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2 0.10.9",
+ "zk-core",
+]
+
+[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7687,6 +7699,7 @@ dependencies = [
  "chrono",
  "clap",
  "composition-core",
+ "composition-core-v2",
  "contributions-core",
  "envelopes",
  "erc8004-completeness-research",

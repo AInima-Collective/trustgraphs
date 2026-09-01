@@ -637,6 +637,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "composition-core-v2"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "proptest",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "zk-core",
+]
+
+[[package]]
 name = "const-hex"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1756,6 +1769,7 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "composition-core",
+ "composition-core-v2",
  "contributions-core",
  "pagerank-core",
  "serde",

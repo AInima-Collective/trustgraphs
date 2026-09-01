@@ -29,6 +29,7 @@ trustgraph-core = { path = "../../crates/trustgraph-core" }
 contributions-core = { path = "../../crates/contributions-core" }
 weighted-prior-core = { path = "../../crates/weighted-prior-core" }
 composition-core = { path = "../../crates/composition-core" }
+composition-core-v2 = { path = "../../crates/composition-core-v2" }
 nostr-workspace-core = { path = "../../crates/nostr-workspace-core" }
 zk-core = { path = "../../crates/zk-core" }
 
