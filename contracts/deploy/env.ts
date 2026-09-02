@@ -1800,6 +1800,14 @@ export class SepoliaEnv extends EnvBase {
         governedFactory?.signer_sync_deployer,
         base.contracts.signerSyncModuleDeployer
       ),
+      parentAuthorityModuleDeployer: mergedRecord(
+        governedFactory?.parent_authority_deployer,
+        base.contracts.parentAuthorityModuleDeployer ?? emptyRecord
+      ),
+      subnetworkRegistry: mergedRecord(
+        governedFactory?.subnetwork_registry,
+        base.contracts.subnetworkRegistry ?? emptyRecord
+      ),
       safeSingleton: {
         ...base.contracts.safeSingleton,
         address:

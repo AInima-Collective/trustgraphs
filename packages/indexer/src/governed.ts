@@ -1,5 +1,5 @@
 import { ponder } from 'ponder:registry'
-import { gnosisSafe, merkleGovModule } from 'ponder:schema'
+import { gnosisSafe, merkleGovModule, recoveryAuthority } from 'ponder:schema'
 
 import { readMerkleGovModuleRow } from './gov-module-shared'
 import { revalidateNetwork } from './utils'
@@ -93,4 +93,59 @@ ponder.on(
 ponder.on(
   'governedTrustComposeFactory:GovernedInstanceCreated',
   onGovernedInstanceCreated
+)
+
+const onGovernedAuthorityInstalled = async ({ event, context }: any) => {
+  await context.db
+    .insert(recoveryAuthority)
+    .values({
+      module: event.args.recoveryModule,
+      instanceId: event.args.instanceId,
+      safe: event.args.safe,
+      proposer: event.args.recoveryProposer,
+      delay: BigInt(event.args.recoveryDelay),
+      updatedBlock: event.block.number,
+      updatedTimestamp: event.block.timestamp,
+      updatedTxHash: event.transaction.hash,
+    })
+    .onConflictDoUpdate({
+      safe: event.args.safe,
+      proposer: event.args.recoveryProposer,
+      delay: BigInt(event.args.recoveryDelay),
+      updatedBlock: event.block.number,
+      updatedTimestamp: event.block.timestamp,
+      updatedTxHash: event.transaction.hash,
+    })
+}
+
+ponder.on(
+  'governedTrustgraphsFactory:GovernedAuthorityInstalled',
+  onGovernedAuthorityInstalled
+)
+ponder.on(
+  'governedWeightedTrustgraphsFactory:GovernedAuthorityInstalled',
+  onGovernedAuthorityInstalled
+)
+ponder.on(
+  'governedTrustComposeFactory:GovernedAuthorityInstalled',
+  onGovernedAuthorityInstalled
+)
+
+ponder.on(
+  'delayedRecoveryModule:RecoveryProposerUpdated',
+  async ({ event, context }: any) => {
+    const recovery = await context.db.find(recoveryAuthority, {
+      module: event.log.address,
+    })
+    if (!recovery) return
+    await context.db
+      .update(recoveryAuthority, { module: event.log.address })
+      .set({
+        proposer: event.args.newProposer,
+        updatedBlock: event.block.number,
+        updatedTimestamp: event.block.timestamp,
+        updatedTxHash: event.transaction.hash,
+      })
+    await revalidateNetwork(recovery.instanceId)
+  }
 )

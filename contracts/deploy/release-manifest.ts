@@ -61,6 +61,10 @@ export type ReleaseManifest = {
     governedImportedTrustgraphsFactory?: DeploymentRecord
     governedTrustgraphsFactoryFast?: DeploymentRecord
     signerSyncModuleDeployer: DeploymentRecord
+    /** Optional on releases predating organizational sub-networks. */
+    parentAuthorityModuleDeployer?: DeploymentRecord
+    /** Optional on releases predating organizational sub-networks. */
+    subnetworkRegistry?: DeploymentRecord
     safeSingleton: DeploymentRecord
     safeProxyFactory: DeploymentRecord
     weightedVerifier: DeploymentRecord
@@ -290,6 +294,8 @@ export const validateReleaseManifest = (
       'governedImportedTrustgraphsFactory',
       'governedTrustgraphsFactoryFast',
       'signerSyncModuleDeployer',
+      'parentAuthorityModuleDeployer',
+      'subnetworkRegistry',
       'safeSingleton',
       'safeProxyFactory',
       'weightedVerifier',
@@ -378,6 +384,26 @@ export const validateReleaseManifest = (
   if (governedAddress !== null && signerVerifier.address === null) {
     throw new Error(
       'manifest signerVerifier is required when governedTrustgraphsFactory is deployed'
+    )
+  }
+  const parentAuthorityDeployer =
+    manifestContracts.parentAuthorityModuleDeployer
+  const subnetworkRegistry = manifestContracts.subnetworkRegistry
+  for (const [record, key] of [
+    [parentAuthorityDeployer, 'parentAuthorityModuleDeployer'],
+    [subnetworkRegistry, 'subnetworkRegistry'],
+  ] as const) {
+    if (record === undefined) continue
+    assertObject(record, `manifest.contracts.${key}`)
+    validateRecord(record, `manifest.contracts.${key}`, record.address !== null)
+  }
+  if (
+    ((parentAuthorityDeployer as DeploymentRecord | undefined)?.address !=
+      null) !==
+    ((subnetworkRegistry as DeploymentRecord | undefined)?.address != null)
+  ) {
+    throw new Error(
+      'manifest parentAuthorityModuleDeployer and subnetworkRegistry must be recorded together'
     )
   }
 
@@ -704,6 +730,11 @@ export const releaseManifestToDeploymentSummary = (
             manifest.contracts.governedTrustgraphsFactory.address,
           signer_sync_deployer:
             manifest.contracts.signerSyncModuleDeployer.address,
+          parent_authority_deployer:
+            manifest.contracts.parentAuthorityModuleDeployer?.address ??
+            undefined,
+          subnetwork_registry:
+            manifest.contracts.subnetworkRegistry?.address ?? undefined,
         }
       : undefined
   const factoryFast = manifest.contracts.trustgraphsFactoryFast?.address

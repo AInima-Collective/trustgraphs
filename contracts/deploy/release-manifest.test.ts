@@ -99,6 +99,29 @@ test('manifest validator rejects half-recorded governed deployments', () => {
   )
 })
 
+test('manifest carries subnetwork infrastructure as an optional atomic pair', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  manifest.contracts.parentAuthorityModuleDeployer = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  assert.throws(
+    () => validateReleaseManifest(manifest),
+    /parentAuthorityModuleDeployer and subnetworkRegistry must be recorded together/
+  )
+
+  manifest.contracts.subnetworkRegistry = {
+    address: ADDRESS_2,
+    block: 124,
+    txHash: TX_HASH_2,
+  }
+  const validated = validateReleaseManifest(manifest)
+  const summary = releaseManifestToDeploymentSummary(validated)
+  assert.equal(summary.governedFactory?.parent_authority_deployer, ADDRESS)
+  assert.equal(summary.governedFactory?.subnetwork_registry, ADDRESS_2)
+})
+
 test('manifest validator accepts, pairs, and rejects the fast factory generation', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
 

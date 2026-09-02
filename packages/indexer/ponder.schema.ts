@@ -1,6 +1,119 @@
 import { index, onchainTable, primaryKey } from 'ponder'
 
 /*///////////////////////////////////////////////////////////////
+             SUB-NETWORK RELATIONSHIPS AND LIVE POWER
+//////////////////////////////////////////////////////////////*/
+
+/** Latest relationship state for one child. Released/cancelled rows retain honest history. */
+export const subnetworkLink = onchainTable(
+  'subnetwork_link',
+  (t) => ({
+    childInstanceId: t.hex().primaryKey(),
+    parentInstanceId: t.hex().notNull(),
+    registry: t.hex().notNull(),
+    status: t.text().notNull(), // pending | active | cancelled | released
+    actor: t.hex().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    parentStatusIdx: index().on(t.parentInstanceId, t.status),
+    registryIdx: index().on(t.registry),
+  })
+)
+
+/** One permissionlessly deployed parent module and its current Safe enablement/renunciation. */
+export const parentAuthorityModule = onchainTable(
+  'parent_authority_module',
+  (t) => ({
+    address: t.hex().primaryKey(),
+    childInstanceId: t.hex().notNull(),
+    parentInstanceId: t.hex().notNull(),
+    childSafe: t.hex().notNull(),
+    instanceRegistry: t.hex().notNull(),
+    executionDelay: t.bigint().notNull(),
+    enabled: t.boolean().notNull(),
+    renounced: t.boolean().notNull(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    childIdx: index().on(t.childInstanceId),
+    parentIdx: index().on(t.parentInstanceId),
+    safeEnabledIdx: index().on(t.childSafe, t.enabled),
+  })
+)
+
+/** Parent-module action history; scheduled actions fold to cancelled or executed in place. */
+export const parentAuthorityAction = onchainTable(
+  'parent_authority_action',
+  (t) => ({
+    actionId: t.hex().primaryKey(),
+    module: t.hex().notNull(),
+    childInstanceId: t.hex().notNull(),
+    parentInstanceId: t.hex().notNull(),
+    nonce: t.bigint(),
+    actor: t.hex().notNull(),
+    target: t.hex(),
+    value: t.bigint(),
+    data: t.hex(),
+    operation: t.integer(),
+    status: t.text().notNull(), // scheduled | cancelled | executed
+    executableAt: t.bigint(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    moduleIdx: index().on(t.module),
+    childStatusIdx: index().on(t.childInstanceId, t.status),
+  })
+)
+
+/** Current constitutional-role membership, kept separate because the role is multi-holder. */
+export const snapshotRoleMember = onchainTable(
+  'snapshot_role_member',
+  (t) => ({
+    id: t.text().primaryKey(), // `${snapshot}:${role}:${account}`
+    snapshot: t.hex().notNull(),
+    role: t.hex().notNull(),
+    account: t.hex().notNull(),
+    active: t.boolean().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    snapshotRoleIdx: index().on(t.snapshot, t.role, t.active),
+    accountIdx: index().on(t.account),
+  })
+)
+
+/** Current recovery proposer for a governed instance's delayed recovery module. */
+export const recoveryAuthority = onchainTable(
+  'recovery_authority',
+  (t) => ({
+    module: t.hex().primaryKey(),
+    instanceId: t.hex().notNull(),
+    safe: t.hex().notNull(),
+    proposer: t.hex().notNull(),
+    delay: t.bigint().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    proposerIdx: index().on(t.proposer),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
        GRAPH LINEAGES / ADVISORY ENDORSEMENT PROVENANCE
 //////////////////////////////////////////////////////////////*/
 
@@ -793,6 +906,7 @@ export const contributionsInstance = onchainTable(
     // The PARENT trust-graph instance (the `instance` table's id) this round is scored against.
     parentInstanceId: t.hex().notNull(),
     creator: t.hex().notNull(),
+    paramsController: t.hex(),
     admin: t.hex().notNull(),
     name: t.text().notNull(),
     metadataURI: t.text().notNull(),
@@ -834,6 +948,7 @@ export const contributionsInstance = onchainTable(
     parentIdx: index().on(t.parentInstanceId),
     factoryIdx: index().on(t.factory),
     creatorIdx: index().on(t.creator),
+    controllerIdx: index().on(t.paramsController),
     snapshotIdx: index().on(t.snapshot),
     resolverIdx: index().on(t.resolver),
     createdTimestampIdx: index().on(t.createdTimestamp),
