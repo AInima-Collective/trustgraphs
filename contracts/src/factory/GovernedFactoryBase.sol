@@ -8,6 +8,7 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
@@ -22,6 +23,7 @@ import {
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {ISubnetworkRegistry} from "interfaces/registry/ISubnetworkRegistry.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
@@ -82,6 +84,15 @@ abstract contract GovernedFactoryBase {
         uint32 targetThresholdBps;
     }
 
+    /// @notice The parent power installed for a newly-created sub-network.
+    /// @dev Admin is zero deliberately: it is the default chosen by issue #112. Guardian uses the
+    ///      existing fourteen-day recovery route; Label records only the relationship.
+    enum SubnetworkTier {
+        Admin,
+        Guardian,
+        Label
+    }
+
     struct Authority {
         address safe;
         address governanceModule;
@@ -99,12 +110,15 @@ abstract contract GovernedFactoryBase {
     GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
     SignerSyncModuleDeployer public immutable SIGNER_SYNC_DEPLOYER;
     MerkleGovModuleDeployer public immutable GOV_MODULE_DEPLOYER;
+    ParentAuthorityModuleDeployer public immutable PARENT_AUTHORITY_DEPLOYER;
+    ISubnetworkRegistry public immutable SUBNETWORK_REGISTRY;
     IZkVerifier public immutable SIGNER_SYNC_VERIFIER;
     bytes32 public immutable SIGNER_SYNC_PROGRAM_VKEY;
     bytes32 public immutable SAFE_PROXY_DEPLOYMENT_CODE_HASH;
     bytes32 public immutable SAFE_PROXY_RUNTIME_CODE_HASH;
 
     mapping(bytes32 instanceId => Authority authority) private _authorities;
+    mapping(bytes32 instanceId => address parentAuthorityModule) public parentAuthorityModuleOf;
 
     error ZeroAddress();
     error SafeFundingFailed();
@@ -121,6 +135,9 @@ abstract contract GovernedFactoryBase {
     error InvalidSignerSyncVerifier();
     error SignerSyncProgramVKeyMismatch(bytes32 expected, bytes32 actual);
     error BootstrapSafeUnavailable(uint256 baseNonce);
+    error SubnetworkRegistryMismatch(address expected, address actual);
+    error InvalidParentInstance();
+    error NotParentAuthority(bytes32 parentInstanceId, address caller, address expectedAuthority);
 
     event GovernedInstanceCreated(
         bytes32 indexed instanceId,
@@ -139,6 +156,12 @@ abstract contract GovernedFactoryBase {
         uint48 recoveryDelay,
         address signerSyncModule
     );
+    event GovernedSubnetworkCreated(
+        bytes32 indexed childInstanceId,
+        bytes32 indexed parentInstanceId,
+        address indexed parentAuthorityModule,
+        SubnetworkTier tier
+    );
 
     constructor(
         address factory_,
@@ -147,6 +170,8 @@ abstract contract GovernedFactoryBase {
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
         MerkleGovModuleDeployer govModuleDeployer_,
+        ParentAuthorityModuleDeployer parentAuthorityDeployer_,
+        ISubnetworkRegistry subnetworkRegistry_,
         IZkVerifier signerSyncVerifier_,
         bytes32 signerSyncProgramVKey_
     ) {
@@ -154,6 +179,7 @@ abstract contract GovernedFactoryBase {
             factory_ == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)
                 || address(authorityDeployer_) == address(0) || address(signerSyncDeployer_) == address(0)
                 || address(govModuleDeployer_) == address(0) || address(signerSyncVerifier_) == address(0)
+                || address(parentAuthorityDeployer_) == address(0) || address(subnetworkRegistry_) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -171,6 +197,13 @@ abstract contract GovernedFactoryBase {
         AUTHORITY_DEPLOYER = authorityDeployer_;
         SIGNER_SYNC_DEPLOYER = signerSyncDeployer_;
         GOV_MODULE_DEPLOYER = govModuleDeployer_;
+        PARENT_AUTHORITY_DEPLOYER = parentAuthorityDeployer_;
+        SUBNETWORK_REGISTRY = subnetworkRegistry_;
+        address expectedRegistry = address(IGovernableInstanceFactory(factory_).INSTANCE_REGISTRY());
+        address subnetworkInstanceRegistry = address(subnetworkRegistry_.INSTANCE_REGISTRY());
+        if (subnetworkInstanceRegistry != expectedRegistry) {
+            revert SubnetworkRegistryMismatch(expectedRegistry, subnetworkInstanceRegistry);
+        }
         SIGNER_SYNC_VERIFIER = signerSyncVerifier_;
         SIGNER_SYNC_PROGRAM_VKEY = signerSyncProgramVKey_;
         SAFE_PROXY_DEPLOYMENT_CODE_HASH =
@@ -225,6 +258,45 @@ abstract contract GovernedFactoryBase {
         InitialPolicy calldata policy,
         SignerSyncConfig calldata signerSync
     ) internal returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
+        return
+            _installGovernedInstance(safe, name, salt, createCall, policy, signerSync, bytes32(0), SubnetworkTier.Label);
+    }
+
+    /// @dev The sub-network variant shares the complete governed install path, then atomically
+    ///      records the relationship. The current parent authority is checked before any external
+    ///      creation effect and again by each ParentAuthorityModule action after creation.
+    function _installGovernedSubnetwork(
+        GnosisSafe safe,
+        string calldata name,
+        bytes32 salt,
+        bytes memory createCall,
+        InitialPolicy calldata policy,
+        SignerSyncConfig calldata signerSync,
+        bytes32 parentInstanceId,
+        SubnetworkTier tier
+    ) internal returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
+        _requireParentAuthority(parentInstanceId);
+        return _installGovernedInstance(safe, name, salt, createCall, policy, signerSync, parentInstanceId, tier);
+    }
+
+    function _requireParentAuthority(bytes32 parentInstanceId) internal view {
+        if (parentInstanceId == bytes32(0)) revert InvalidParentInstance();
+        address parentAuthority = SUBNETWORK_REGISTRY.authorityOf(parentInstanceId);
+        if (msg.sender != parentAuthority) {
+            revert NotParentAuthority(parentInstanceId, msg.sender, parentAuthority);
+        }
+    }
+
+    function _installGovernedInstance(
+        GnosisSafe safe,
+        string calldata name,
+        bytes32 salt,
+        bytes memory createCall,
+        InitialPolicy calldata policy,
+        SignerSyncConfig calldata signerSync,
+        bytes32 parentInstanceId,
+        SubnetworkTier tier
+    ) private returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         safeAddress = address(safe);
 
         if (msg.value != 0) {
@@ -267,8 +339,23 @@ abstract contract GovernedFactoryBase {
                 || module.executionDelay() != MEMBER_EXECUTION_DELAY
         ) revert GovernanceDefaultsMismatch();
 
+        bool isSubnetwork = parentInstanceId != bytes32(0);
+        address recoveryProposer = isSubnetwork && tier == SubnetworkTier.Label ? safeAddress : msg.sender;
         (SafeExecutionGuard executionGuard, DelayedRecoveryModule recoveryModule) =
-            AUTHORITY_DEPLOYER.deploy(safeAddress, address(this), msg.sender, RECOVERY_DELAY);
+            AUTHORITY_DEPLOYER.deploy(safeAddress, address(this), recoveryProposer, RECOVERY_DELAY);
+
+        address parentAuthorityModule;
+        if (isSubnetwork && tier == SubnetworkTier.Admin) {
+            parentAuthorityModule = address(
+                PARENT_AUTHORITY_DEPLOYER.deploy(
+                    safeAddress,
+                    IGovernableInstanceFactory(FACTORY).INSTANCE_REGISTRY(),
+                    instanceId,
+                    parentInstanceId,
+                    0
+                )
+            );
+        }
 
         SignerSyncZkModule signerModule;
         if (signerSync.enabled) {
@@ -292,6 +379,9 @@ abstract contract GovernedFactoryBase {
         // holds the new snapshot's constitutional role from the instant the base factory returns.
         _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", merkleGovModule));
         _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", address(recoveryModule)));
+        if (parentAuthorityModule != address(0)) {
+            _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", parentAuthorityModule));
+        }
         if (address(signerModule) != address(0)) {
             _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", address(signerModule)));
         }
@@ -314,11 +404,12 @@ abstract contract GovernedFactoryBase {
             governanceModule: merkleGovModule,
             recoveryModule: address(recoveryModule),
             executionGuard: address(executionGuard),
-            initialRecoveryProposer: msg.sender,
+            initialRecoveryProposer: recoveryProposer,
             recoveryDelay: RECOVERY_DELAY,
             signerSyncModule: address(signerModule)
         });
         _authorities[instanceId] = authority;
+        parentAuthorityModuleOf[instanceId] = parentAuthorityModule;
 
         emit GovernedInstanceCreated(instanceId, msg.sender, safeAddress, merkleGovModule, snapshot);
         emit GovernedAuthorityInstalled(
@@ -327,10 +418,14 @@ abstract contract GovernedFactoryBase {
             address(executionGuard),
             merkleGovModule,
             address(recoveryModule),
-            msg.sender,
+            recoveryProposer,
             RECOVERY_DELAY,
             address(signerModule)
         );
+        if (isSubnetwork) {
+            SUBNETWORK_REGISTRY.registerSubnetwork(instanceId, parentInstanceId);
+            emit GovernedSubnetworkCreated(instanceId, parentInstanceId, parentAuthorityModule, tier);
+        }
         // Emitted after the discovery events above so ordered indexers have already materialized
         // the module's row when its snapshot-binding announcement arrives (the
         // `publishInitialVersion()` discipline).

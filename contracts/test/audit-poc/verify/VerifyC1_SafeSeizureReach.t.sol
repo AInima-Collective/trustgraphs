@@ -10,8 +10,10 @@ import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {SignerSyncZkModule} from "src/zodiac/SignerSyncZkModule.sol";
@@ -49,6 +51,8 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             fake,
             fake.programVKey()
         );

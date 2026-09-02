@@ -33,6 +33,8 @@ contract DeployGovernedImportedTrustgraphsFactory is Common {
             governed.AUTHORITY_DEPLOYER(),
             governed.SIGNER_SYNC_DEPLOYER(),
             governed.GOV_MODULE_DEPLOYER(),
+            governed.PARENT_AUTHORITY_DEPLOYER(),
+            governed.SUBNETWORK_REGISTRY(),
             governed.SIGNER_SYNC_VERIFIER(),
             governed.SIGNER_SYNC_PROGRAM_VKEY()
         );

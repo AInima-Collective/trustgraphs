@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+
 /// @title ISubnetworkRegistry
 /// @notice Consent record for parent-child relationships between registered trustgraphs instances.
 /// @dev The registry records organizational relationships only. It deliberately makes no claim
@@ -53,6 +55,9 @@ interface ISubnetworkRegistry {
 
     /// @notice Resolve an instance's current authority through its registered params controller.
     function authorityOf(bytes32 instanceId) external view returns (address);
+
+    /// @notice The canonical instance directory whose identities and authorities this registry uses.
+    function INSTANCE_REGISTRY() external view returns (IInstanceRegistry);
 
     /// @notice The accepted parent for a child, or zero when it is independent.
     function parentOf(bytes32 childInstanceId) external view returns (bytes32);

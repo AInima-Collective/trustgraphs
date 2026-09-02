@@ -24,12 +24,14 @@ import {
     MerkleGovModuleDeployer,
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {WeightedPriorParamsCodec} from "src/params/WeightedPriorParamsCodec.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -58,6 +60,14 @@ contract WeightedFactorySignerVerifier is IZkVerifier {
 
     function verify(bytes calldata, bytes32 digest) external view {
         require(expectedDigest == bytes32(0) || digest == expectedDigest, "signer verifier: digest mismatch");
+    }
+}
+
+contract WeightedSubnetworkParentController {
+    address public owner;
+
+    constructor(address owner_) {
+        owner = owner_;
     }
 }
 
@@ -92,6 +102,8 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    ParentAuthorityModuleDeployer internal parentAuthorityDeployer;
+    SubnetworkRegistry internal subnetworkRegistry;
     WeightedFactorySignerVerifier internal signerVerifier;
 
     address internal creator = address(0xA11CE);
@@ -131,6 +143,8 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
+        subnetworkRegistry = new SubnetworkRegistry(registry, REGISTRY_ADMIN);
         signerVerifier = new WeightedFactorySignerVerifier(SIGNER_VKEY);
         governedFactory = new GovernedWeightedTrustgraphsFactory(
             factory,
@@ -139,9 +153,14 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerVerifier,
             SIGNER_VKEY
         );
+        bytes32 subnetworkRegistrarRole = subnetworkRegistry.REGISTRAR_ROLE();
+        vm.prank(REGISTRY_ADMIN);
+        subnetworkRegistry.grantRole(subnetworkRegistrarRole, address(governedFactory));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -212,6 +231,37 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         assertEq(next, address(0x1), "module list must be exhausted");
     }
 
+    function test_CreateGovernedWeightedSubnetworkUsesTheSharedAtomicInstallPath() public {
+        bytes32 parentInstanceId = keccak256("weighted-parent");
+        WeightedSubnetworkParentController parentController = new WeightedSubnetworkParentController(creator);
+        vm.prank(REGISTRY_ADMIN);
+        registry.registerWithParamsAuthority(
+            parentInstanceId,
+            IInstanceRegistry.Instance({
+                program: keccak256("trust-graph"),
+                snapshot: address(0x501),
+                verifier: address(verifier),
+                registryOrAccumulator: address(0xACC),
+                paramsHash: keccak256("parent-params")
+            }),
+            address(parentController)
+        );
+
+        vm.prank(creator);
+        (bytes32 childInstanceId, address childSafe,,) = governedFactory.createGovernedSubnetwork(
+            _args("weighted child", 2),
+            _unpaidPolicy(),
+            _noSigner(),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Admin
+        );
+
+        assertEq(subnetworkRegistry.parentOf(childInstanceId), parentInstanceId);
+        address parentModule = governedFactory.parentAuthorityModuleOf(childInstanceId);
+        assertTrue(parentModule != address(0));
+        assertTrue(GnosisSafe(payable(childSafe)).isModuleEnabled(parentModule));
+    }
+
     function test_PredeployedBootstrapSafeIsAdopted() public {
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("front-run weighted", 3);
         args.salt = bytes32(uint256(0xA10));
@@ -272,6 +322,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     function test_GovernedWeightedContractsHaveExplicitEip170Headroom() public view {
         assertLt(address(governedFactory).code.length, 24_576);
         assertLt(address(govModuleDeployer).code.length, 24_576);
+        assertLt(address(parentAuthorityDeployer).code.length, 24_576);
         assertGt(24_576 - address(governedFactory).code.length, 3_000, "wrapper runtime margin");
         assertGt(24_576 - address(govModuleDeployer).code.length, 3_000, "gov module deployer runtime margin");
     }
@@ -407,6 +458,8 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             mismatchedVerifier,
             suppliedVKey
         );

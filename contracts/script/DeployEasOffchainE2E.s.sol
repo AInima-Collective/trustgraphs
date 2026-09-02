@@ -18,6 +18,7 @@ import {
     MerkleGovModuleDeployer,
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer,
     TrustgraphsParamsControllerDeployer
 } from "src/factory/InstanceDeployers.sol";
@@ -25,6 +26,7 @@ import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -124,6 +126,8 @@ contract DeployEasOffchainE2E is Common {
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();
         SignerSyncModuleDeployer signerSyncDeployer = new SignerSyncModuleDeployer();
         MerkleGovModuleDeployer govModuleDeployer = new MerkleGovModuleDeployer();
+        ParentAuthorityModuleDeployer parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
+        SubnetworkRegistry subnetworkRegistry = new SubnetworkRegistry(directory, deployer);
         bytes32 signerProgramVKey = keccak256("eas-offchain-e2e-signer");
         EasOffchainE2ESignerVerifier signerVerifier = new EasOffchainE2ESignerVerifier(signerProgramVKey);
         GovernedTrustgraphsFactory governedFactory = new GovernedTrustgraphsFactory(
@@ -133,6 +137,8 @@ contract DeployEasOffchainE2E is Common {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerVerifier,
             signerProgramVKey
         );

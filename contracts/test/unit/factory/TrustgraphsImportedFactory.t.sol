@@ -32,9 +32,11 @@ import {
     OnchainImportLaneDeployer,
     GovernedAuthorityDeployer,
     SignerSyncModuleDeployer,
-    MerkleGovModuleDeployer
+    MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -253,6 +255,8 @@ contract TrustgraphsImportedFactoryTest is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             new ImportedFactorySignerVerifier(signerVkey),
             signerVkey
         );

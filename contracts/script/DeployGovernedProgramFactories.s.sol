@@ -16,8 +16,10 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 
 /// @notice Deploys the governed wrapper for one program factory. The Safe singleton/proxy
 ///         factory, authority deployer, signer-sync deployer, and gov-module deployer are NOT
@@ -42,6 +44,8 @@ abstract contract DeployGovernedWrapper is Common {
         GovernedAuthorityDeployer authorityDeployer,
         SignerSyncModuleDeployer signerSyncDeployer,
         MerkleGovModuleDeployer govModuleDeployer,
+        ParentAuthorityModuleDeployer parentAuthorityDeployer,
+        SubnetworkRegistry subnetworkRegistry,
         IZkVerifier signerSyncVerifier,
         bytes32 signerSyncProgramVKey
     ) internal virtual returns (GovernedFactoryBase);
@@ -56,7 +60,9 @@ abstract contract DeployGovernedWrapper is Common {
             governedJson.readAddress(".signer_sync_deployer"),
             governedJson.readAddress(".signer_sync_verifier"),
             governedJson.readBytes32(".signer_sync_program_vkey"),
-            governedJson.readAddress(".gov_module_deployer")
+            governedJson.readAddress(".gov_module_deployer"),
+            governedJson.readAddress(".parent_authority_deployer"),
+            governedJson.readAddress(".subnetwork_registry")
         );
     }
 
@@ -76,7 +82,9 @@ abstract contract DeployGovernedWrapper is Common {
             address(source.SIGNER_SYNC_DEPLOYER()),
             address(source.SIGNER_SYNC_VERIFIER()),
             source.SIGNER_SYNC_PROGRAM_VKEY(),
-            address(source.GOV_MODULE_DEPLOYER())
+            address(source.GOV_MODULE_DEPLOYER()),
+            address(source.PARENT_AUTHORITY_DEPLOYER()),
+            address(source.SUBNETWORK_REGISTRY())
         );
     }
 
@@ -88,7 +96,9 @@ abstract contract DeployGovernedWrapper is Common {
         address signerSyncDeployer,
         address signerSyncVerifier,
         bytes32 signerSyncProgramVKey,
-        address govModuleDeployer
+        address govModuleDeployer,
+        address parentAuthorityDeployer,
+        address subnetworkRegistry
     ) internal returns (address governedFactory) {
         _startBroadcast();
         GovernedFactoryBase governed = _newWrapper(
@@ -98,9 +108,13 @@ abstract contract DeployGovernedWrapper is Common {
             GovernedAuthorityDeployer(authorityDeployer),
             SignerSyncModuleDeployer(signerSyncDeployer),
             MerkleGovModuleDeployer(govModuleDeployer),
+            ParentAuthorityModuleDeployer(parentAuthorityDeployer),
+            SubnetworkRegistry(subnetworkRegistry),
             IZkVerifier(signerSyncVerifier),
             signerSyncProgramVKey
         );
+        SubnetworkRegistry(subnetworkRegistry)
+            .grantRole(SubnetworkRegistry(subnetworkRegistry).REGISTRAR_ROLE(), address(governed));
         vm.stopBroadcast();
 
         governedFactory = address(governed);
@@ -114,6 +128,8 @@ abstract contract DeployGovernedWrapper is Common {
         json.serialize("signer_sync_verifier", Strings.toChecksumHexString(signerSyncVerifier));
         json.serialize("signer_sync_program_vkey", vm.toString(signerSyncProgramVKey));
         json.serialize("gov_module_deployer", Strings.toChecksumHexString(govModuleDeployer));
+        json.serialize("parent_authority_deployer", Strings.toChecksumHexString(parentAuthorityDeployer));
+        json.serialize("subnetwork_registry", Strings.toChecksumHexString(subnetworkRegistry));
         json.serialize("recovery_delay_seconds", governed.RECOVERY_DELAY());
         json = json.serialize(key, Strings.toChecksumHexString(governedFactory));
         vm.writeFile(string.concat(root, "/.docker/", file), json);
@@ -132,6 +148,8 @@ contract DeployGovernedWeightedTrustgraphsFactory is DeployGovernedWrapper {
         GovernedAuthorityDeployer authorityDeployer,
         SignerSyncModuleDeployer signerSyncDeployer,
         MerkleGovModuleDeployer govModuleDeployer,
+        ParentAuthorityModuleDeployer parentAuthorityDeployer,
+        SubnetworkRegistry subnetworkRegistry,
         IZkVerifier signerSyncVerifier,
         bytes32 signerSyncProgramVKey
     ) internal override returns (GovernedFactoryBase) {
@@ -142,6 +160,8 @@ contract DeployGovernedWeightedTrustgraphsFactory is DeployGovernedWrapper {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerSyncVerifier,
             signerSyncProgramVKey
         );
@@ -160,6 +180,8 @@ contract DeployGovernedTrustComposeFactory is DeployGovernedWrapper {
         GovernedAuthorityDeployer authorityDeployer,
         SignerSyncModuleDeployer signerSyncDeployer,
         MerkleGovModuleDeployer govModuleDeployer,
+        ParentAuthorityModuleDeployer parentAuthorityDeployer,
+        SubnetworkRegistry subnetworkRegistry,
         IZkVerifier signerSyncVerifier,
         bytes32 signerSyncProgramVKey
     ) internal override returns (GovernedFactoryBase) {
@@ -170,6 +192,8 @@ contract DeployGovernedTrustComposeFactory is DeployGovernedWrapper {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerSyncVerifier,
             signerSyncProgramVKey
         );

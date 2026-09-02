@@ -9,8 +9,10 @@ import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
@@ -43,6 +45,8 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             signerVerifier,
             signerVerifier.programVKey()
         );
