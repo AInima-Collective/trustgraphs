@@ -1,6 +1,7 @@
 # Sub-networks: organizational hierarchy for trust networks
 
-Status: design accepted 2026-08-28 (issue #112). Build not started.
+Status: design accepted 2026-08-28 (issue #112). M1 is implemented; M2's parent module and
+initcode deployer are implemented, with governed-factory and product integration still pending.
 
 A **sub-network** is a network with a parent: another network whose authority holds real, on-chain
 power over it, with the relationship recorded on both sides' consent and rendered by the app. The
