@@ -154,13 +154,17 @@ const serializeLink = async (row: typeof subnetworkLink.$inferSelect) => {
 app.get('/parents/:parentId/children', async (c) => {
   const parentId = instanceId(c.req.param('parentId'))
   if (!parentId) return c.json({ error: 'invalid parent instance id' }, 400)
+  const requestedStatus = c.req.query('status') ?? 'active'
+  if (requestedStatus !== 'active' && requestedStatus !== 'pending') {
+    return c.json({ error: 'status must be active or pending' }, 400)
+  }
   const rows = await db
     .select()
     .from(subnetworkLink)
     .where(
       and(
         eq(subnetworkLink.parentInstanceId, parentId),
-        eq(subnetworkLink.status, 'active')
+        eq(subnetworkLink.status, requestedStatus)
       )
     )
     .orderBy(desc(subnetworkLink.updatedBlock))

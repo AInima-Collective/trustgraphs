@@ -64,11 +64,29 @@ const updateByController = async (
   )
 }
 
+const onOwnershipTransferred = async ({ event, context }: any) => {
+  await updateByController(context, event.log.address, event.args.newOwner)
+}
+
 ponder.on(
-  'paramsAuthorityController:OwnershipTransferred',
-  async ({ event, context }: any) => {
-    await updateByController(context, event.log.address, event.args.newOwner)
-  }
+  'paramsAuthorityTrustgraphsController:OwnershipTransferred',
+  onOwnershipTransferred
+)
+ponder.on(
+  'paramsAuthorityWeightedController:OwnershipTransferred',
+  onOwnershipTransferred
+)
+ponder.on(
+  'paramsAuthorityCompositionController:OwnershipTransferred',
+  onOwnershipTransferred
+)
+ponder.on(
+  'paramsAuthorityContributionsController:OwnershipTransferred',
+  onOwnershipTransferred
+)
+ponder.on(
+  'paramsAuthorityMigratedController:OwnershipTransferred',
+  onOwnershipTransferred
 )
 
 ponder.on(

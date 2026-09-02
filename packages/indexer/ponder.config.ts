@@ -447,6 +447,10 @@ const CONTRIBUTIONS_INSTANCE_CREATED = getAbiItem({
   abi: contributionsFactoryAbi,
   name: 'ContributionsInstanceCreated',
 })
+const CONTRIBUTIONS_CONTROLLER_CREATED = getAbiItem({
+  abi: contributionsFactoryAbi,
+  name: 'ContributionsParamsControllerCreated',
+})
 
 /**
  * A `factory()` address source for one of `InstanceCreated`'s child-contract arguments. Children
@@ -585,6 +589,14 @@ const contributionsChildren = (
     address: CONTRIBUTIONS_FACTORIES,
     event: CONTRIBUTIONS_INSTANCE_CREATED,
     parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const contributionsControllers = () =>
+  factory({
+    address: CONTRIBUTIONS_FACTORIES,
+    event: CONTRIBUTIONS_CONTROLLER_CREATED,
+    parameter: 'controller',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -888,10 +900,40 @@ export default createConfig({
         ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
         : {},
     },
-    // One authority-only source spans every program and every later registry migration. Keeping
-    // it distinct prevents broad migrated-controller sources from firing duplicate ownership
-    // handlers while still making `instance.admin` reflect the live controller owner.
-    paramsAuthorityController: {
+    // Authority-only sources cover both factory-born controllers and later registry migrations.
+    // They stay separate because each program has its own controller-discovery event.
+    paramsAuthorityTrustgraphsController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: paramsControllers() } }
+        : {},
+    },
+    paramsAuthorityWeightedController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedParamsControllers() } }
+          : {},
+    },
+    paramsAuthorityCompositionController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: compositionControllers() } }
+          : {},
+    },
+    paramsAuthorityContributionsController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: contributionsControllers() } }
+          : {},
+    },
+    paramsAuthorityMigratedController: {
       abi: paramsAuthorityOwnerAbi,
       startBlock: CORE_START_BLOCK,
       chain: INSTANCE_REGISTRY
