@@ -6,6 +6,7 @@ import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
 import { compositionAsNetwork } from '@/lib/composition/network'
 import { getCompositionInstance } from '@/lib/composition.server'
+import { isSubnetworkFeatureAvailable } from '@/lib/config'
 import { getContributionsCatalog } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
 import {
@@ -59,7 +60,10 @@ export default async function RewardsPageServer({
       return (
         <RewardsPage
           network={compositionAsNetwork(composition.instance)}
-          tabs={compositionTabs(composition.instance)}
+          tabs={compositionTabs(
+            composition.instance,
+            isSubnetworkFeatureAvailable()
+          )}
           defaultFundOpen={fund === 'true' || fund === '1'}
         />
       )

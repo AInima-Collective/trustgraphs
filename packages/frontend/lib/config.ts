@@ -93,6 +93,28 @@ export const GRAPH_LINEAGE_CONFIG = (
     graphLineage?: { registry?: string }
   }
 ).graphLineage as { registry?: `0x${string}` | '' } | undefined
+export const SUBNETWORK_CONFIG = (
+  CONFIG as {
+    subnetworks?: {
+      factory?: string
+      governedFactory?: string
+      registry?: string
+      parentModuleDeployer?: string
+    }
+  }
+).subnetworks as
+  | {
+      factory?: `0x${string}` | ''
+      governedFactory?: `0x${string}` | ''
+      registry?: `0x${string}` | ''
+      parentModuleDeployer?: `0x${string}` | ''
+    }
+  | undefined
+export const isSubnetworkFeatureAvailable = (): boolean =>
+  (SUBNETWORK_CONFIG?.factory?.length ?? 0) === 42 &&
+  (SUBNETWORK_CONFIG?.governedFactory?.length ?? 0) === 42 &&
+  (SUBNETWORK_CONFIG?.registry?.length ?? 0) === 42 &&
+  (SUBNETWORK_CONFIG?.parentModuleDeployer?.length ?? 0) === 42
 export const SIGNER_SYNC_CONFIG = (
   CONFIG as {
     signerSync?: { verifier?: string; programVKey?: string }

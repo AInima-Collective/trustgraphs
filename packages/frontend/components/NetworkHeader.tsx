@@ -1,10 +1,13 @@
 'use client'
 
 import { Link as LinkIcon } from 'lucide-react'
+import Link from 'next/link'
 
 import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import { useSubnetworkParent } from '@/hooks/useSubnetworks'
+import { isSubnetworkFeatureAvailable } from '@/lib/config'
 import {
   NetworkTab,
   contributionsRoundsFor,
@@ -48,9 +51,27 @@ export function NetworkHeader({
   const contributionRounds = trustNetwork
     ? contributionsRoundsFor(trustNetwork, rounds)
     : []
+  const subnetworksAvailable = isSubnetworkFeatureAvailable()
+  const { data: parentRelationship } = useSubnetworkParent(
+    subnetworksAvailable
+      ? (network as Network | ContributionsNetwork).instanceId
+      : undefined
+  )
+  const activeParent =
+    parentRelationship?.status === 'active'
+      ? parentRelationship.parent
+      : undefined
 
   return (
     <div className={cn('flex flex-col items-start gap-4', className)}>
+      {activeParent && (
+        <Link
+          href={`/networks/${activeParent.id}`}
+          className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          Part of {activeParent.name}
+        </Link>
+      )}
       <h1 className="text-4xl font-bold">{name}</h1>
 
       {link && (
@@ -75,7 +96,14 @@ export function NetworkHeader({
       )}
 
       <NetworkNav
-        tabs={tabs ?? trustgraphsTabs(network as Network, contributionRounds)}
+        tabs={
+          tabs ??
+          trustgraphsTabs(
+            network as Network,
+            contributionRounds,
+            subnetworksAvailable
+          )
+        }
         className="w-full mt-2"
       />
     </div>

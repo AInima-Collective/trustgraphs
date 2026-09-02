@@ -14,7 +14,13 @@ import { isHexEqual } from './utils'
 export type NetworkTab = {
   href: string
   label: string
-  icon?: 'overview' | 'governance' | 'contributions' | 'rewards' | 'settings'
+  icon?:
+    | 'overview'
+    | 'governance'
+    | 'contributions'
+    | 'subnetworks'
+    | 'rewards'
+    | 'settings'
   /**
    * Match the pathname exactly rather than by prefix. Set on a tab whose href is a prefix of its
    * siblings' (the overview `/networks/[id]`), which would otherwise read as active everywhere.
@@ -79,7 +85,8 @@ export const sortRoundsNewestActiveFirst = (
  */
 export const trustgraphsTabs = (
   network: Network,
-  contributionRounds: readonly ContributionsNetwork[] = []
+  contributionRounds: readonly ContributionsNetwork[] = [],
+  subnetworksAvailable = false
 ): NetworkTab[] => {
   const base = `/networks/${network.id}`
 
@@ -101,6 +108,15 @@ export const trustgraphsTabs = (
             label: 'Governance',
             icon: 'governance' as const,
           },
+          ...(subnetworksAvailable
+            ? [
+                {
+                  href: `${base}/subnetworks`,
+                  label: 'Sub-networks',
+                  icon: 'subnetworks' as const,
+                },
+              ]
+            : []),
         ]
       : []),
     ...(network.contracts.merkleFundDistributor ||
@@ -126,7 +142,11 @@ export const trustgraphsTabs = (
  * surface, and their optional distributor is the same rewards capability used elsewhere.
  */
 export const compositionTabs = (
-  instance: Pick<CompositionInstance, 'id' | 'controller' | 'distributor'>
+  instance: Pick<
+    CompositionInstance,
+    'id' | 'controller' | 'distributor' | 'governance'
+  >,
+  subnetworksAvailable = false
 ): NetworkTab[] => {
   const base = `/networks/${instance.id}`
 
@@ -138,6 +158,15 @@ export const compositionTabs = (
             href: `${base}/governance`,
             label: 'Governance',
             icon: 'governance' as const,
+          },
+        ]
+      : []),
+    ...(instance.governance && subnetworksAvailable
+      ? [
+          {
+            href: `${base}/subnetworks`,
+            label: 'Sub-networks',
+            icon: 'subnetworks' as const,
           },
         ]
       : []),

@@ -2,6 +2,7 @@
 
 import {
   ArrowUpRight,
+  GitFork,
   HandCoins,
   LayoutDashboard,
   Settings,
@@ -57,6 +58,7 @@ export const NetworkNav = ({
     overview: LayoutDashboard,
     governance: Vote,
     contributions: HandCoins,
+    subnetworks: GitFork,
     rewards: WalletCards,
     settings: Settings,
   }
