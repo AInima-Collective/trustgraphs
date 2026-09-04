@@ -1067,7 +1067,7 @@ export class SepoliaEnv extends EnvBase {
       Boolean(ctx.options.continueExisting)
     const skipExisting =
       (key: keyof ReleaseManifest['contracts']) => (ctx: ProgramContext) =>
-        continuing(ctx) && manifest.contracts[key].address !== null
+        continuing(ctx) && Boolean(manifest.contracts[key]?.address)
     const requiredAddress = (name: string, value?: string | null): string => {
       if (
         !value ||
@@ -1093,7 +1093,7 @@ export class SepoliaEnv extends EnvBase {
     const existingAddress = (key: keyof ReleaseManifest['contracts']): string =>
       requiredAddress(
         `manifest.contracts.${key}`,
-        manifest.contracts[key].address
+        manifest.contracts[key]?.address
       )
     const registrarGrant = (label: string, file: string, key: string) => () => {
       const factory = readJsonKeyIfFileExists<string>(file, key) || `<${label}>`
@@ -1429,7 +1429,7 @@ export class SepoliaEnv extends EnvBase {
               readJsonKeyIfFileExists<string>(
                 '.docker/imported_factory_deploy.json',
                 'imported_factory'
-              ) || manifest.contracts.importedTrustgraphsFactory.address
+              ) || manifest.contracts.importedTrustgraphsFactory?.address
             ),
             requiredAddress(
               'manifest.contracts.governedTrustgraphsFactory.address',

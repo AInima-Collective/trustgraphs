@@ -16,7 +16,8 @@
   },
   "devDependencies": {
     "@types/node": "22.20.1",
+    "@typescript/native": "npm:typescript@7.0.2",
     "tsx": "^4.23.13",
-    "typescript": "5.9.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }
