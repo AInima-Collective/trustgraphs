@@ -974,6 +974,8 @@ export const compositionInstance = onchainTable(
     distributorToken: t.hex(),
     epochLength: t.bigint().notNull(),
     programVKey: t.hex().notNull(),
+    /** The committed closed source compatibility class. */
+    sourceCompatibilityClass: t.hex().notNull(),
     currentVersion: t.bigint().notNull(),
     currentParamsHash: t.hex().notNull(),
     params: t.json().notNull(),
