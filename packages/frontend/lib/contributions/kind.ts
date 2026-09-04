@@ -1,4 +1,4 @@
-//! The contribution accumulator's fold `kind` tagging (INTERFACES.md §2):
+//! The contribution accumulator's fold `kind` tagging (research/operations/contributions/interfaces.md §2):
 //! `kind = schemaIndex * 2 + isRevoke`, schemaIndex 0 = claim, 1 = response, 2 = valuation.
 //! Mirrors `contributions_core::kind`.
 

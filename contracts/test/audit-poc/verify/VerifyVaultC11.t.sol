@@ -45,7 +45,7 @@ contract VerifyVaultC11 is Test {
     function setUp() public {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, address(0x0BE7));
+        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, address(0x0BE7), "");
         registry = new InstanceRegistry(address(this));
         feed = new MockEthUsdFeed();
         registry.register(

@@ -1356,9 +1356,7 @@ const LiveScoringSettings = ({
     [controller.params, proposed]
   )
   const proposalTitle = `Update ${network.name} scoring parameters`
-  const proposalDescription = `${rationale.trim()}\n\nParent hash: ${parentHash ?? 'Unavailable'}\nProposed hash: ${proposedHash ?? 'Unavailable'}\n\n${proposedDiffs
-    .map((diff) => `${diff.label}: ${diff.before} → ${diff.after}`)
-    .join('\n')}`
+  const proposalDescription = rationale.trim()
   const proposalActions = useMemo(
     () =>
       actions.map((action) => ({
@@ -1499,13 +1497,21 @@ const LiveScoringSettings = ({
     if (!proposedHash || !parentHash) return
     const fingerprint = paramsFingerprint(proposed!)
     saveGovernancePrefill({
+      version: 2,
       networkId: network.id,
       fingerprint,
-      parentHash,
-      proposedHash,
       title: proposalTitle,
       description: proposalDescription,
-      actions: proposalActions,
+      actions: [
+        {
+          actionKey: 'update-scoring-params',
+          values: {
+            proposed: paramsToJson(proposed!),
+            evidenceURI,
+            syncSigner: !!companionAddress,
+          },
+        },
+      ],
       createdAt: Date.now(),
     })
     router.push(
@@ -1582,7 +1588,7 @@ const LiveScoringSettings = ({
       <section className="space-y-5">
         <SectionHeading n="03">Scoring parameters</SectionHeading>
         <div className="border border-border bg-surface p-5">
-          <Status tone="muted">Legacy parameter control</Status>
+          <Status tone="muted">Raw-hash parameter control</Status>
           <h2 className="mt-4 text-lg font-semibold">
             This network has no typed parameter controller.
           </h2>
@@ -2207,11 +2213,7 @@ const LiveScoringSettings = ({
                       is synchronized first; the controller publishes the new
                       version last.
                     </p>
-                    <ProposalActionList
-                      actions={actions}
-                      proposalDescription={proposalDescription}
-                      className="mt-4"
-                    />
+                    <ProposalActionList actions={actions} className="mt-4" />
                     {parentHash && proposedHash && (
                       <Button
                         type="button"
@@ -2761,7 +2763,7 @@ export const ScoringAccessCard = ({
             {controller.controllerAddress}
           </span>
         ) : (
-          'Legacy raw-hash control'
+          'Raw-hash control'
         )}
       </FieldRow>
       <FieldRow label="Controller owner">

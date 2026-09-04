@@ -50,13 +50,15 @@ import {
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import { useSubnetworkParent } from '@/hooks/useSubnetworks'
 import type { InstanceRow } from '@/lib/catalog'
 import {
-  CONTRIBUTIONS_FACTORY,
   CONTRACT_CONFIG,
+  CONTRIBUTIONS_FACTORY,
   GOVERNED_WEIGHTED_FACTORY,
   PROVING_VAULT,
   WEIGHTED_FACTORY,
+  isSubnetworkFeatureAvailable,
 } from '@/lib/config'
 import {
   anchorRegistryAbi,
@@ -92,6 +94,7 @@ import { cn, realAddress } from '@/lib/utils'
 import { getTargetChainConfig } from '@/lib/wagmi'
 import { ponderQueries } from '@/queries/ponder'
 
+import { NetworkProfileSettings } from './profile'
 import { ScoringAccessCard, ScoringSettings } from './scoring'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
 import { WeightedPriorWorkspace } from '../../../create/weighted/workspace'
@@ -105,7 +108,6 @@ const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
 const SAFE_GUARD_STORAGE_SLOT =
   0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8n
 const SAFE_SENTINEL = '0x0000000000000000000000000000000000000001' as Hex
-const ZERO_HASH = `0x${'0'.repeat(64)}` as Hex
 const strictWorkCountAbi = [
   {
     type: 'function',
@@ -862,6 +864,9 @@ export const SettingsPage = ({
   // Rounds live in the indexer's runtime round catalog, keyed to this network by the factory's
   // parentInstanceId link; the newest active one fronts the card and every round lists below.
   const { rounds: allRounds } = useContributionsRounds(network.instanceId)
+  const subnetworksAvailable = isSubnetworkFeatureAvailable()
+  const { data: parentRelationship, isLoading: parentRelationshipLoading } =
+    useSubnetworkParent(subnetworksAvailable ? network.instanceId : undefined)
   const weighted = network.program === 'trust-graph-weighted'
   const contributionRounds = sortRoundsNewestActiveFirst(
     contributionsRoundsFor(network, allRounds)
@@ -1061,11 +1066,6 @@ export const SettingsPage = ({
           {
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
-            functionName: 'paramsHash',
-          },
-          {
-            address: authoritySignerSync,
-            abi: signerSyncZkModuleAbi,
             functionName: 'selectionParamsHash',
           },
           {
@@ -1095,12 +1095,11 @@ export const SettingsPage = ({
   const signerPaused = asBoolean(readResult(signerSyncReads, 0))
   const signerHasApplied = asBoolean(readResult(signerSyncReads, 1))
   const signerLastApplied = asBigInt(readResult(signerSyncReads, 2))
-  const signerParamsHash = asString(readResult(signerSyncReads, 3))
-  const signerSelectionHash = asString(readResult(signerSyncReads, 4))
-  const signerVerifier = asString(readResult(signerSyncReads, 5))
-  const signerScoreSnapshot = asString(readResult(signerSyncReads, 6))
-  const signerAccumulator = asString(readResult(signerSyncReads, 7))
-  const signerOwner = asString(readResult(signerSyncReads, 8))
+  const signerSelectionHash = asString(readResult(signerSyncReads, 3))
+  const signerVerifier = asString(readResult(signerSyncReads, 4))
+  const signerScoreSnapshot = asString(readResult(signerSyncReads, 5))
+  const signerAccumulator = asString(readResult(signerSyncReads, 6))
+  const signerOwner = asString(readResult(signerSyncReads, 7))
 
   const { data: factoryVault } = useReadContract({
     address: factoryAddress as Hex,
@@ -1694,23 +1693,17 @@ export const SettingsPage = ({
     })
     const fingerprint = keccak256(data)
     saveGovernancePrefill({
+      version: 2,
       networkId: network.id,
       fingerprint,
-      parentHash: ZERO_HASH,
-      proposedHash: ZERO_HASH,
       title: `${nextPaused ? 'Pause' : 'Resume'} score-selected Safe signer updates`,
       description: nextPaused
         ? 'Pause new signer-sync proofs while retaining the last recorded Safe owner set.'
         : 'Resume application of ZK-proven signer sets for new score checkpoints.',
       actions: [
         {
-          target: authoritySignerSync,
-          value: '0',
-          data,
-          operation: 0,
-          description: `${nextPaused ? 'Pause' : 'Resume'} signer synchronization`,
-          contractName: 'SignerSyncZkModule',
-          functionSignature: 'setPaused(bool)',
+          actionKey: 'set-signer-sync-paused',
+          values: { paused: nextPaused },
         },
       ],
       createdAt: Date.now(),
@@ -1873,6 +1866,22 @@ export const SettingsPage = ({
                   deployment and network type support it.
                 </p>
               </div>
+            </section>
+          )}
+
+          {activeTab === 'profile' && (
+            <section className="space-y-5" aria-labelledby="network-profile">
+              <div>
+                <SectionHeading n="01">
+                  <span id="network-profile">Network profile</span>
+                </SectionHeading>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  Update the public identity people see across Trustgraphs.
+                  Governed networks route this constitutional action through
+                  their governance Safe.
+                </p>
+              </div>
+              <NetworkProfileSettings network={network} instance={instance} />
             </section>
           )}
 
@@ -2142,9 +2151,9 @@ export const SettingsPage = ({
                   size="md"
                   className="text-sm text-muted-foreground"
                 >
-                  This legacy network has no factory instance ID, so it cannot
-                  have an instance-keyed proving tank. Contract settings remain
-                  visible below.
+                  This network has no factory instance ID, so it cannot have an
+                  instance-keyed proving tank. Contract settings remain visible
+                  below.
                 </Card>
               ) : !vaultAddress ? (
                 <Card
@@ -2956,6 +2965,60 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                {subnetworksAvailable && (
+                  <SettingsCard
+                    title="Parent network"
+                    description="The organizational link and independently observed authority it holds over this network."
+                  >
+                    <SettingRow label="Relationship">
+                      {parentRelationshipLoading
+                        ? 'Checking the registry…'
+                        : parentRelationship?.status === 'active'
+                          ? 'Active'
+                          : parentRelationship?.status === 'pending'
+                            ? 'Awaiting parent acceptance'
+                            : 'Independent'}
+                    </SettingRow>
+                    {parentRelationship?.parent && (
+                      <SettingRow label="Parent">
+                        <Link
+                          href={`/networks/${parentRelationship.parent.id}`}
+                          className="underline underline-offset-4"
+                        >
+                          {parentRelationship.parent.name}
+                        </Link>
+                      </SettingRow>
+                    )}
+                    {parentRelationship?.status === 'active' && (
+                      <>
+                        <SettingRow label="Power tier">
+                          <span className="capitalize">
+                            {parentRelationship.power.tier}
+                          </span>
+                        </SettingRow>
+                        <SettingRow label="Power verified">
+                          <StatusPill
+                            tone={
+                              parentRelationship.power.verified
+                                ? 'good'
+                                : 'warn'
+                            }
+                          >
+                            {parentRelationship.power.verified
+                              ? 'Verified from live contracts'
+                              : 'Link active; parent power not found'}
+                          </StatusPill>
+                        </SettingRow>
+                        <SettingRow label="Instruments">
+                          {parentRelationship.power.instruments.length
+                            ? parentRelationship.power.instruments.join(', ')
+                            : 'None observed'}
+                        </SettingRow>
+                      </>
+                    )}
+                  </SettingsCard>
+                )}
+
                 <SettingsCard
                   title="Governed authority boundary"
                   description="Live Safe, guard, and module reads—not a decentralization label."
@@ -2963,7 +3026,7 @@ export const SettingsPage = ({
                   <SettingRow label="Graduation state">
                     {!hasRecordedAuthority ? (
                       <StatusPill tone="muted">
-                        Legacy / not recorded by this governed factory
+                        Not recorded by this governed factory
                       </StatusPill>
                     ) : !authorityReadsComplete ? (
                       <StatusPill tone="muted">
@@ -3135,9 +3198,6 @@ export const SettingsPage = ({
                       }
                     />
                   </SettingRow>
-                  <SettingRow label="Module score-params reference">
-                    <Hash value={signerParamsHash} />
-                  </SettingRow>
                   <SettingRow label="Score snapshot">
                     <ContractAddress value={signerScoreSnapshot} />
                   </SettingRow>
@@ -3235,7 +3295,7 @@ export const SettingsPage = ({
                       '—'
                     )}
                   </SettingRow>
-                  <SettingRow label="Initial administrator">
+                  <SettingRow label="Current administrator">
                     {network.admin ? (
                       <Address address={network.admin} displayMode="auto" />
                     ) : (

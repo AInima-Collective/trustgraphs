@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 // AUDIT POC (disposable) — zk-soundness pass. Measures the marginal gas an attacker pays per
 // folded accumulator leaf, so the H-4 "permanent unprovability ceiling" can be priced instead of

@@ -65,7 +65,7 @@ contract PashovMath_ComposeOutputPoolTest is Test {
             identityDomain: json.readBytes32(".params.identityDomain"),
             outputKind: json.readBytes32(".params.outputKind"),
             outputDomain: json.readBytes32(".params.outputDomain"),
-            admittedProgramId: json.readBytes32(".params.admittedProgramId"),
+            sourceCompatibilityClass: json.readBytes32(".params.sourceCompatibilityClass"),
             weightScale: uint64(_uintString(".params.weightScale")),
             outputPool: uint128(_uintString(".params.outputPool")),
             sourcePolicyRoot: json.readBytes32(".params.sourcePolicyRoot"),
@@ -116,25 +116,24 @@ contract PashovMath_ComposeOutputPoolTest is Test {
         }
     }
 
-    /// The golden 3-source policy weights (they sum to exactly WEIGHT_SCALE = 1e18).
+    /// The golden mixed 2-source policy weights (they sum to exactly WEIGHT_SCALE = 1e18).
     function _goldenWeights() internal pure returns (uint64[] memory w) {
-        w = new uint64[](3);
-        w[0] = 333_000_000_000_000_000;
-        w[1] = 333_000_000_000_000_000;
-        w[2] = 334_000_000_000_000_000;
+        w = new uint64[](2);
+        w[0] = 400_000_000_000_000_000;
+        w[1] = 600_000_000_000_000_000;
     }
 
     function test_GoldenWeightsSumToScale() public pure {
         uint64[] memory w = _goldenWeights();
-        assertEq(uint256(w[0]) + w[1] + w[2], uint256(TrustComposeValidator.WEIGHT_SCALE));
+        assertEq(uint256(w[0]) + w[1], uint256(TrustComposeValidator.WEIGHT_SCALE));
     }
 
     /// The validator reserves pool headroom for every source a future policy may admit.
     function test_ValidatorRejectsOutputPoolBelowMaximumSourceCount() public {
         TrustComposeParamsCodec.Params memory p = _params();
-        assertEq(p.sourceCount, 3, "golden policy has 3 required sources");
+        assertEq(p.sourceCount, 2, "golden policy has 2 required sources");
 
-        // 1 unit of pool, 3 required sources: the guest cannot allocate this policy.
+        // 1 unit of pool, 2 required sources: the guest cannot allocate this policy.
         p.outputPool = 1;
         vm.expectRevert(TrustComposeValidator.InvalidOutputPool.selector);
         harness.validateFinal(p, manifest);
@@ -154,7 +153,7 @@ contract PashovMath_ComposeOutputPoolTest is Test {
         harness.validateCreation(creation);
     }
 
-    /// The guest's own allocator gives two of the three REQUIRED sources a zero quota,
+    /// The guest's own allocator gives one of the two REQUIRED sources a zero quota,
     /// which `composition-core::compute` turns into `RequiredSourceReceivedZero`.
     function test_GuestAllocatorGivesRequiredSourcesZero() public pure {
         uint64[] memory w = _goldenWeights();
@@ -162,24 +161,13 @@ contract PashovMath_ComposeOutputPoolTest is Test {
 
         uint256[] memory q1 = _hamilton(1, w, scale);
         assertEq(q1[0], 0, "source 0 receives nothing");
-        assertEq(q1[1], 0, "source 1 receives nothing");
-        assertEq(q1[2], 1, "the whole pool lands on one source");
-        assertEq(q1[0] + q1[1] + q1[2], 1, "Hamilton still conserves the pool");
-
-        // pool == 2 is still fatal: one required source is starved.
-        uint256[] memory q2 = _hamilton(2, w, scale);
-        assertEq(q2[0] + q2[1] + q2[2], 2);
-        uint256 zeros;
-        for (uint256 i; i < 3; ++i) {
-            if (q2[i] == 0) zeros++;
-        }
-        assertEq(zeros, 1, "pool == 2 starves exactly one of three required sources");
+        assertEq(q1[1], 1, "the whole pool lands on one source");
+        assertEq(q1[0] + q1[1], 1, "Hamilton still conserves the pool");
 
         // pool == sourceCount is the first value that works for these weights.
-        uint256[] memory q3 = _hamilton(3, w, scale);
-        assertEq(q3[0], 1);
-        assertEq(q3[1], 1);
-        assertEq(q3[2], 1);
+        uint256[] memory q2 = _hamilton(2, w, scale);
+        assertEq(q2[0], 1);
+        assertEq(q2[1], 1);
     }
 
     /// A skewed-but-legal policy pushes the unprovable range far higher than `sourceCount`:

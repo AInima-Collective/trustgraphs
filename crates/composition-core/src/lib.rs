@@ -1,9 +1,10 @@
-//! Consensus core for the isolated `trust-compose` V1 program.
+//! Consensus core for the isolated `trust-compose` params/manifest program.
 //!
-//! The core consumes an exact compact captured-state manifest plus every complete canonical source
-//! blob. It validates the static source policy, capture/freshness commitments, source output roots,
-//! and two-stage Hamilton allocation without floating point or iteration-order dependence. The
-//! existing TrustGraph, weighted, Contributions, and Hypercerts programs do not import this crate.
+//! The final-distribution operator admits one closed source compatibility
+//! class, so a single composition may blend the standard `trust-graph` and
+//! `trust-graph-weighted` allocation outputs without relabelling either
+//! source. Every source record carries its real program ID and real output
+//! domain, and validation requires the exact reviewed pair.
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 use serde::{Deserialize, Serialize};
@@ -43,6 +44,52 @@ pub fn output_domain() -> B256 {
     keccak256(b"trustgraphs.output.trust-compose-account.v1")
 }
 
+pub fn trust_graph_program_id() -> B256 {
+    keccak256(b"trust-graph")
+}
+
+pub fn weighted_trust_graph_program_id() -> B256 {
+    keccak256(b"trust-graph-weighted")
+}
+
+pub fn trust_graph_output_domain() -> B256 {
+    keccak256(b"trustgraphs.output.trust-graph-account.v1")
+}
+
+pub fn weighted_trust_graph_output_domain() -> B256 {
+    keccak256(b"trustgraphs.output.weighted-trust-graph-account.v1")
+}
+
+/// The one closed compatibility class: class tag, shared key domain, shared
+/// output kind, then the standard and weighted program/output-domain pairs, in
+/// that normative order. Adding a pair requires another reviewed class and a
+/// new params/guest version.
+pub fn source_compatibility_class_v1() -> B256 {
+    let mut preimage = Vec::with_capacity(32 * 7);
+    preimage.extend_from_slice(keccak256(b"trust-compose.source-compatibility.v1").as_slice());
+    preimage.extend_from_slice(identity_domain().as_slice());
+    preimage.extend_from_slice(output_kind().as_slice());
+    preimage.extend_from_slice(trust_graph_program_id().as_slice());
+    preimage.extend_from_slice(trust_graph_output_domain().as_slice());
+    preimage.extend_from_slice(weighted_trust_graph_program_id().as_slice());
+    preimage.extend_from_slice(weighted_trust_graph_output_domain().as_slice());
+    keccak256(preimage)
+}
+
+/// The sole output domain a source program is admitted with, or `None` when
+/// the program is outside the compatibility class. An unknown program fails
+/// even when it copies an allowed domain value; an allowed program fails when
+/// paired with the other program's domain.
+pub fn admitted_source_output_domain(program: B256) -> Option<B256> {
+    if program == trust_graph_program_id() {
+        Some(trust_graph_output_domain())
+    } else if program == weighted_trust_graph_program_id() {
+        Some(weighted_trust_graph_output_domain())
+    } else {
+        None
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompositionError {
     UnsupportedParamsVersion(u32),
@@ -51,7 +98,7 @@ pub enum CompositionError {
     WrongIdentityDomain,
     WrongOutputKind,
     WrongOutputDomain,
-    InvalidAdmittedProgram,
+    InvalidCompatibilityClass(B256),
     InvalidWeightScale(u64),
     InvalidOutputPool,
     InvalidSourceCount(usize),
@@ -74,6 +121,7 @@ pub enum CompositionError {
     DuplicateSnapshot(Address),
     ZeroFamilyId,
     UnadmittedSourceProgram(B256),
+    WrongSourceOutputDomain { program_id: B256, domain: B256 },
     CompositeSourceForbidden,
     OptionalSourceUnsupported,
     InvalidSourceWeight(B256),
@@ -120,7 +168,7 @@ pub struct Params {
     pub identity_domain: B256,
     pub output_kind: B256,
     pub output_domain: B256,
-    pub admitted_program_id: B256,
+    pub source_compatibility_class: B256,
     pub weight_scale: u64,
     pub output_pool: u128,
     pub source_policy_root: B256,
@@ -156,11 +204,10 @@ impl Params {
         if self.output_domain != output_domain() {
             return Err(CompositionError::WrongOutputDomain);
         }
-        if self.admitted_program_id == B256::ZERO {
-            return Err(CompositionError::InvalidAdmittedProgram);
-        }
-        if self.admitted_program_id == program_id() {
-            return Err(CompositionError::CompositeSourceForbidden);
+        if self.source_compatibility_class != source_compatibility_class_v1() {
+            return Err(CompositionError::InvalidCompatibilityClass(
+                self.source_compatibility_class,
+            ));
         }
         if self.weight_scale != WEIGHT_SCALE {
             return Err(CompositionError::InvalidWeightScale(self.weight_scale));
@@ -218,7 +265,7 @@ pub struct Binding {
 #[serde(rename_all = "camelCase")]
 pub struct SourcePreimage {
     pub cid: String,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub blob: Vec<u8>,
 }
 
@@ -226,7 +273,7 @@ pub struct SourcePreimage {
 #[serde(rename_all = "camelCase")]
 pub struct GuestInput {
     pub params: Params,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub manifest: Vec<u8>,
     pub source_preimages: Vec<SourcePreimage>,
     pub capture_commitment: B256,
@@ -241,6 +288,7 @@ pub struct CapturedSource {
     pub snapshot: Address,
     pub family_id: B256,
     pub program_id: B256,
+    pub source_output_domain: B256,
     pub state_index: u64,
     pub freeze_block: u64,
     pub output_root: B256,
@@ -299,26 +347,4 @@ pub struct ComputeResult {
     pub blob: Vec<u8>,
     pub cid: String,
     pub manifest: CapturedManifest,
-}
-
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            serializer.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-        } else {
-            serializer.serialize_bytes(bytes)
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
-        if deserializer.is_human_readable() {
-            let value = String::deserialize(deserializer)?;
-            let value = value.strip_prefix("0x").unwrap_or(&value);
-            alloy_primitives::hex::decode(value).map_err(serde::de::Error::custom)
-        } else {
-            serde_bytes::ByteBuf::deserialize(deserializer).map(serde_bytes::ByteBuf::into_vec)
-        }
-    }
 }

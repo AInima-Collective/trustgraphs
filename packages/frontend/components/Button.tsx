@@ -1,6 +1,5 @@
 'use client'
 
-import { Slot } from '@radix-ui/react-slot'
 import { type VariantProps, cva } from 'class-variance-authority'
 import Link from 'next/link'
 import * as React from 'react'
@@ -14,12 +13,8 @@ import { cn } from '@/lib/utils'
  * CO-OP" reads as intentional); anything that genuinely must stay in sentence
  * case can pass `normal-case` through className.
  *
- * `brand` is kept as an alias of `default` rather than deleted, because the
- * blue it used to paint no longer exists and ~a dozen call-sites still ask for
- * it. Both now render ink.
- *
  * FOCUS IS AN OUTLINE, NOT A RING. The old `ring-1 ring-ring` resolved to
- * --accent, which is also what `default`, `brand` and `destructive` fill with:
+ * --accent, which is also what `default` and `destructive` fill with:
  * the indicator was painted in the button's own colour at 1.00:1, so focusing a
  * primary CTA looked like it had grown a pixel. An outline with an offset sits
  * on the page behind the control, where ink clears 15:1 in both themes.
@@ -30,8 +25,6 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'border-ink bg-ink text-ink-fg hover:opacity-90 active:opacity-80',
-        brand:
           'border-ink bg-ink text-ink-fg hover:opacity-90 active:opacity-80',
         destructive:
           'border-error bg-error text-ink-fg hover:opacity-90 active:opacity-80',
@@ -65,14 +58,11 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean
-}
+    VariantProps<typeof buttonVariants> {}
 
 export interface ButtonLinkProps
   extends React.AnchorHTMLAttributes<HTMLAnchorElement>,
     VariantProps<typeof buttonVariants> {
-  asChild?: boolean
   /**
    * Passed through to `next/link` for internal hrefs, and dropped for external
    * ones so React is not handed an unknown attribute on a plain `<a>`.
@@ -86,12 +76,11 @@ export interface ButtonLinkProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant, size, asChild = false, ...props },
+  { className, variant, size, ...props },
   ref
 ) {
-  const Comp = asChild ? Slot : 'button'
   return (
-    <Comp
+    <button
       className={cn(buttonVariants({ variant, size, className }))}
       ref={ref}
       {...props}
@@ -101,18 +90,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 
 const ButtonLink = React.forwardRef<HTMLAnchorElement, ButtonLinkProps>(
   function ButtonLink(
-    {
-      className,
-      variant,
-      size,
-      asChild = false,
-      href = '#',
-      prefetch,
-      ...props
-    },
+    { className, variant, size, href = '#', prefetch, ...props },
     ref
   ) {
-    const Comp = asChild ? Slot : !href.startsWith('/') ? 'a' : Link
+    const Comp = !href.startsWith('/') ? 'a' : Link
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}

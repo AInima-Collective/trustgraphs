@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
@@ -25,16 +28,16 @@ contract PashovAccessBootstrapSignerVerifier is IZkVerifier {
 ///         and the bounded nonce-bump exhaustion path.
 contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
 
     address internal creator = address(0xA11CE);
     address internal attacker = address(0xBADBAD);
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         PashovAccessBootstrapSignerVerifier signerVerifier = new PashovAccessBootstrapSignerVerifier();
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
@@ -43,20 +46,19 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             signerVerifier,
             signerVerifier.programVKey()
         );
     }
 
-    function _unpaidPolicy() internal pure returns (GovernedTrustgraphsFactory.InitialPolicy memory) {
-        return GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
+    function _unpaidPolicy() internal pure returns (GovernedFactoryBase.InitialPolicy memory) {
+        return GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
     }
 
-    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-            });
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     /// @dev The exact bytes `_createBootstrapSafe` builds — reproduced from public information.
@@ -110,7 +112,7 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
         assertEq(squatted, predicted, "attacker occupied the address the wrapper had reserved");
 
         // The squatted Safe is the wrapper's exact pristine bootstrap Safe, so it is safe to adopt.
-        assertTrue(GnosisSafe(payable(squatted)).isOwner(address(governedFactory)), "wrapper is the sole owner");
+        assertTrue(Safe(payable(squatted)).isOwner(address(governedFactory)), "wrapper is the sole owner");
 
         TrustgraphsFactory.CreateArgs memory args = _args(name);
         args.salt = salt;
@@ -118,8 +120,8 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
         vm.prank(creator);
         (, address adopted,,) = governedFactory.createGovernedInstance(args, _unpaidPolicy(), _noSigner());
         assertEq(adopted, squatted, "the exact bootstrap Safe must be adopted");
-        assertTrue(GnosisSafe(payable(adopted)).isOwner(creator), "creation must graduate the adopted Safe");
-        assertFalse(GnosisSafe(payable(adopted)).isOwner(address(governedFactory)), "wrapper must graduate out");
+        assertTrue(Safe(payable(adopted)).isOwner(creator), "creation must graduate the adopted Safe");
+        assertFalse(Safe(payable(adopted)).isOwner(address(governedFactory)), "wrapper must graduate out");
     }
 
     /// @notice Every retry with a fresh salt is equally griefable, because the attacker reads the
@@ -137,7 +139,7 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
             args.salt = salt;
             vm.prank(creator);
             (, address safe,,) = governedFactory.createGovernedInstance(args, _unpaidPolicy(), _noSigner());
-            assertTrue(GnosisSafe(payable(safe)).isOwner(creator));
+            assertTrue(Safe(payable(safe)).isOwner(creator));
         }
     }
 
@@ -150,7 +152,7 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
                 address(safeSingleton), _bootstrapInitializer(), _bootstrapNonce(creator, name, salt)
             )
         );
-        GnosisSafe otherSingleton = new GnosisSafe();
+        Safe otherSingleton = new Safe();
         vm.store(hostile, bytes32(0), bytes32(uint256(uint160(address(otherSingleton)))));
 
         TrustgraphsFactory.CreateArgs memory args = _args(name);
@@ -159,7 +161,7 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
         (, address safe,,) = governedFactory.createGovernedInstance(args, _unpaidPolicy(), _noSigner());
 
         assertTrue(safe != hostile, "a wrong-singleton near-match must not be adopted");
-        assertTrue(GnosisSafe(payable(safe)).isOwner(creator), "the bumped Safe must graduate normally");
+        assertTrue(Safe(payable(safe)).isOwner(creator), "the bumped Safe must graduate normally");
     }
 
     function test_BumpSearchIsBoundedWhenEveryCandidateIsHostile() public {
@@ -180,11 +182,11 @@ contract PashovAccess_GovernedSafeFrontRunTest is TrustgraphsFactoryBase {
         TrustgraphsFactory.CreateArgs memory args = _args(name);
         args.salt = salt;
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(GovernedTrustgraphsFactory.BootstrapSafeUnavailable.selector, baseNonce));
+        vm.expectRevert(abi.encodeWithSelector(GovernedFactoryBase.BootstrapSafeUnavailable.selector, baseNonce));
         governedFactory.createGovernedInstance(args, _unpaidPolicy(), _noSigner());
     }
 
-    /// @dev CREATE2 address of the Safe proxy, computed the way `GnosisSafeProxyFactory` does.
+    /// @dev CREATE2 address of the Safe proxy, computed the way `SafeProxyFactory` does.
     function _predict(string memory name, bytes32 salt) internal view returns (address) {
         bytes memory initializer = _bootstrapInitializer();
         bytes32 saltNonce = bytes32(_bootstrapNonce(creator, name, salt));

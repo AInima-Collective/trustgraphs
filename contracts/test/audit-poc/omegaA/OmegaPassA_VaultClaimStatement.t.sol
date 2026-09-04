@@ -60,7 +60,7 @@ contract OmegaPassA_VaultClaimStatement is Test {
         _createSource(1);
 
         accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
-        snapshot = new MerkleSnapshot(composeVerifier, COMPOSE_PARAMS, accumulator, address(this), address(this));
+        snapshot = new MerkleSnapshot(composeVerifier, COMPOSE_PARAMS, accumulator, address(this), address(this), "");
         snapshot.enableStateProvenance();
         accumulator.bind(address(snapshot), address(this));
         accumulator.installPolicy(1, _policy(), adapters);
@@ -152,7 +152,7 @@ contract OmegaPassA_VaultClaimStatement is Test {
         MockAccumulator sourceAccumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256(abi.encode("source params", index));
         MerkleSnapshot sourceSnapshot =
-            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this));
+            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this), "");
         sourceSnapshot.enableStateProvenance();
         bytes32 instanceId = bytes32(index + 1);
         registry.registerWithParamsAuthority(
@@ -196,6 +196,7 @@ contract OmegaPassA_VaultClaimStatement is Test {
                     adapter.snapshot(),
                     adapter.familyId(),
                     SOURCE_PROGRAM,
+                    keccak256("trustgraphs.output.trust-graph-account.v1"),
                     uint64(5e17),
                     uint64(500),
                     uint8(1)

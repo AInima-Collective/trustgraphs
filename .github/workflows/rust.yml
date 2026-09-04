@@ -24,9 +24,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install
@@ -49,9 +47,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install
@@ -84,10 +80,11 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: clippy
-        # These three lints are intentionally allowed: two preserve compatibility with the pinned
-        # guest compiler, and the envelope verifier exposes each signed field explicitly.
+        # These lints are intentionally allowed: three preserve compatibility or byte stability
+        # for pinned guest code, and the envelope verifier exposes each signed field explicitly.
         run: >-
           cargo clippy --workspace --tests --all-features -- -D warnings
           -A clippy::manual-is-multiple-of
           -A clippy::map-or-identity
+          -A clippy::chunks-exact-to-as-chunks
           -A clippy::too-many-arguments

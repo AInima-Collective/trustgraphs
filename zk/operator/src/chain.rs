@@ -5,6 +5,7 @@
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{anyhow, bail, Context, Result};
+use composition_core::Params as CompositionParams;
 use operator_core::catalog::{
     CatalogEntry, ChainReader, CompositionControllerParams, ContributionsControllerParams,
     ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor,
@@ -44,10 +45,10 @@ sol! {
         address accumulator; uint64 chainId;
     }
 
-    /// Mirror of `TrustComposeParamsCodec.Params` (isolated V1, 20 frozen words).
+    /// Mirror of `TrustComposeParamsCodec.Params` (20 frozen words).
     struct SolCompositionParams {
         uint32 version; bytes32 programId; bytes32 scopeHash; bytes32 identityDomain;
-        bytes32 outputKind; bytes32 outputDomain; bytes32 admittedProgramId; uint64 weightScale;
+        bytes32 outputKind; bytes32 outputDomain; bytes32 sourceCompatibilityClass; uint64 weightScale;
         uint128 outputPool; bytes32 sourcePolicyRoot; uint8 sourceCount;
         bytes32 policyManifestSha256; uint8 maxSources; uint32 maxEntriesPerSource;
         uint32 maxAggregateEntries; uint32 maxUnionAccounts; uint32 maxAggregateBlobBytes;
@@ -289,10 +290,6 @@ impl std::error::Error for RpcResponseError {}
 pub const DEFAULT_RPC_TIMEOUT_SECONDS: u64 = 30;
 
 impl Rpc {
-    pub fn new(url: String) -> Self {
-        Self::with_timeout(url, std::time::Duration::from_secs(DEFAULT_RPC_TIMEOUT_SECONDS))
-    }
-
     pub fn with_timeout(url: String, timeout: std::time::Duration) -> Self {
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
@@ -811,7 +808,7 @@ impl ChainReader for RpcCatalog<'_> {
             snapshot,
             version,
             current_params_hash,
-            params: to_composition_params(&params),
+            params: to_composition_params(&params)?,
         })
     }
 
@@ -916,15 +913,18 @@ fn to_weighted_params(p: &SolWeightedParams) -> weighted_prior_core::Params {
     }
 }
 
-fn to_composition_params(p: &SolCompositionParams) -> composition_core::Params {
-    composition_core::Params {
+/// Straight field-map of the frozen 20-word tuple. An unsupported version word fails in
+/// `Params::validate` before any witness work or proof spend — there is no "latest composition"
+/// fallback.
+fn to_composition_params(p: &SolCompositionParams) -> Result<CompositionParams> {
+    Ok(CompositionParams {
         version: p.version,
         program_id: p.programId,
         scope_hash: p.scopeHash,
         identity_domain: p.identityDomain,
         output_kind: p.outputKind,
         output_domain: p.outputDomain,
-        admitted_program_id: p.admittedProgramId,
+        source_compatibility_class: p.sourceCompatibilityClass,
         weight_scale: p.weightScale,
         output_pool: p.outputPool,
         source_policy_root: p.sourcePolicyRoot,
@@ -938,7 +938,7 @@ fn to_composition_params(p: &SolCompositionParams) -> composition_core::Params {
         max_source_age_blocks: p.maxSourceAgeBlocks,
         accumulator: p.accumulator,
         chain_id: p.chainId,
-    }
+    })
 }
 
 /// Everything an `InstanceState` needs from one snapshot, read in one place.
@@ -1395,7 +1395,7 @@ pub fn entry_at_params_hash(
             if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
                 continue;
             }
-            let params = to_composition_params(&event.params);
+            let params = to_composition_params(&event.params)?;
             params
                 .validate()
                 .map_err(|error| anyhow!("invalid historical composition params: {error}"))?;
@@ -1425,12 +1425,14 @@ pub fn entry_at_params_hash(
             if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
                 continue;
             }
-            let params = to_composition_params(&event.params);
-            params.validate().map_err(|error| anyhow!("invalid composition V1 params: {error}"))?;
+            let params = to_composition_params(&event.params)?;
+            params
+                .validate()
+                .map_err(|error| anyhow!("invalid initial composition params: {error}"))?;
             let reconstructed = composition_core::codec::params_hash(&params);
             anyhow::ensure!(
                 reconstructed == params_hash,
-                "composition V1 event tuple hash mismatch"
+                "initial composition event tuple hash mismatch"
             );
             let mut historical = entry.clone();
             historical.params = None;

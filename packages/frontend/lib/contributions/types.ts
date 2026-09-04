@@ -11,7 +11,7 @@ export type { Hex, Journal, RawEdge }
 /**
  * Governance-pinned parameters for one contributions round. All `*Fp` fields are scaled by
  * `precisionScale` (1e18). Mirrors `contributions_core::Params`; the exact 21-word ABI tuple
- * hashed into `paramsHash` is frozen in `params.paramsHash` (INTERFACES.md §3).
+ * hashed into `paramsHash` is frozen in `params.paramsHash` (research/operations/contributions/interfaces.md §3).
  *
  * Slots 1–11 mirror the trust program's reputation params (stage 1 re-runs the exact
  * pagerank-core algorithm over the trust accumulator's edges); the rest are the round params.
@@ -45,7 +45,7 @@ export interface ContributionsParams {
   evaluatorCarveoutBps: number
   /** The distribution scale fed to the point distributor. */
   totalPool: bigint
-  /** Bind the fold kind tags (INTERFACES.md §2) to concrete schemas inside the proven statement. */
+  /** Bind the fold kind tags (research/operations/contributions/interfaces.md §2) to concrete schemas inside the proven statement. */
   claimSchemaUid: Hex
   responseSchemaUid: Hex
   valuationSchemaUid: Hex
@@ -60,7 +60,7 @@ export interface ContributionsInput {
   trustEdges: RawEdge[]
   /**
    * Contribution records in CONTRIBUTION-accumulator fold order — journal slot B.
-   * Kinds per INTERFACES.md §2 (0–5).
+   * Kinds per research/operations/contributions/interfaces.md §2 (0–5).
    */
   records: RawEdge[]
   params: ContributionsParams

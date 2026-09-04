@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
@@ -26,8 +29,8 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
     address internal constant SENTINEL_OWNERS = address(0x1);
 
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
@@ -37,8 +40,8 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
@@ -50,20 +53,19 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             signerVerifier,
             signerVerifier.programVKey()
         );
     }
 
-    function _noPolicy() internal pure returns (GovernedTrustgraphsFactory.InitialPolicy memory) {
-        return GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
+    function _noPolicy() internal pure returns (GovernedFactoryBase.InitialPolicy memory) {
+        return GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
     }
 
-    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-            });
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     /// The wrapper's bootstrap initializer, byte-for-byte (`_createBootstrapSafe`).
@@ -96,7 +98,7 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
         // The victim precomputes the occupied address, validates the pristine Safe, and adopts it.
         vm.prank(creator);
         (, address safe,,) = governedFactory.createGovernedInstance(args, _noPolicy(), _noSigner());
-        assertTrue(GnosisSafe(payable(safe)).isOwner(creator));
+        assertTrue(Safe(payable(safe)).isOwner(creator));
 
         // A second independently front-run tuple is adopted in the same way.
         args.salt = bytes32(uint256(2));
@@ -105,6 +107,6 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
         safeFactory.createProxyWithNonce(address(safeSingleton), _bootstrapInitializer(), nonce2);
         vm.prank(creator);
         (, safe,,) = governedFactory.createGovernedInstance(args, _noPolicy(), _noSigner());
-        assertTrue(GnosisSafe(payable(safe)).isOwner(creator));
+        assertTrue(Safe(payable(safe)).isOwner(creator));
     }
 }

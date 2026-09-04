@@ -22,7 +22,7 @@ later attestation can explicitly reactivate it. Scoring parameters are governanc
 `paramsHash`. An instance can also wire a second, off-chain input lane (an `AnchorRegistry` of
 signed attestation logs); an absent lane commits as the zero accumulator.
 
-**What the journal commits.** The guest (`zk/trustgraph-program-v2`) runs
+**What the journal commits.** The guest (`zk/trust-graph-program`) runs
 `pagerank-core::compute` and commits the ABI-encoded journal tuple as its public values: both
 lanes' input commitments, `paramsHash`, the `outputRoot` over `(address, value)` leaves, the
 canonical score blob's sha256 and CID, `totalValue`, `skippedDigest`, the bounty `recipient`,

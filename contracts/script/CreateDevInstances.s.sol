@@ -15,11 +15,10 @@ import {Common} from "script/Common.s.sol";
 /// @notice Creates the local dev-seed networks **through the factory**, so there is exactly one
 ///         catalog: everything a community can create, the dev stack creates the same way.
 ///
-/// @dev This replaces `DeployNetwork` in the dev deploy chain. It still writes the legacy
-///      `config/network_deploy_<env>_<i>.json` files because the rest of the local stack consumes
-///      them (`DeployZodiacSafes`, `DeployTimelocks`, `DeployContributionsInstance`, and the
-///      networks-config merge in `contracts/deploy/env.ts`). Those files are now a DERIVED artifact of the
-///      on-chain event, not a second source of truth — the indexer catalogs instances from
+/// @dev Writes one `config/network_deploy_<env>_<i>.json` file per instance because the rest of
+///      the local stack consumes them (`DeployZodiacSafes`, `DeployTimelocks`, and the
+///      networks-config merge in `contracts/deploy/env.ts`). Those files are a DERIVED artifact of
+///      the on-chain event, not a second source of truth — the indexer catalogs instances from
 ///      `InstanceCreated` directly.
 contract CreateDevInstances is Common {
     using stdJson for string;
@@ -115,9 +114,9 @@ contract CreateDevInstances is Common {
                 withDistributor
             );
 
-            // Keep the prover's params file in sync for a single-instance run, exactly as
-            // DeployNetwork does (multi-instance runs need one params file per instance, or —
-            // better — the M5 loop, which reads all three derived fields off the chain).
+            // Keep the prover's params file in sync for a single-instance run (multi-instance
+            // runs need one params file per instance, or — better — the proving loop, which
+            // reads all three derived fields off the chain).
             if (count == 1) {
                 vm.writeJson(vm.toString(schemaUid), paramsPath, ".schema_uid");
                 vm.writeJson(vm.toString(resolver), paramsPath, ".accumulator");
@@ -128,7 +127,7 @@ contract CreateDevInstances is Common {
         vm.stopBroadcast();
     }
 
-    /// @dev Write the legacy per-network deploy file the local stack still reads.
+    /// @dev Write the per-network deploy file the local stack reads.
     function _writeNetworkDeployJson(
         string calldata env,
         uint256 index,

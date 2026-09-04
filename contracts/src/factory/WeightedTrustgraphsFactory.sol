@@ -9,6 +9,7 @@ import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
 import {WeightedPriorParamsController} from "src/factory/WeightedPriorParamsController.sol";
 import {WeightedPriorParamsControllerDeployer} from "src/factory/WeightedInstanceDeployers.sol";
 import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {WeightedPriorParamsCodec} from "src/params/WeightedPriorParamsCodec.sol";
@@ -21,7 +22,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 /// @title WeightedTrustgraphsFactory
 /// @notice Isolated one-transaction factory for the `trust-graph-weighted` program.
 /// @dev Existing binary-seed factories and controllers are deliberately untouched.
-contract WeightedTrustgraphsFactory {
+contract WeightedTrustgraphsFactory is DistributorAttaching {
     struct CreateArgs {
         string name;
         string metadataURI;
@@ -59,28 +60,20 @@ contract WeightedTrustgraphsFactory {
     event SchemaAdopted(bytes32 indexed instanceId, bytes32 schemaUid);
     /// @notice A fund distributor was attached to an existing instance after creation.
     ///         `distributorToken` is presentation only, exactly like the creation-time field.
-    event DistributorAttached(bytes32 indexed instanceId, address distributor, address distributorToken);
-
     string public constant VOUCH_SCHEMA = "string comment,uint256 confidence";
-    bytes32 public constant PROGRAM = keccak256("trust-graph-weighted");
     uint256 public constant MAX_NAME_BYTES = 64;
 
     IEAS public immutable EAS;
     SchemaRegistrar public immutable SCHEMA_REGISTRAR;
     IZkVerifier public immutable VERIFIER;
-    IInstanceRegistry public immutable INSTANCE_REGISTRY;
     IProvingVault public immutable VAULT;
     MerkleSnapshotDeployer public immutable SNAPSHOT_DEPLOYER;
-    MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
     WeightedPriorParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
     uint64 public immutable EPOCH_FLOOR;
     uint48 public immutable PRIOR_ACTIVATION_DELAY;
 
     /// @notice The one fund distributor this factory knows per instance: the creation-time one,
     ///         or the one `attachDistributor` deployed later. Zero means "none yet".
-    mapping(bytes32 instanceId => address distributor) public distributorOf;
-
-    error ZeroAddress();
     error ZeroEpochFloor();
     error ZeroActivationDelay();
     error InvalidAdmin();
@@ -89,10 +82,6 @@ contract WeightedTrustgraphsFactory {
     error NoVaultConfigured();
     error ChainIdTooLarge(uint256 chainId);
     error SchemaUidMismatch(bytes32 registered, bytes32 expected);
-    error UnknownInstance(bytes32 instanceId);
-    error NotInstanceAuthority(bytes32 instanceId, address owner);
-    error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
-    error InvalidDistributorSafe(address owner);
 
     constructor(
         IEAS eas,
@@ -105,7 +94,7 @@ contract WeightedTrustgraphsFactory {
         uint64 epochFloor,
         uint48 priorActivationDelay,
         IProvingVault vault
-    ) {
+    ) DistributorAttaching(keccak256("trust-graph-weighted"), instanceRegistry, distributorDeployer) {
         if (
             address(eas) == address(0) || address(schemaRegistrar) == address(0) || address(verifier) == address(0)
                 || address(instanceRegistry) == address(0) || address(snapshotDeployer) == address(0)
@@ -117,9 +106,7 @@ contract WeightedTrustgraphsFactory {
         EAS = eas;
         SCHEMA_REGISTRAR = schemaRegistrar;
         VERIFIER = verifier;
-        INSTANCE_REGISTRY = instanceRegistry;
         SNAPSHOT_DEPLOYER = snapshotDeployer;
-        DISTRIBUTOR_DEPLOYER = distributorDeployer;
         PARAMS_CONTROLLER_DEPLOYER = paramsControllerDeployer;
         EPOCH_FLOOR = epochFloor;
         PRIOR_ACTIVATION_DELAY = priorActivationDelay;
@@ -168,7 +155,7 @@ contract WeightedTrustgraphsFactory {
         bytes32 paramsHash = WeightedPriorParamsCodec.hash(params);
 
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
-            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this)
+            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this), args.metadataURI
         );
         snapshot = address(merkleSnapshot);
         // Enable the accepted-state provenance history now, while zero states exist — the only
@@ -241,30 +228,6 @@ contract WeightedTrustgraphsFactory {
     ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
     ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
     ///         creation-time path: fee 0, `feeRecipient = owner`.
-    function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
-        external
-        returns (address distributor)
-    {
-        // An unregistered id reverts inside the registry (`InstanceNotFound`); this factory only
-        // adds the program check so it never serves another program's instance.
-        IInstanceRegistry.Instance memory record = INSTANCE_REGISTRY.getInstance(instanceId);
-        if (record.program != PROGRAM) revert UnknownInstance(instanceId);
-        address existing = distributorOf[instanceId];
-        if (existing != address(0)) revert DistributorAlreadyAttached(instanceId, existing);
-        MerkleSnapshot snapshot = MerkleSnapshot(record.snapshot);
-        if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
-            revert NotInstanceAuthority(instanceId, owner);
-        }
-        if (!SafeOwnerPolicy.isSafe(owner)) revert InvalidDistributorSafe(owner);
-        distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
-        distributorOf[instanceId] = distributor;
-        emit DistributorAttached(instanceId, distributor, distributorToken);
-    }
-
-    function computeInstanceId(address creator, string calldata name, bytes32 salt) public pure returns (bytes32) {
-        return keccak256(abi.encode(creator, name, salt));
-    }
-
     function validateCreation(WeightedPriorParamsCodec.Params calldata params, bytes calldata manifest) external view {
         if (block.chainid > type(uint64).max) revert ChainIdTooLarge(block.chainid);
         WeightedPriorParamsCodec.Params memory paramsMemory = params;

@@ -19,7 +19,7 @@ export type Network = {
    * a config slug.
    */
   instanceId?: Hex
-  /** The instance admin from `InstanceCreated` (catalog networks only). */
+  /** Current authority resolved from the instance's params controller (catalog networks only). */
   admin?: Hex
   /** Blocks between provable epochs, as a decimal string (catalog networks only). */
   epochLength?: string
@@ -33,7 +33,30 @@ export type Network = {
     easDomainSeparator: Hex
     maxTotalInputs: string
   }
+  /** Existing-schema lane: canonical EAS is the source and the importer is this network's accumulator. */
+  importedLane?: {
+    eas: Hex
+    importer: Hex
+    router: Hex
+    schemaUid: Hex
+    completeness: string
+  }
   name: string
+  /** Presentation image from the current network metadata revision. */
+  image?: string
+  /** Current constitutional profile pointer and catalog materialization status. */
+  metadataURI?: string
+  metadataURIHash?: Hex
+  metadataRevision?: string
+  metadataStatus?: string
+  /** Exact current five-field profile, preserving intentional empty values. */
+  profile?: {
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
+  }
   hidden?: boolean
   link?: {
     prefix: string
@@ -62,6 +85,9 @@ export type Network = {
      * the catalog merge.
      */
     merkleGovModule?: Hex
+    /** Shared infrastructure authenticated by deployment config for typed governance actions. */
+    provingVault?: Hex
+    contributionsFactory?: Hex
     /** Typed, self-describing scoring control plane for migrated/factory networks. */
     trustgraphsParamsController?: Hex
     safe?: {
@@ -69,6 +95,8 @@ export type Network = {
       singleton?: Hex
       proxy: Hex
       signerSyncManager?: Hex
+      recoveryModule?: Hex
+      executionGuard?: Hex
     }
   }
   schemas: NetworkSchema[]
@@ -183,6 +211,20 @@ export type ContributionsNetwork = {
   roundEnd?: string
   totalPool?: string
   name: string
+  image?: string
+  metadataURI?: string
+  metadataURIHash?: Hex
+  metadataRevision?: string
+  metadataStatus?: string
+  profile?: {
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
+  }
+  /** Parent governance module/Safe when this round is governed by its parent authority. */
+  governance?: { module: Hex; safe: Hex } | null
   hidden?: boolean
   link?: {
     prefix: string

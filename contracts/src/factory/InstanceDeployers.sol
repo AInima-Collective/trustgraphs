@@ -6,11 +6,15 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
+import {OnchainAttestationImporter} from "src/eas/OnchainAttestationImporter.sol";
+import {EASAttestAndImportRouter} from "src/eas/EASAttestAndImportRouter.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
+import {ParentAuthorityModule} from "src/zodiac/ParentAuthorityModule.sol";
 import {
     SignerSyncZkModule,
     ISignerSyncCheckpointSource,
@@ -37,14 +41,18 @@ contract MerkleSnapshotDeployer {
     /// @param accumulator The instance's `EASIndexerResolver` (its attestation accumulator).
     /// @param constitutionalAdmin Holder of `CONSTITUTIONAL_ROLE` at birth (the factory, transiently).
     /// @param operationalAdmin Holder of `OPERATIONAL_ROLE` at birth (the instance admin).
+    /// @param initialMetadataURI Initial presentation document for the instance.
     function deploy(
         IZkVerifier verifier,
         bytes32 paramsHash,
         IAttestationAccumulator accumulator,
         address constitutionalAdmin,
-        address operationalAdmin
+        address operationalAdmin,
+        string calldata initialMetadataURI
     ) external returns (MerkleSnapshot) {
-        return new MerkleSnapshot(verifier, paramsHash, accumulator, constitutionalAdmin, operationalAdmin);
+        return new MerkleSnapshot(
+            verifier, paramsHash, accumulator, constitutionalAdmin, operationalAdmin, initialMetadataURI
+        );
     }
 }
 
@@ -81,6 +89,39 @@ contract TrustgraphsParamsControllerDeployer {
         address owner
     ) external returns (TrustgraphsParamsController) {
         return new TrustgraphsParamsController(instanceId, snapshot, registry, initialParams, owner, msg.sender);
+    }
+}
+
+/// @title OnchainImportLaneDeployer
+/// @notice Holds importer/router creation code outside `TrustgraphsFactory` and preserves the
+///         importer's one-shot snapshot binder across the two-stage deployment cycle.
+/// @dev The importer records this helper as its binder. `deploy` records the calling factory as the
+///      only address allowed to ask the helper to bind that importer, then `bindSnapshot` deletes
+///      the capability before making the irreversible call. There is no externally interleavable
+///      window in the factory path: deploy, snapshot construction, and bind share one transaction.
+contract OnchainImportLaneDeployer {
+    mapping(address importer => address factory) public pendingBinder;
+
+    error NotPendingBinder(address importer, address caller);
+
+    event ImportLaneDeployed(address indexed importer, address indexed router, address indexed factory);
+
+    function deploy(IEAS eas, bytes32 schemaUid)
+        external
+        returns (OnchainAttestationImporter importer, EASAttestAndImportRouter router)
+    {
+        importer = new OnchainAttestationImporter(eas, schemaUid);
+        router = new EASAttestAndImportRouter(eas, importer, schemaUid);
+        pendingBinder[address(importer)] = msg.sender;
+        emit ImportLaneDeployed(address(importer), address(router), msg.sender);
+    }
+
+    function bindSnapshot(OnchainAttestationImporter importer, address snapshot) external {
+        if (pendingBinder[address(importer)] != msg.sender) {
+            revert NotPendingBinder(address(importer), msg.sender);
+        }
+        delete pendingBinder[address(importer)];
+        importer.bindSnapshot(snapshot);
     }
 }
 
@@ -156,7 +197,6 @@ contract SignerSyncModuleDeployer {
         IAttestationAccumulator accumulator,
         ISignerSyncCheckpointSource scoreSnapshot,
         ISignerActivitySource activitySource,
-        bytes32 paramsHash,
         bytes32 programVKey,
         uint32 topN,
         uint32 minThreshold,
@@ -199,7 +239,6 @@ contract SignerSyncModuleDeployer {
             accumulator,
             scoreSnapshot,
             activitySource,
-            paramsHash,
             topN,
             minThreshold,
             targetThresholdBps,
@@ -225,5 +264,35 @@ contract SignerSyncModuleDeployer {
             minActivityWitnesses
         );
         return module;
+    }
+}
+
+/// @title ParentAuthorityModuleDeployer
+/// @notice Holds the parent module's initcode outside governed wrappers for EIP-170 headroom.
+/// @dev Every dependency and authority is explicit. This permissionless helper retains no Safe
+///      privilege; only a child Safe that enables the returned module gives it any power.
+contract ParentAuthorityModuleDeployer {
+    event ParentAuthorityModuleConfigured(
+        bytes32 indexed childInstanceId,
+        bytes32 indexed parentInstanceId,
+        address indexed parentAuthorityModule,
+        address childSafe,
+        address instanceRegistry,
+        uint48 executionDelay
+    );
+
+    function deploy(
+        address childSafe,
+        IInstanceRegistry instanceRegistry,
+        bytes32 childInstanceId,
+        bytes32 parentInstanceId,
+        uint48 executionDelay
+    ) external returns (ParentAuthorityModule module) {
+        module = new ParentAuthorityModule(
+            childSafe, instanceRegistry, childInstanceId, parentInstanceId, executionDelay
+        );
+        emit ParentAuthorityModuleConfigured(
+            childInstanceId, parentInstanceId, address(module), childSafe, address(instanceRegistry), executionDelay
+        );
     }
 }

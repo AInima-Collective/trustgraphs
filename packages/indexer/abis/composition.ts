@@ -1,7 +1,7 @@
 import { parseAbi } from 'viem'
 
 export const COMPOSITION_PARAMS =
-  '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
+  '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 sourceCompatibilityClass,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
 
 export const COMPOSITION_CREATE_ARGS = `(string name,string metadataURI,${COMPOSITION_PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)`
 

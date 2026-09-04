@@ -26,7 +26,7 @@ const requested = {
     identityDomain: ZERO32,
     outputKind: ZERO32,
     outputDomain: ZERO32,
-    admittedProgramId: ZERO32,
+    sourceCompatibilityClass: ZERO32,
     weightScale: 10n ** 18n,
     outputPool: 10n ** 24n,
     sourcePolicyRoot: ZERO32,

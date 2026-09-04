@@ -6,7 +6,7 @@
 
 import { type Address, type Hex, parseAbi } from 'viem'
 
-import type { InstanceParamsJson } from './catalog'
+import type { ExactParamsJson } from './scoring-params'
 
 /** The 21-field contributions params tuple, matching `ContributionsParamsCodec.Params`. */
 const PARAMS =
@@ -55,7 +55,7 @@ export interface RoundCreationFields {
  */
 export const contributionsCreateArgs = (
   parentInstanceId: Hex,
-  parentParams: InstanceParamsJson,
+  parentParams: ExactParamsJson,
   parentEpochLength: bigint,
   fields: RoundCreationFields
 ) => ({

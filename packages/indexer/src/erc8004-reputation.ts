@@ -3,10 +3,8 @@ import { ponder } from 'ponder:registry'
 import {
   erc8004AgentRelationHistory,
   erc8004Feedback,
-  erc8004FeedbackEvent,
   erc8004FeedbackResponse,
   erc8004ReputationRegistry,
-  erc8004ReputationRegistryEvent,
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
@@ -83,27 +81,15 @@ ponder.on('erc8004ReputationRegistry:Upgraded', async ({ event, context }) => {
       observedTimestamp: event.block.timestamp,
       observedTxHash: event.transaction.hash,
     })
-
-  await context.db.insert(erc8004ReputationRegistryEvent).values({
-    id: event.id,
-    registryId,
-    kind: 'upgrade',
-    implementation: event.args.implementation,
-    version,
-    identityRegistry,
-    previousOwner: null,
-    newOwner: null,
-    ...eventPosition(event),
-  })
 })
 
 ponder.on(
   'erc8004ReputationRegistry:OwnershipTransferred',
   async ({ event, context }) => {
     const registryId = registryIdFor(context.chain.id, event.log.address)
-    // M0 hazard sweep: the registry row is born from `Upgraded`; if that predates the start block
-    // the row is not reconstructible here (implementation/version are notNull and not in this
-    // event) — log and skip the row update, but keep the append-only receipt.
+    // Out-of-universe guard: the registry row is born from `Upgraded`; if that predates the start
+    // block the row is not reconstructible here (implementation/version are notNull and not in
+    // this event) — log and skip.
     const registry = await context.db.find(erc8004ReputationRegistry, {
       id: registryId,
     })
@@ -118,20 +104,9 @@ ponder.on(
         })
     } else {
       console.warn(
-        `erc8004 reputation: ownership transfer for unobserved registry ${registryId} (Upgraded predates the start block?) — recording the event only`
+        `erc8004 reputation: ownership transfer for unobserved registry ${registryId} (Upgraded predates the start block?) — skipping`
       )
     }
-    await context.db.insert(erc8004ReputationRegistryEvent).values({
-      id: event.id,
-      registryId,
-      kind: 'ownership',
-      implementation: null,
-      version: null,
-      identityRegistry: null,
-      previousOwner: event.args.previousOwner,
-      newOwner: event.args.newOwner,
-      ...eventPosition(event),
-    })
   }
 )
 
@@ -232,7 +207,7 @@ ponder.on(
     const position = eventPosition(event)
     const feedback = await context.db.find(erc8004Feedback, { id: feedbackId })
     if (!feedback) {
-      // M0 hazard sweep: feedback that predates the start block (or a foreign registry window) is
+      // Out-of-universe guard: feedback that predates the start block (or a foreign registry window) is
       // out of our universe — log and skip instead of wedging the indexer on its revocation.
       console.warn(
         `erc8004 reputation: revocation references unobserved ${feedbackId} (feedback predates the start block?) — skipping`
@@ -246,15 +221,6 @@ ponder.on(
       revokedLogIndex: position.logIndex,
       revokedTimestamp: position.timestamp,
       revokedTxHash: position.txHash,
-    })
-    await context.db.insert(erc8004FeedbackEvent).values({
-      id: event.id,
-      feedbackId,
-      kind: 'revoked',
-      actor: event.args.clientAddress,
-      uri: null,
-      contentHash: null,
-      ...position,
     })
   }
 )
@@ -272,7 +238,7 @@ ponder.on(
     const position = eventPosition(event)
     const feedback = await context.db.find(erc8004Feedback, { id: feedbackId })
     if (!feedback) {
-      // M0 hazard sweep: same out-of-universe rule as `FeedbackRevoked` above — log and skip.
+      // Out-of-universe guard: same out-of-universe rule as `FeedbackRevoked` above — log and skip.
       console.warn(
         `erc8004 reputation: response references unobserved ${feedbackId} (feedback predates the start block?) — skipping`
       )
@@ -287,15 +253,6 @@ ponder.on(
       responder: event.args.responder,
       responseURI: event.args.responseURI,
       responseHash: event.args.responseHash,
-      ...position,
-    })
-    await context.db.insert(erc8004FeedbackEvent).values({
-      id: event.id,
-      feedbackId,
-      kind: 'response',
-      actor: event.args.responder,
-      uri: event.args.responseURI,
-      contentHash: event.args.responseHash,
       ...position,
     })
   }

@@ -5,7 +5,7 @@
 //! and sorted ascending. Its SHA2-256 digest is `ipfsHash`; the CIDv1-raw string is `ipfsHashCid`.
 //! Pin with `ipfs add --cid-version=1 --raw-leaves` (single raw block for content < 256 KiB).
 
-use alloy_primitives::{Address, U256};
+use alloy_primitives::{Address, B256, U256};
 use sha2::{Digest, Sha256};
 
 /// Serialize the scored set to the canonical blob. `scores` MUST be sorted ascending by address
@@ -30,6 +30,25 @@ pub fn canonical_blob(scores: &[(Address, U256)]) -> Vec<u8> {
 }
 
 /// SHA2-256 digest of arbitrary bytes.
+/// The canonical node-keyed blob: `{"0x<nodeId>":"<decimal>",...}` sorted ascending —
+/// the 32-byte-node-id twin of [`canonical_blob`] used by the nodeId-keyed programs
+/// (hypercerts, nostr-workspace).
+pub fn canonical_node_blob(scores: &[(B256, U256)]) -> Vec<u8> {
+    let mut s = String::from("{");
+    for (i, (id, value)) in scores.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str("\"0x");
+        s.push_str(&alloy_primitives::hex::encode(id.as_slice()));
+        s.push_str("\":\"");
+        s.push_str(&value.to_string());
+        s.push('"');
+    }
+    s.push('}');
+    s.into_bytes()
+}
+
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(data);

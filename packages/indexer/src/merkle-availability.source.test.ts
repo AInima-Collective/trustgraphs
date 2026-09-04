@@ -29,4 +29,20 @@ test('current APIs expose pending availability instead of serving a stale root',
   assert.match(networkApi, /requireCurrentScoreBlobAvailable/)
   assert.match(merkleApi, /currentScoreBlobUnavailableBody\(error\), 503/)
   assert.match(networkApi, /currentScoreBlobUnavailableBody\(error\), 503/)
+  for (const api of [merkleApi, networkApi]) {
+    assert.match(
+      api,
+      /orderBy: \(t, \{ desc \}\) => \[desc\(t\.blockNumber\), desc\(t\.timestamp\)\]/
+    )
+  }
+})
+
+test('repeated roots advance their collapsed metadata and entry cursors', () => {
+  const merkle = source('./merkle.ts')
+  const repair = merkle.slice(
+    merkle.indexOf('if (\n      canRepairScoreRowsOnRestart'),
+    merkle.indexOf('// Load IPFS data.')
+  )
+  assert.equal(repair.match(/blockNumber: event\.block\.number/g)?.length, 2)
+  assert.equal(repair.match(/timestamp: event\.block\.timestamp/g)?.length, 2)
 })

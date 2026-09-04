@@ -117,7 +117,8 @@ contract WeightedPriorLifecycleInvariantTest is Test {
             WeightedPriorParamsCodec.hash(params),
             new MockAccumulator(),
             address(this),
-            address(this)
+            address(this),
+            ""
         );
         controller = new WeightedPriorParamsController(
             INSTANCE_ID, address(snapshot), registry, params, manifest, bytes32(0), address(this), address(this), DELAY

@@ -17,5 +17,5 @@ alloy-primitives = { version = "1", features = ["serde"] }
 nostr-envelope = { path = "../../../crates/nostr-envelope" }
 nostr-workspace-core = { path = "../../../crates/nostr-workspace-core" }
 pagerank-core = { path = "../../../crates/pagerank-core" }
-sp1-zkvm = "=6.3.1"
+sp1-zkvm = "=6.6.0"
 zk-core = { path = "../../../crates/zk-core" }

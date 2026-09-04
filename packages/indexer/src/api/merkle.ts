@@ -46,7 +46,9 @@ const resolveRoot = async (
           lower(t.merkleSnapshotContract),
           merkleSnapshotContract.toLowerCase()
         ),
-      orderBy: (t, { desc }) => desc(t.timestamp),
+      // Block time is not a unique chain cursor (multiple checkpoints may share
+      // a timestamp). Select the canonical latest accepted root by block first.
+      orderBy: (t, { desc }) => [desc(t.blockNumber), desc(t.timestamp)],
     })
     if (!tree) {
       throw new Error('Current merkle tree not found')
@@ -88,7 +90,7 @@ merkleApp.get('/:snapshot/all', async (c) => {
           lower(t.merkleSnapshotContract),
           merkleSnapshotContract.toLowerCase()
         ),
-      orderBy: (t, { desc }) => desc(t.timestamp),
+      orderBy: (t, { desc }) => [desc(t.blockNumber), desc(t.timestamp)],
     })
     for (const tree of trees) requireRowScoreProgram(tree, current, 'merkle')
     return c.json({ trees, scoreProgram: current })

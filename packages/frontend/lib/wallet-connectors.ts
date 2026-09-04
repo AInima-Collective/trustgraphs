@@ -1,6 +1,8 @@
 import type { CreateConnectorFn } from '@wagmi/core'
 import { porto } from 'porto/wagmi'
-import { coinbaseWallet, metaMask, walletConnect } from 'wagmi/connectors'
+import { coinbaseWallet } from 'wagmi/connectors/coinbaseWallet'
+import { metaMask } from 'wagmi/connectors/metaMask'
+import { walletConnect } from 'wagmi/connectors/walletConnect'
 
 import { CHAIN } from './config'
 

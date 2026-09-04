@@ -75,7 +75,7 @@ fn edge(from: u8, to: u8, uid: u8, ts: u64, weight: u64) -> RawEdge {
 fn sample_input() -> GuestInput {
     // Alice -> Bob -> Charlie -> Alice, symmetric ring, all weight 1.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
-    GuestInput { edges, params: default_params(), lane2: None, binding: Default::default() }
+    GuestInput { edges, params: default_params(), binding: Default::default() }
 }
 
 #[test]
@@ -118,12 +118,8 @@ fn journal_binds_inputs() {
 fn seeded_cycle_distributes_the_full_pool() {
     // Alice (seed) -> Bob, Bob -> Charlie, Charlie -> Alice.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
-    let input = GuestInput {
-        edges,
-        params: trust_params(vec![addr(1)]),
-        lane2: None,
-        binding: Default::default(),
-    };
+    let input =
+        GuestInput { edges, params: trust_params(vec![addr(1)]), binding: Default::default() };
     let r = compute(&input);
     assert_eq!(r.journal.total_value, input.params.total_pool);
     // Everyone is reachable; pool fully distributed among 3.
@@ -162,15 +158,9 @@ fn params_hash_domain_separates_instances() {
     let a = compute(&GuestInput {
         edges: edges.clone(),
         params: instance_a,
-        lane2: None,
         binding: Default::default(),
     });
-    let b = compute(&GuestInput {
-        edges,
-        params: instance_b,
-        lane2: None,
-        binding: Default::default(),
-    });
+    let b = compute(&GuestInput { edges, params: instance_b, binding: Default::default() });
     assert_eq!(a.journal.output_root, b.journal.output_root);
     assert_ne!(a.journal.params_hash, b.journal.params_hash);
     assert_ne!(
@@ -182,12 +172,7 @@ fn params_hash_domain_separates_instances() {
 
 #[test]
 fn empty_input_is_valid() {
-    let input = GuestInput {
-        edges: vec![],
-        params: default_params(),
-        lane2: None,
-        binding: Default::default(),
-    };
+    let input = GuestInput { edges: vec![], params: default_params(), binding: Default::default() };
     let r = compute(&input);
     assert_eq!(r.journal.leaf_count, 0);
     assert_eq!(r.journal.acc, B256::ZERO);
@@ -209,10 +194,11 @@ fn current_fixed_point_kernel_matches_frozen_pull_oracle() {
 }
 
 /// The retired floating-point implementation's deterministic seed-0 input remains frozen here.
-/// M2 intentionally rotates its output: seed-only starting mass and the reachability gate remove
-/// one disconnected account. Keep both expectations so that change remains explicit.
+/// Params schema v3 intentionally rotates its output: seed-only starting mass and the
+/// reachability gate remove one disconnected account. Keep both expectations so that change
+/// remains explicit.
 #[test]
-fn legacy_float_fixture_records_intentional_m2_rotation() {
+fn retired_float_fixture_records_the_intentional_schema_v3_rotation() {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self, bound: u64) -> u64 {
@@ -236,7 +222,6 @@ fn legacy_float_fixture_records_intentional_m2_rotation() {
     let input = GuestInput {
         edges,
         params: trust_params(vec![addr(1), addr(2)]),
-        lane2: None,
         binding: Default::default(),
     };
     let actual: Vec<U256> = compute(&input).scores.into_iter().map(|(_, value)| value).collect();
@@ -277,324 +262,4 @@ fn legacy_float_fixture_records_intentional_m2_rotation() {
 
     assert_ne!(actual, legacy);
     assert_eq!(actual, expected_m2);
-}
-
-// ---------------------------------------------------------------------------
-// Two-lane compute: a real envelope-0 fixture through the FULL pipeline, plus
-// the withholding path (anchored head, data withheld → rule Φ,
-// skip recorded, root still lands).
-// ---------------------------------------------------------------------------
-
-mod lane2_compute {
-    use super::*;
-    use crate::{skip_reason, AnchorRecord, Lane2Witness};
-    use alloy_primitives::keccak256;
-    use envelopes::eas_offchain::{
-        self, attest_struct_hash, eip712_digest, head_payload, offchain_uid_v2, Envelope0Witness,
-        LogEntry, OffchainAttestation, ENTRY_ATTEST,
-    };
-    use k256::ecdsa::SigningKey;
-    use zk_core::anchor::{skip_leaf, skipped_digest, SkipEntry};
-    use zk_core::fold::fold;
-
-    fn sign_prehash(sk: &SigningKey, prehash: &B256) -> Vec<u8> {
-        let (sig, _) = sk.sign_prehash_recoverable(prehash.as_slice()).unwrap();
-        let sig = sig.normalize_s().unwrap_or(sig);
-        for v in 0u8..=1 {
-            let rid = k256::ecdsa::RecoveryId::from_byte(v).unwrap();
-            if let Ok(vk) =
-                k256::ecdsa::VerifyingKey::recover_from_prehash(prehash.as_slice(), &sig, rid)
-            {
-                if vk == *sk.verifying_key() {
-                    let mut out = sig.to_bytes().to_vec();
-                    out.push(v);
-                    return out;
-                }
-            }
-        }
-        unreachable!("one recovery id must match");
-    }
-
-    fn eth_addr(sk: &SigningKey) -> Address {
-        let unc = sk.verifying_key().to_encoded_point(false);
-        let h = keccak256(&unc.as_bytes()[1..]);
-        Address::from_slice(&h[12..])
-    }
-
-    fn lane2_params(ds: B256) -> Params {
-        let mut p = default_params();
-        p.envelope0_domain_separators = vec![ds, keccak256(b"head-domain")];
-        p.lane2_max_head_age = 10_000;
-        p
-    }
-
-    /// Build a signed one-attestation envelope-0 log for `sk`, returning (witness, head).
-    fn one_edge_log(
-        sk: &SigningKey,
-        ds: B256,
-        schema: B256,
-        to: u8,
-        conf: u64,
-    ) -> (Envelope0Witness, B256) {
-        let mut data = vec![0u8; 64];
-        data[32..].copy_from_slice(&U256::from(conf).to_be_bytes::<32>());
-        let mut a = OffchainAttestation {
-            version: 2,
-            schema,
-            recipient: addr(to),
-            time: 500,
-            expiration_time: 0,
-            revocable: true,
-            ref_uid: B256::ZERO,
-            data,
-            salt: B256::from([0x77; 32]),
-            signature: vec![],
-        };
-        a.signature = sign_prehash(sk, &eip712_digest(ds, attest_struct_hash(&a)));
-        let uid = offchain_uid_v2(&a);
-        let entries = vec![LogEntry { kind: ENTRY_ATTEST, uid }];
-        let head = eas_offchain::log_head(&entries);
-        let node_id = eas_offchain::address_node_id(eth_addr(sk));
-        let head_signature = sign_prehash(
-            sk,
-            &eip712_digest(
-                keccak256(b"head-domain"),
-                head_payload(node_id, 0, head, entries.len() as u64, B256::ZERO),
-            ),
-        );
-        (
-            Envelope0Witness {
-                owner: eth_addr(sk),
-                entries,
-                attestations: vec![a],
-                head_signature,
-            },
-            head,
-        )
-    }
-
-    #[test]
-    fn two_lane_compute_merges_lanes_and_commits_anchor_acc() {
-        let ds = keccak256(b"test-domain");
-        let params = lane2_params(ds);
-        let sk = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
-        let owner = eth_addr(&sk);
-        let (w, head) = one_edge_log(&sk, ds, params.schema_uid, 9, 60);
-
-        // Lane 1: one edge 1 -> 2. Lane 2: owner -> 0x09.
-        let input = GuestInput {
-            edges: vec![edge(1, 2, 1, 100, 50)],
-            params,
-            lane2: Some(Lane2Witness {
-                anchors: vec![AnchorRecord {
-                    node_id: eas_offchain::address_node_id(owner),
-                    envelope_kind: 0,
-                    head,
-                    // H-5: the anchored count must equal the log length the owner co-signed.
-                    count: 1,
-                    data_commitment: B256::ZERO,
-                    block_timestamp: 1000,
-                }],
-                envelopes: vec![w],
-            }),
-            binding: Default::default(),
-        };
-        let r = compute(&input);
-
-        // Both lanes committed: lane 1 acc as usual, lane 2 anchor fold nonzero, no skips.
-        assert_eq!(r.journal.leaf_count, 1);
-        assert_eq!(r.journal.anchor_count, 1);
-        assert_ne!(r.journal.anchor_acc, B256::ZERO);
-        assert_eq!(r.journal.skipped_digest, B256::ZERO);
-        // The lane-2 attester + recipient are scored nodes (graph merged both lanes).
-        let scored: Vec<Address> = r.scores.iter().map(|(a, _)| *a).collect();
-        assert!(scored.contains(&owner), "lane-2 attester missing from scores");
-        assert!(scored.contains(&addr(9)), "lane-2 recipient missing from scores");
-        assert!(scored.contains(&addr(2)), "lane-1 recipient missing from scores");
-    }
-
-    #[test]
-    fn withheld_head_degrades_and_root_still_lands() {
-        let ds = keccak256(b"test-domain");
-        let params = lane2_params(ds);
-        let node = B256::from([0x33; 32]);
-
-        // Anchored head, data withheld (no envelope witness).
-        let input = GuestInput {
-            edges: vec![edge(1, 2, 1, 100, 50)],
-            params,
-            lane2: Some(Lane2Witness {
-                anchors: vec![AnchorRecord {
-                    node_id: node,
-                    envelope_kind: 0,
-                    head: B256::from([0x44; 32]),
-                    count: 0,
-                    data_commitment: B256::ZERO,
-                    block_timestamp: 1000,
-                }],
-                envelopes: vec![],
-            }),
-            binding: Default::default(),
-        };
-        let r = compute(&input);
-
-        // The epoch did NOT abort: lane 1 scored, root landed.
-        assert_ne!(r.journal.output_root, B256::ZERO);
-        assert_eq!(r.journal.anchor_count, 1);
-        // The skip is publicly committed with the exact expected preimage.
-        let expected = skipped_digest(&[SkipEntry {
-            node_id: node,
-            reason: skip_reason::DROPPED,
-            epoch_observed: 1000,
-        }]);
-        assert_eq!(r.journal.skipped_digest, expected);
-        assert_ne!(r.journal.skipped_digest, B256::ZERO);
-        // And the digest is reproducible from first principles (fold of one skip leaf).
-        let leaf = skip_leaf(&SkipEntry { node_id: node, reason: 2, epoch_observed: 1000 });
-        assert_eq!(r.journal.skipped_digest, fold(B256::ZERO, leaf));
-    }
-
-    /// Build a signed envelope-0 witness for an arbitrary entry list (each ATTEST gets a real
-    /// EIP-712-signed attestation; the head signature covers the exact log length).
-    fn signed_log(
-        sk: &SigningKey,
-        ds: B256,
-        schema: B256,
-        specs: &[(u8, u8, u64)], // (kind, recipient-or-attest-index, confidence)
-    ) -> (Envelope0Witness, B256, u64) {
-        use envelopes::eas_offchain::ENTRY_REVOKE;
-        let mut entries: Vec<LogEntry> = Vec::new();
-        let mut attestations: Vec<OffchainAttestation> = Vec::new();
-        let mut uids: Vec<B256> = Vec::new();
-        for (i, (kind, arg, conf)) in specs.iter().enumerate() {
-            if *kind == ENTRY_ATTEST {
-                let mut data = vec![0u8; 64];
-                data[32..].copy_from_slice(&U256::from(*conf).to_be_bytes::<32>());
-                let mut a = OffchainAttestation {
-                    version: 2,
-                    schema,
-                    recipient: addr(*arg),
-                    time: 500 + i as u64,
-                    expiration_time: 0,
-                    revocable: true,
-                    ref_uid: B256::ZERO,
-                    data,
-                    salt: B256::from([i as u8 + 1; 32]),
-                    signature: vec![],
-                };
-                a.signature = sign_prehash(sk, &eip712_digest(ds, attest_struct_hash(&a)));
-                let uid = offchain_uid_v2(&a);
-                entries.push(LogEntry { kind: ENTRY_ATTEST, uid });
-                uids.push(uid);
-                attestations.push(a);
-            } else {
-                entries.push(LogEntry { kind: ENTRY_REVOKE, uid: uids[*arg as usize] });
-            }
-        }
-        let head = eas_offchain::log_head(&entries);
-        let count = entries.len() as u64;
-        let node_id = eas_offchain::address_node_id(eth_addr(sk));
-        let head_signature = sign_prehash(
-            sk,
-            &eip712_digest(
-                keccak256(b"head-domain"),
-                head_payload(node_id, 0, head, count, B256::ZERO),
-            ),
-        );
-        (
-            Envelope0Witness { owner: eth_addr(sk), entries, attestations, head_signature },
-            head,
-            count,
-        )
-    }
-
-    /// H-5 regression: a third party re-anchors the victim's STALE pre-revocation head (whose
-    /// signature is still valid) AFTER the post-revocation head. Pre-fix, rule Φ ranked by
-    /// anchor order and the stale head became "newest" — resurrecting the revoked edge with no
-    /// skip recorded. Post-fix, heads rank by their owner-signed count: the stale head is never
-    /// consumable, the revoked edge stays dead, and a prover withholding the newest head's data
-    /// fails closed to a DROPPED skip.
-    #[test]
-    fn h5_reanchored_stale_head_cannot_resurrect_revoked_edges() {
-        use envelopes::eas_offchain::ENTRY_REVOKE;
-        let ds = keccak256(b"test-domain");
-        let params = lane2_params(ds);
-        let sk = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
-        let owner = eth_addr(&sk);
-        let node_id = eas_offchain::address_node_id(owner);
-
-        // The owner's real history: attest → attest → revoke the first. The pre-revocation
-        // prefix (count 2) is a head the owner genuinely signed earlier.
-        let (w_stale, head_stale, count_stale) =
-            signed_log(&sk, ds, params.schema_uid, &[(ENTRY_ATTEST, 8, 50), (ENTRY_ATTEST, 9, 60)]);
-        let (w_current, head_current, count_current) = signed_log(
-            &sk,
-            ds,
-            params.schema_uid,
-            &[(ENTRY_ATTEST, 8, 50), (ENTRY_ATTEST, 9, 60), (ENTRY_REVOKE, 0, 0)],
-        );
-        assert_eq!(count_stale, 2);
-        assert_eq!(count_current, 3);
-
-        // Anchor log: the current head first, then the ATTACKER re-anchors the stale head
-        // LATER (higher fold index + newer timestamp = pre-fix "newest").
-        let anchors = vec![
-            AnchorRecord {
-                node_id,
-                envelope_kind: 0,
-                head: head_current,
-                count: count_current,
-                data_commitment: B256::ZERO,
-                block_timestamp: 1000,
-            },
-            AnchorRecord {
-                node_id,
-                envelope_kind: 0,
-                head: head_stale,
-                count: count_stale,
-                data_commitment: B256::ZERO,
-                block_timestamp: 2000,
-            },
-        ];
-
-        // Case 1: honest prover supplies the CURRENT head's witness. The stale re-anchor is
-        // ignored (below-max count), the current head is consumed with no skip, and the
-        // revoked edge (owner -> 0x08) stays dead.
-        let r = compute(&GuestInput {
-            edges: vec![edge(1, 2, 1, 100, 50)],
-            params: params.clone(),
-            lane2: Some(Lane2Witness { anchors: anchors.clone(), envelopes: vec![w_current] }),
-            binding: Default::default(),
-        });
-        let scored: Vec<Address> = r.scores.iter().map(|(a, _)| *a).collect();
-        assert!(scored.contains(&addr(9)), "surviving lane-2 edge must score its recipient");
-        assert!(
-            !scored.contains(&addr(8)),
-            "REGRESSION: revoked edge resurrected by a re-anchored stale head"
-        );
-        assert_eq!(r.journal.skipped_digest, B256::ZERO, "newest-by-count consumed: no skip");
-
-        // Case 2: adversarial prover supplies ONLY the stale head's witness (withholding the
-        // current one). The stale head is still not consumable — the node fails closed to a
-        // DROPPED skip instead of resurrecting the pre-revocation set.
-        let r2 = compute(&GuestInput {
-            edges: vec![edge(1, 2, 1, 100, 50)],
-            params,
-            lane2: Some(Lane2Witness { anchors, envelopes: vec![w_stale] }),
-            binding: Default::default(),
-        });
-        let scored2: Vec<Address> = r2.scores.iter().map(|(a, _)| *a).collect();
-        assert!(
-            !scored2.contains(&addr(8)) && !scored2.contains(&addr(9)),
-            "REGRESSION: stale head consumed under withholding"
-        );
-        let expected = skipped_digest(&[SkipEntry {
-            node_id,
-            reason: skip_reason::DROPPED,
-            // Bookkept at the newest MAX-COUNT anchor's timestamp (the head that should have
-            // been consumed), not the attacker's re-anchor timestamp.
-            epoch_observed: 1000,
-        }]);
-        assert_eq!(r2.journal.skipped_digest, expected, "withheld newest must be a DROPPED skip");
-    }
 }

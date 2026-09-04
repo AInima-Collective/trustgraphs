@@ -6,12 +6,12 @@ import {
   SCORE_OUTPUT_DOMAIN_IDS,
   SCORE_PROGRAM_IDS,
   type ScoreProgramName,
-  type ScoreProgramProvenance,
   parseScoreProgramProvenance,
 } from '../score-program'
 import {
   type CompositionEntry,
   type CompositionSource,
+  admittedSourceOutputDomain,
   canonicalCompositionBlob,
   compositionOutputRoot,
   compositionSourceId,
@@ -433,18 +433,34 @@ export type CompositionInstance = {
   admin: Address
   name: string
   metadataURI: string
+  metadataURIHash: Hex
+  metadataRevision: string
+  metadataStatus: string
+  metadataUpdated: {
+    block: string
+    timestamp: string
+    txHash: Hex
+  }
   metadata?: {
-    name?: string
-    description?: string
-    criteria?: string
-    image?: string
-    applicationUrl?: string
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
+  } | null
+  governance: {
+    module: Address
+    safe: Address
+    recoveryModule?: Address | null
+    executionGuard?: Address | null
   } | null
   accumulator: Address
   snapshot: Address
   distributor: Address | null
   epochLength: string
   programVKey: Hex
+  /** The committed closed source compatibility class. */
+  sourceCompatibilityClass: Hex
   currentVersion: string
   currentParamsHash: Hex
   params: Record<string, unknown>
@@ -481,6 +497,8 @@ export type CompositionSourceEvidence = {
   snapshot: Address
   familyId: Hex
   programId: Hex
+  /** The source's real committed output domain. */
+  sourceOutputDomain: Hex
   adapter: Address
   deploymentProvenance: Hex
   stateIndex: string
@@ -614,26 +632,14 @@ export const requireCompatibleCandidate = (
   if (candidate.keyEncoding !== 'eip155-address') {
     throw new Error('Only address-keyed allocation outputs are compatible.')
   }
+  if (admittedSourceOutputDomain(candidate.programId as Hex) === null) {
+    throw new Error(
+      'The composition admits standard and weighted TrustGraph allocation outputs and nothing else.'
+    )
+  }
   if (selected.length === 0) return
   const first = selected[0]!
   if (candidate.chainId !== first.chainId) {
     throw new Error('All composition sources must be on the same chain.')
   }
-  if (candidate.programId.toLowerCase() !== first.programId.toLowerCase()) {
-    throw new Error(
-      'V1 requires one admitted score program; choose sources with identical program semantics.'
-    )
-  }
-}
-
-export const provenanceForCandidate = async (
-  api: string,
-  candidate: CompositionCandidate,
-  signal?: AbortSignal
-): Promise<ScoreProgramProvenance> => {
-  const response = await fetch(`${api}/score-programs/${candidate.snapshot}`, {
-    signal,
-  })
-  const body = await responseJson<{ scoreProgram: unknown }>(response)
-  return parseScoreProgramProvenance(body.scoreProgram)
 }

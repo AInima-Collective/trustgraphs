@@ -34,15 +34,6 @@ interface IMerkleFundDistributor {
         uint256 sweptAmount;
     }
 
-    /// @notice Emitted when owner starts 2-step ownership transfer to `pendingOwner`.
-    /// @param pendingOwner The pending owner of the contract.
-    event OwnershipTransferStarted(address indexed pendingOwner);
-
-    /// @notice Emitted when the owner of the contract is set.
-    /// @param previousOwner The previous owner of the contract.
-    /// @param newOwner The new owner of the contract.
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
     /// @notice Emitted when the fee recipient is set.
     /// @param previousFeeRecipient The previous fee recipient address.
     /// @param newFeeRecipient The new fee recipient address.
@@ -109,8 +100,6 @@ interface IMerkleFundDistributor {
     /// @param amount The amount of unclaimed funds swept.
     event Swept(uint256 indexed distributionIndex, address indexed to, uint256 amount);
 
-    error NotOwner();
-    error NotPendingOwner();
     error InvalidAddress();
     error CannotDistribute();
     error InvalidNativeTokenTransfer();

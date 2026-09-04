@@ -11,9 +11,16 @@
  */
 import { domainSeparator, headDomain } from '@trustgraphs/eas-offchain-client'
 import { ponder } from 'ponder:registry'
-import { easOffchainLane, instance, merkleFundDistributor } from 'ponder:schema'
-import { type Hex, zeroAddress } from 'viem'
+import {
+  easOffchainLane,
+  easSchemaRecord,
+  instance,
+  merkleFundDistributor,
+  networkMetadataRevision,
+} from 'ponder:schema'
+import { type Hex, keccak256, stringToHex, zeroAddress } from 'viem'
 
+import { validateNetworkMetadata } from './network-metadata'
 import { revalidateNetwork } from './utils'
 import { paramsHash } from '../../frontend/lib/pagerank/encode'
 import {
@@ -143,6 +150,14 @@ export const fetchMetadata = async (
   }
 }
 
+export const fetchNetworkMetadata = async (metadataURI: string) => {
+  const metadata = validateNetworkMetadata(await fetchMetadata(metadataURI))
+  return {
+    metadata,
+    status: metadata ? 'valid' : 'unavailable-or-invalid',
+  } as const
+}
+
 ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
   const {
     instanceId,
@@ -175,7 +190,9 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
     )
   }
 
-  const metadata = await fetchMetadata(metadataURI)
+  const { metadata, status: metadataStatus } =
+    await fetchNetworkMetadata(metadataURI)
+  const metadataURIHash = keccak256(stringToHex(metadataURI))
 
   console.log(
     `factory: InstanceCreated ${instanceId} "${name}" @ block ${event.block.number} snapshot ${snapshot} resolver ${resolver}`
@@ -189,6 +206,12 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
     admin,
     name,
     metadataURI,
+    metadataURIHash,
+    metadataRevision: 0n,
+    metadataStatus,
+    metadataUpdatedBlock: event.block.number,
+    metadataUpdatedTimestamp: event.block.timestamp,
+    metadataUpdatedTxHash: event.transaction.hash,
     metadata,
     resolver,
     schemaUid,
@@ -204,6 +227,22 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
     createdBlock: event.block.number,
     createdTimestamp: event.block.timestamp,
     createdTxHash: event.transaction.hash,
+  })
+
+  await context.db.insert(networkMetadataRevision).values({
+    id: `${snapshot.toLowerCase()}-0`,
+    instanceId,
+    snapshot,
+    revision: 0n,
+    authority: admin,
+    metadataURI,
+    metadataURIHash,
+    previousMetadataURIHash: null,
+    metadata,
+    status: metadataStatus,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    txHash: event.transaction.hash,
   })
 
   // Seed the distributor's config row from its birth state instead of reading it back in a `setup`
@@ -230,6 +269,38 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
 
   await revalidateNetwork(instanceId)
 })
+
+ponder.on(
+  'trustgraphsFactory:ImportedEasLaneCreated',
+  async ({ event, context }) => {
+    const { instanceId, importer, router, eas, schemaUid } = event.args
+    const catalog = await context.db.find(instance, { id: instanceId })
+    if (
+      !catalog ||
+      catalog.resolver.toLowerCase() !== importer.toLowerCase() ||
+      catalog.schemaUid.toLowerCase() !== schemaUid.toLowerCase()
+    ) {
+      console.error(
+        `factory: imported lane ${importer} does not match preceding instance ${instanceId}; refusing discovery`
+      )
+      return
+    }
+    const registered = await context.db.find(easSchemaRecord, {
+      uid: schemaUid,
+    })
+    if (!registered) {
+      console.error(
+        `factory: imported schema ${schemaUid} was not indexed from the canonical SchemaRegistry`
+      )
+    }
+    await context.db.update(instance, { id: instanceId }).set({
+      importedEas: eas,
+      importedRouter: router,
+      ...(registered ? { schemaString: registered.schema } : {}),
+    })
+    await revalidateNetwork(instanceId)
+  }
+)
 
 ponder.on(
   'trustgraphsFactory:OffchainEasLaneCreated',

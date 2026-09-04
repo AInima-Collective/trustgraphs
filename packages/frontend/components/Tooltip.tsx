@@ -1,4 +1,4 @@
-import { Popover } from '@base-ui-components/react/popover'
+import { Popover } from '@base-ui/react/popover'
 import clsx from 'clsx'
 import { ComponentProps, ReactElement, ReactNode, isValidElement } from 'react'
 
@@ -31,8 +31,10 @@ export const Tooltip = ({
   }
 
   return (
-    <Popover.Root openOnHover delay={0}>
+    <Popover.Root>
       <Popover.Trigger
+        openOnHover
+        delay={0}
         aria-label={typeof title === 'string' ? title : undefined}
         className={className}
         onClick={(e) => e.stopPropagation()}

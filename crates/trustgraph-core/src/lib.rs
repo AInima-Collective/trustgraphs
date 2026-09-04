@@ -18,14 +18,14 @@ mod tests;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope0AnchorAuthorization {
     pub fold_index: u64,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub head_signature: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope0PayloadWitness {
     pub node_id: B256,
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub payload: Vec<u8>,
 }
 
@@ -44,18 +44,4 @@ pub struct GuestInput {
     pub lane2: Option<Lane2Witness>,
     #[serde(default)]
     pub binding: Binding,
-}
-
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
-        let value = String::deserialize(deserializer)?;
-        alloy_primitives::hex::decode(value.strip_prefix("0x").unwrap_or(&value))
-            .map_err(serde::de::Error::custom)
-    }
 }

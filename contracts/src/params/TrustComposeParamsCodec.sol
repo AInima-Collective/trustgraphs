@@ -2,8 +2,9 @@
 pragma solidity ^0.8.22;
 
 /// @title TrustComposeParamsCodec
-/// @notice Encoder for the frozen `trust-compose` V1 parameter commitment.
-/// @dev Field order and widths mirror `composition_core::codec::params_hash` exactly.
+/// @notice Encoder for the frozen `trust-compose` parameter commitment.
+/// @dev Field order and widths mirror `composition_core::codec::params_hash` exactly: 20 frozen
+///      static words, word 0 the version and word 6 the closed source compatibility class.
 library TrustComposeParamsCodec {
     uint32 internal constant PARAMS_VERSION = 1;
 
@@ -14,7 +15,7 @@ library TrustComposeParamsCodec {
         bytes32 identityDomain;
         bytes32 outputKind;
         bytes32 outputDomain;
-        bytes32 admittedProgramId;
+        bytes32 sourceCompatibilityClass;
         uint64 weightScale;
         uint128 outputPool;
         bytes32 sourcePolicyRoot;
@@ -39,7 +40,7 @@ library TrustComposeParamsCodec {
                 p.identityDomain,
                 p.outputKind,
                 p.outputDomain,
-                p.admittedProgramId,
+                p.sourceCompatibilityClass,
                 p.weightScale,
                 p.outputPool,
                 p.sourcePolicyRoot,

@@ -4,6 +4,8 @@ pragma solidity ^0.8.22;
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -28,7 +30,7 @@ import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 ///      contracts (Safes, splitters): the distributor pays `account` directly,
 ///      which is how teams should claim shared work (or split via shares at
 ///      claim time).
-contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausable {
+contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -54,12 +56,6 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
     /// @notice Address of the MerkleSnapshot contract to query for merkle state
     address public merkleSnapshot;
 
-    /// @notice The address that can update the distribution parameters.
-    address public owner;
-
-    /// @notice The pending owner address (for 2-step ownership transfer).
-    address public pendingOwner;
-
     /// @notice The fee recipient address.
     address public feeRecipient;
 
@@ -83,14 +79,6 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
     mapping(uint256 distributionIndex => mapping(address account => uint256 amount)) public claimed;
 
     /* MODIFIERS */
-
-    /// @notice Reverts if the caller is not the owner.
-    modifier onlyOwner() {
-        if (msg.sender != owner) {
-            revert NotOwner();
-        }
-        _;
-    }
 
     /// @notice Reverts if the caller cannot distribute funds.
     modifier onlyDistributor() {
@@ -116,21 +104,13 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         address feeRecipient_,
         uint256 feePercentage_,
         bool allowlistEnabled_
-    ) {
-        // Bootstrap ownership DIRECTLY, without the 2-step handshake. Two-step transfer exists to
-        // stop a live owner from handing the contract to an address that cannot act; at
-        // construction there is no live owner to protect, and the deployer is frequently a
-        // factory or a script that must not linger as owner (`TrustgraphsFactory` deploys this in
-        // the same transaction that hands the instance to its creator — a pending transfer would
-        // leave the factory owning every community's distributor until each one remembered to
-        // call `acceptOwnership`). `transferOwnership` after deployment is unchanged: still
-        // 2-step. See research/DEVIATIONS.md.
-        if (owner_ == address(0)) {
-            revert InvalidAddress();
-        }
-        owner = owner_;
-        emit OwnershipTransferred(address(0), owner_);
-
+    ) Ownable(owner_) {
+        // Ownership bootstraps DIRECTLY (`Ownable(owner_)`), without the 2-step handshake.
+        // Two-step transfer exists to stop a live owner from handing the contract to an address
+        // that cannot act; at construction there is no live owner to protect, and the deployer is
+        // frequently a factory that must not linger as owner (`TrustgraphsFactory` deploys this
+        // in the same transaction that hands the instance to its creator). Post-deploy
+        // `transferOwnership` remains 2-step via `Ownable2Step`.
         _setMerkleSnapshot(merkleSnapshot_);
         _setFeeRecipient(feeRecipient_);
         _setFeePercentage(feePercentage_);
@@ -144,31 +124,6 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
     /// @return distribution The distribution.
     function getDistribution(uint256 distributionIndex) external view returns (DistributionState memory) {
         return distributions[distributionIndex];
-    }
-
-    /// @notice Gets paginated distributions.
-    /// @param offset The offset to start from.
-    /// @param limit The number of distributions to return.
-    /// @return result The distributions.
-    function getDistributions(uint256 offset, uint256 limit) external view returns (DistributionState[] memory) {
-        if (offset >= distributions.length) {
-            return new DistributionState[](0);
-        }
-
-        uint256 end = offset + limit;
-        if (end > distributions.length) {
-            end = distributions.length;
-        }
-
-        DistributionState[] memory result = new DistributionState[](end - offset);
-        for (uint256 i = offset; i < end;) {
-            result[i - offset] = distributions[i];
-            unchecked {
-                ++i;
-            }
-        }
-
-        return result;
     }
 
     /// @notice Returns the total number of distributions.
@@ -190,63 +145,17 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         return _allowlist.length();
     }
 
-    /// @notice Returns the address at a given index in the allowlist.
-    /// @param index The index to query.
-    /// @return The address at the index.
-    function getAllowlistAt(uint256 index) external view returns (address) {
-        return _allowlist.at(index);
-    }
-
     /// @notice Returns all addresses in the allowlist.
     /// @return All allowlisted addresses.
     function getAllowlist() external view returns (address[] memory) {
         return _allowlist.values();
     }
 
-    /// @notice Returns paginated addresses in the allowlist.
-    /// @param offset The offset to start from.
-    /// @param limit The number of addresses to return.
-    /// @return result The allowlisted addresses.
-    function getAllowlistPaginated(uint256 offset, uint256 limit) external view returns (address[] memory) {
-        uint256 length = _allowlist.length();
-        if (offset >= length) {
-            return new address[](0);
-        }
-
-        uint256 end = offset + limit;
-        if (end > length) {
-            end = length;
-        }
-
-        address[] memory result = new address[](end - offset);
-        for (uint256 i = offset; i < end;) {
-            result[i - offset] = _allowlist.at(i);
-            unchecked {
-                ++i;
-            }
-        }
-
-        return result;
-    }
-
     /* EXTERNAL */
 
-    /// @notice Starts 2-step ownership transfer to `newOwner`.
-    /// @param newOwner The new owner of the contract.
-    function transferOwnership(address newOwner) external onlyOwner {
-        _transferOwnership(newOwner);
-    }
-
-    /// @notice Accepts the ownership transfer.
-    /// @dev Only the pending owner can accept the ownership transfer.
-    function acceptOwnership() external {
-        if (msg.sender != pendingOwner) {
-            revert NotPendingOwner();
-        }
-        address previousOwner = owner;
-        owner = msg.sender;
-        pendingOwner = address(0);
-        emit OwnershipTransferred(previousOwner, owner);
+    /// @notice Renouncing is disabled: fee, pause, and allowlist authority must always exist.
+    function renounceOwnership() public view override onlyOwner {
+        revert InvalidAddress();
     }
 
     /// @notice Sets the `feeRecipient` of the contract to `newFeeRecipient`.
@@ -599,16 +508,6 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
     }
 
     /* INTERNAL */
-
-    /// @dev Starts 2-step ownership transfer to `newOwner`.
-    function _transferOwnership(address newOwner) internal {
-        if (newOwner == address(0)) {
-            revert InvalidAddress();
-        }
-
-        pendingOwner = newOwner;
-        emit OwnershipTransferStarted(newOwner);
-    }
 
     /// @dev Sets the `feeRecipient` of the contract to `newFeeRecipient`.
     function _setFeeRecipient(address newFeeRecipient) internal {

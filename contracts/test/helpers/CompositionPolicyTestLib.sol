@@ -2,13 +2,28 @@
 pragma solidity ^0.8.22;
 
 import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
+import {TrustComposeValidator} from "src/params/TrustComposeValidator.sol";
 
-/// @notice Canonical two-source policy fixtures shared by direct composition contract tests.
+/// @notice Canonical mixed two-source policy fixtures shared by direct composition contract
+///         tests: source 1 is a standard `trust-graph` output and source 2 a
+///         `trust-graph-weighted` output.
 library CompositionPolicyTestLib {
     uint64 internal constant SCALE = 1e18;
 
-    function sourceProgram() internal pure returns (bytes32) {
-        return keccak256("trust-graph-weighted");
+    function standardProgram() internal pure returns (bytes32) {
+        return TrustComposeValidator.TRUST_GRAPH_PROGRAM_ID;
+    }
+
+    function weightedProgram() internal pure returns (bytes32) {
+        return TrustComposeValidator.WEIGHTED_TRUST_GRAPH_PROGRAM_ID;
+    }
+
+    function standardDomain() internal pure returns (bytes32) {
+        return TrustComposeValidator.TRUST_GRAPH_OUTPUT_DOMAIN;
+    }
+
+    function weightedDomain() internal pure returns (bytes32) {
+        return TrustComposeValidator.WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN;
     }
 
     function family() internal pure returns (bytes32) {
@@ -26,7 +41,7 @@ library CompositionPolicyTestLib {
         p.identityDomain = keccak256("eip155-address");
         p.outputKind = outputKind();
         p.outputDomain = keccak256("trustgraphs.output.trust-compose-account.v1");
-        p.admittedProgramId = sourceProgram();
+        p.sourceCompatibilityClass = TrustComposeValidator.SOURCE_COMPATIBILITY_CLASS;
         p.weightScale = SCALE;
         p.outputPool = 1_000_000;
         p.maxSources = 8;
@@ -60,8 +75,14 @@ library CompositionPolicyTestLib {
         uint64 firstWeight = rotated ? uint64(4e17) : SCALE / 2;
         uint64 secondWeight = rotated ? uint64(6e17) : SCALE / 2;
         encoded = abi.encodePacked(bytes4("TGCP"), uint16(1), uint64(block.chainid), uint8(2));
-        encoded = bytes.concat(encoded, _record(bytes32(uint256(1)), firstSnapshot, firstWeight, maxAge));
-        encoded = bytes.concat(encoded, _record(bytes32(uint256(2)), secondSnapshot, secondWeight, maxAge));
+        encoded = bytes.concat(
+            encoded,
+            _record(bytes32(uint256(1)), firstSnapshot, standardProgram(), standardDomain(), firstWeight, maxAge)
+        );
+        encoded = bytes.concat(
+            encoded,
+            _record(bytes32(uint256(2)), secondSnapshot, weightedProgram(), weightedDomain(), secondWeight, maxAge)
+        );
     }
 
     function policyRoot(address firstSnapshot, address secondSnapshot, uint64 maxAge, bool rotated)
@@ -72,19 +93,40 @@ library CompositionPolicyTestLib {
         uint64 firstWeight = rotated ? uint64(4e17) : SCALE / 2;
         uint64 secondWeight = rotated ? uint64(6e17) : SCALE / 2;
         bytes32 first = keccak256(
-            abi.encode(bytes32(uint256(1)), firstSnapshot, family(), sourceProgram(), firstWeight, maxAge, uint8(1))
+            abi.encode(
+                bytes32(uint256(1)),
+                firstSnapshot,
+                family(),
+                standardProgram(),
+                standardDomain(),
+                firstWeight,
+                maxAge,
+                uint8(1)
+            )
         );
         bytes32 second = keccak256(
-            abi.encode(bytes32(uint256(2)), secondSnapshot, family(), sourceProgram(), secondWeight, maxAge, uint8(1))
+            abi.encode(
+                bytes32(uint256(2)),
+                secondSnapshot,
+                family(),
+                weightedProgram(),
+                weightedDomain(),
+                secondWeight,
+                maxAge,
+                uint8(1)
+            )
         );
         return first < second ? keccak256(bytes.concat(first, second)) : keccak256(bytes.concat(second, first));
     }
 
-    function _record(bytes32 sourceId, address snapshot, uint64 weight, uint64 maxAge)
-        private
-        pure
-        returns (bytes memory)
-    {
-        return abi.encodePacked(sourceId, snapshot, family(), sourceProgram(), weight, maxAge, uint8(1));
+    function _record(
+        bytes32 sourceId,
+        address snapshot,
+        bytes32 programId,
+        bytes32 sourceOutputDomain,
+        uint64 weight,
+        uint64 maxAge
+    ) private pure returns (bytes memory) {
+        return abi.encodePacked(sourceId, snapshot, family(), programId, sourceOutputDomain, weight, maxAge, uint8(1));
     }
 }

@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {SignerSyncZkModule} from "src/zodiac/SignerSyncZkModule.sol";
@@ -29,8 +32,8 @@ contract AlwaysAccept is IZkVerifier {
 /// ADJUDICATION: does owning the governed Safe's owner slot actually confer control?
 contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
-    GnosisSafe internal singleton;
-    GnosisSafeProxyFactory internal proxyFactory;
+    Safe internal singleton;
+    SafeProxyFactory internal proxyFactory;
     AlwaysAccept internal fake;
 
     address internal creator = address(0xA11CE);
@@ -38,8 +41,8 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
 
     function setUp() public override {
         super.setUp();
-        singleton = new GnosisSafe();
-        proxyFactory = new GnosisSafeProxyFactory();
+        singleton = new Safe();
+        proxyFactory = new SafeProxyFactory();
         fake = new AlwaysAccept();
         gf = new GovernedTrustgraphsFactory(
             factory,
@@ -48,6 +51,8 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             fake,
             fake.programVKey()
         );
@@ -60,14 +65,12 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy(0, 0),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.InitialPolicy(0, 0),
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
 
-        GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
-        GnosisSafe safe = GnosisSafe(payable(safeAddr));
+        GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
+        Safe safe = Safe(payable(safeAddr));
 
         // Give the Safe something worth stealing.
         vm.deal(safeAddr, 10 ether);
@@ -129,13 +132,11 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy(0, 0),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.InitialPolicy(0, 0),
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
-        GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
-        GnosisSafe safe = GnosisSafe(payable(safeAddr));
+        GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
+        Safe safe = Safe(payable(safeAddr));
         vm.deal(safeAddr, 10 ether);
 
         MerkleSnapshot snap = MerkleSnapshot(snapshot);

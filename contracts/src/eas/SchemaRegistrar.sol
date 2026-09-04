@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
@@ -10,7 +10,6 @@ import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contr
 contract SchemaRegistrar {
     error InvalidSchemaRegistry();
     error InvalidSchema();
-    error InvalidResolver();
 
     // The address of the global SchemaRegistry contract.
     ISchemaRegistry private immutable SCHEMA_REGISTRY;

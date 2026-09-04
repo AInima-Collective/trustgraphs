@@ -235,6 +235,8 @@ export const compositionSource = offchainSchema.table(
     snapshot: t.text().notNull(),
     familyId: t.text().notNull(),
     programId: t.text().notNull(),
+    /** The source's real committed output domain, derived from its program. */
+    sourceOutputDomain: t.text().notNull(),
     adapter: t.text().notNull(),
     deploymentProvenance: t.text().notNull(),
     stateIndex: t.bigint({ mode: 'bigint' }).notNull(),
@@ -462,7 +464,7 @@ export const nostrWorkspaceScore = offchainSchema.table(
 )
 
 /*///////////////////////////////////////////////////////////////
-          CONTRIBUTIONS PROGRAM — derived scoring (M3)
+          CONTRIBUTIONS PROGRAM — derived scoring
 //////////////////////////////////////////////////////////////*/
 
 // contributionRound — per-(snapshot, root) round metadata for the contributions program: the

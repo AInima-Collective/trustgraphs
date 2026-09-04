@@ -26,7 +26,8 @@ contract TrustAccumulatorMirrorTest is Test {
         trust.bindSnapshot(address(trustSnapshot));
         mirror = new TrustAccumulatorMirror(trust);
         // This test doubles as the bound snapshot (in production: the contributions
-        // MerkleSnapshot, whose trigger() is then the only checkpoint mint — AUDIT_M6 M6-1).
+        // MerkleSnapshot, whose trigger() is then the only checkpoint mint —
+        // research/audits/2026-07-M6.md finding M6-1).
         mirror.bindSnapshot(address(this));
     }
 
@@ -105,7 +106,7 @@ contract TrustAccumulatorMirrorTest is Test {
         assertEq(trust.leafCount(), 1, "mirroring must not fold");
     }
 
-    /// M6-1 regression: only the bound snapshot may mint checkpoints — a directly-minted id
+    /// research/audits/2026-07-M6.md M6-1 regression: only the bound snapshot may mint checkpoints — a directly-minted id
     /// would leave the snapshot's lane-2 freeze at (0,0) and admit a contributions-blind proof.
     function test_CheckpointOnlyFromBoundSnapshot() public {
         _foldOne(1);

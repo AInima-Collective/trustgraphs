@@ -1,63 +1,50 @@
 'use client'
 
 import type React from 'react'
-import { useCallback, useEffect, useState } from 'react'
-import { type Address, formatEther, isAddress, parseEther } from 'viem'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
 import { CopyableText } from '@/components/CopyableText'
+import { GovernanceActionEditor } from '@/components/GovernanceActionEditor'
 import { ProposalActionList } from '@/components/ProposalActionList'
 import { VoteButtons } from '@/components/VoteButtons'
+import { useNetwork } from '@/contexts/NetworkContext'
 import { useEnsResolver } from '@/hooks/useEns'
-import { ProposalAction, VoteType } from '@/hooks/useGovernance'
-import { parseAccountIdentifier } from '@/lib/ens'
+import { type ProposalAction, VoteType } from '@/hooks/useGovernance'
+import {
+  type GovernanceActionDraft,
+  type GovernanceComposerActionKey,
+  defaultGovernanceActionValues,
+  encodeGovernanceActionDraft,
+  governanceActionContextFor,
+  governanceComposerActionAvailable,
+  governanceComposerDefinition,
+  governanceComposerRegistry,
+  isGovernanceComposerActionKey,
+} from '@/lib/actions'
 import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
-import type { GovernancePrefillAction } from '@/lib/governance-prefill'
+import type { GovernancePrefill } from '@/lib/governance-prefill'
 import { formatBigNumber } from '@/lib/utils'
 
 import { Card } from './Card'
 import { Switch } from './Switch'
 
-/**
- * A draft action is either the common case (send ETH from the treasury,
- * amount in ETH, no calldata) or a custom contract call for people who know
- * what calldata is. The wei conversion happens exactly once, on submit, so
- * the unit a user types is the unit the chain gets.
- */
-type DraftAction =
-  | {
-      kind: 'sendEth'
-      recipient: string
-      amountEth: string
-      previewAddress?: Address | null
-    }
-  | {
-      kind: 'custom'
-      target: string
-      valueEth: string
-      data: string
-      operation: number
-      description: string
-    }
-
-const newSendEth = (): DraftAction => ({
-  kind: 'sendEth',
-  recipient: '',
-  amountEth: '',
-})
-
-const newCustom = (): DraftAction => ({
-  kind: 'custom',
-  target: '',
-  valueEth: '0',
-  data: '0x',
-  operation: 0,
-  description: '',
-})
+type DraftEntry = GovernanceActionDraft & { id: number }
 
 const inputClassName =
-  'w-full bg-background border border-input rounded-md p-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20'
+  'w-full rounded-md border border-input bg-background p-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20'
+
+const categoryLabels: Record<string, string> = {
+  treasury: 'Treasury',
+  scoring: 'Scoring',
+  network: 'Network',
+  membership: 'Membership',
+  governance: 'Governance',
+  safety: 'Safety',
+  vault: 'Proving vault',
+  programs: 'Programs',
+  custom: 'Custom',
+}
 
 interface CreateProposalFormProps {
   canCreateProposal: boolean
@@ -69,11 +56,7 @@ interface CreateProposalFormProps {
     voteType?: VoteType | null
   ) => Promise<string | null>
   isLoading?: boolean
-  prefill?: {
-    title: string
-    description: string
-    actions: GovernancePrefillAction[]
-  } | null
+  prefill?: GovernancePrefill | null
 }
 
 export function CreateProposalForm({
@@ -83,214 +66,225 @@ export function CreateProposalForm({
   isLoading = false,
   prefill,
 }: CreateProposalFormProps) {
+  const { network } = useNetwork()
+  const resolveAccountIdentifier = useEnsResolver()
+  const nextDraftId = useRef(0)
+  const entries = useCallback(
+    (actions: readonly GovernanceActionDraft[]): DraftEntry[] =>
+      actions.map((action) => ({ ...action, id: ++nextDraftId.current })),
+    []
+  )
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
   const [title, setTitle] = useState(prefill?.title ?? '')
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [castVoteOnCreate, setCastVoteOnCreate] = useState(false)
   const [voteType, setVoteType] = useState<VoteType>(VoteType.Yes)
-  const [drafts, setDrafts] = useState<DraftAction[]>([])
-  const resolveAccountIdentifier = useEnsResolver()
-  const proposalJson = prefill
-    ? JSON.stringify(
-        {
-          title,
-          description,
-          targets: prefill.actions.map((action) => action.target),
-          values: prefill.actions.map((action) => action.value),
-          calldatas: prefill.actions.map((action) => action.data),
-          operations: prefill.actions.map((action) => action.operation),
-          actionDescriptions: prefill.actions.map(
-            (action) => action.description ?? ''
-          ),
-        },
-        null,
-        2
-      )
-    : null
+  const [drafts, setDrafts] = useState<DraftEntry[]>(() =>
+    entries(prefill?.actions ?? [])
+  )
+  const [pickerKey, setPickerKey] =
+    useState<GovernanceComposerActionKey>('send-eth')
+  const [previewActions, setPreviewActions] = useState<ProposalAction[]>([])
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  const actionContext = useMemo(
+    () => governanceActionContextFor(network),
+    [network]
+  )
+  const availableDefinitions = useMemo(
+    () =>
+      governanceComposerRegistry.filter((definition) =>
+        governanceComposerActionAvailable(definition.key, actionContext)
+      ),
+    [actionContext]
+  )
+  const definitionsByCategory = useMemo(() => {
+    const grouped = new Map<string, typeof availableDefinitions>()
+    for (const definition of availableDefinitions) {
+      grouped.set(definition.category, [
+        ...(grouped.get(definition.category) ?? []),
+        definition,
+      ])
+    }
+    return [...grouped.entries()]
+  }, [availableDefinitions])
 
   useEffect(() => {
     if (!prefill) return
     setTitle(prefill.title)
     setDescription(prefill.description)
-  }, [prefill])
+    setDrafts(entries(prefill.actions))
+  }, [entries, prefill])
 
-  const addDraft = useCallback((draft: DraftAction) => {
-    setDrafts((prev) => [...prev, draft])
-  }, [])
-
-  const removeDraft = useCallback((index: number) => {
-    setDrafts((prev) => prev.filter((_, i) => i !== index))
-  }, [])
-
-  const updateDraft = useCallback(
-    (index: number, patch: Partial<DraftAction>) => {
-      setDrafts((prev) =>
-        prev.map((draft, i) =>
-          i === index ? ({ ...draft, ...patch } as DraftAction) : draft
-        )
-      )
-    },
-    []
-  )
-
-  /** Validate drafts and convert them to on-chain actions (values in wei). */
-  const buildActions = async (): Promise<{
-    actions?: ProposalAction[]
-    error?: string
-  }> => {
-    if (!title.trim()) return { error: 'Title is required' }
-    if (!description.trim()) return { error: 'Description is required' }
-
-    if (prefill) return { actions: prefill.actions }
-
+  const encodeDrafts = useCallback(async () => {
     const actions: ProposalAction[] = []
-
-    for (let i = 0; i < drafts.length; i++) {
-      const draft = drafts[i]
-      const label = `Action ${i + 1}`
-
-      if (draft.kind === 'sendEth') {
-        const parsed = parseAccountIdentifier(draft.recipient)
-        if (parsed.kind !== 'address' && parsed.kind !== 'ens') {
-          return {
-            error: `${label}: enter a valid recipient address or ENS name`,
-          }
-        }
-        if (parsed.kind === 'ens' && !draft.previewAddress) {
-          return { error: `${label}: wait for ${parsed.name} to resolve` }
-        }
-        let wei: bigint
-        try {
-          wei = parseEther(draft.amountEth)
-        } catch {
-          return { error: `${label}: enter the ETH amount as a number` }
-        }
-        if (wei <= 0n) {
-          return { error: `${label}: the ETH amount must be more than zero` }
-        }
-        let resolved
-        try {
-          resolved = await resolveAccountIdentifier(
-            draft.recipient,
-            draft.previewAddress
-          )
-        } catch (error) {
-          return {
-            error: `${label}: ${getAccountIdentifierErrorMessage(error)}`,
-          }
-        }
-        actions.push({
-          target: resolved.address,
-          value: wei.toString(),
-          data: '0x',
-          operation: 0,
-          description: `Send ${formatEther(wei)} ETH to ${
-            resolved.ensName
-              ? `${resolved.ensName} (${resolved.address})`
-              : resolved.address
-          }`,
-        })
-      } else {
-        if (!isAddress(draft.target)) {
-          return { error: `${label}: enter a valid target address` }
-        }
-        if (!draft.description.trim()) {
-          return { error: `${label}: describe what this call does` }
-        }
-        let wei: bigint
-        try {
-          wei = parseEther(draft.valueEth || '0')
-        } catch {
-          return { error: `${label}: enter the ETH value as a number` }
-        }
-        actions.push({
-          target: draft.target,
-          value: wei.toString(),
-          data: draft.data || '0x',
-          operation: draft.operation,
-          description: draft.description,
-        })
+    for (let index = 0; index < drafts.length; index++) {
+      try {
+        actions.push(
+          ...(await encodeGovernanceActionDraft(
+            drafts[index]!,
+            actionContext,
+            resolveAccountIdentifier
+          ))
+        )
+      } catch (draftError) {
+        const message =
+          draftError instanceof Error
+            ? draftError.message
+            : getAccountIdentifierErrorMessage(draftError)
+        throw new Error(`Action ${index + 1}: ${message}`)
       }
     }
+    return actions
+  }, [actionContext, drafts, resolveAccountIdentifier])
 
-    return { actions }
-  }
+  useEffect(() => {
+    let cancelled = false
+    if (drafts.length === 0) {
+      setPreviewActions([])
+      setPreviewError(null)
+      return
+    }
+    void encodeDrafts()
+      .then((actions) => {
+        if (cancelled) return
+        setPreviewActions(actions)
+        setPreviewError(null)
+      })
+      .catch((previewFailure) => {
+        if (cancelled) return
+        setPreviewActions([])
+        setPreviewError(
+          previewFailure instanceof Error
+            ? previewFailure.message
+            : 'Complete the action fields to preview the encoded calls.'
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [drafts.length, encodeDrafts])
+
+  const proposalJson = useMemo(
+    () =>
+      previewError
+        ? null
+        : JSON.stringify(
+            {
+              title,
+              description,
+              targets: previewActions.map((action) => action.target),
+              values: previewActions.map((action) => action.value),
+              calldatas: previewActions.map((action) => action.data),
+              operations: previewActions.map((action) => action.operation),
+              actionDescriptions: previewActions.map(
+                (action) => action.description ?? ''
+              ),
+            },
+            null,
+            2
+          ),
+    [description, previewActions, previewError, title]
+  )
+
+  const addDraft = () =>
+    setDrafts((current) => [
+      ...current,
+      {
+        id: ++nextDraftId.current,
+        actionKey: pickerKey,
+        values: defaultGovernanceActionValues(pickerKey),
+      },
+    ])
+
+  const removeDraft = (index: number) =>
+    setDrafts((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index)
+    )
+
+  const moveDraft = (index: number, direction: -1 | 1) =>
+    setDrafts((current) => {
+      const destination = index + direction
+      if (destination < 0 || destination >= current.length) return current
+      const next = [...current]
+      const [moved] = next.splice(index, 1)
+      next.splice(destination, 0, moved!)
+      return next
+    })
+
+  const updateDraft = (index: number, values: unknown) =>
+    setDrafts((current) =>
+      current.map((draft, itemIndex) =>
+        itemIndex === index ? { ...draft, values } : draft
+      )
+    )
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault()
-
+    async (event: React.FormEvent) => {
+      event.preventDefault()
       if (!onCreateProposal || !canCreateProposal) {
         setError('You need voting power in this network to create a proposal')
+        return
+      }
+      if (!title.trim()) {
+        setError('Title is required')
+        return
+      }
+      if (!description.trim()) {
+        setError('Description is required')
         return
       }
 
       setIsSubmitting(true)
       setError(null)
-
-      let built: Awaited<ReturnType<typeof buildActions>>
       try {
-        built = await buildActions()
-      } catch (buildError) {
-        setError(getAccountIdentifierErrorMessage(buildError))
-        setIsSubmitting(false)
-        return
-      }
-      if (built.error || !built.actions) {
-        setError(built.error ?? 'Invalid proposal')
-        setIsSubmitting(false)
-        return
-      }
-
-      try {
+        const actions = await encodeDrafts()
         const hash = await onCreateProposal(
           title,
           description,
-          built.actions,
+          actions,
           castVoteOnCreate ? voteType : null
         )
-
-        if (hash) {
-          setTitle('')
-          setDescription('')
-          setCastVoteOnCreate(false)
-          setVoteType(VoteType.Yes)
-          setDrafts([])
-        } else {
+        if (!hash) {
           setError('The transaction was not confirmed')
+          return
         }
-      } catch (err: unknown) {
-        console.error('Error in handleSubmit:', err)
+        setTitle('')
+        setDescription('')
+        setCastVoteOnCreate(false)
+        setVoteType(VoteType.Yes)
+        setDrafts([])
+      } catch (submitError) {
         setError(
-          `Failed to create proposal: ${err instanceof Error ? err.message : 'Unknown error'}`
+          `Failed to create proposal: ${submitError instanceof Error ? submitError.message : 'Unknown error'}`
         )
       } finally {
         setIsSubmitting(false)
       }
     },
     [
-      onCreateProposal,
       canCreateProposal,
-      drafts,
-      title,
-      description,
       castVoteOnCreate,
+      description,
+      encodeDrafts,
+      onCreateProposal,
+      title,
       voteType,
     ]
   )
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground text-sm">
-        Submit a proposal for the network to vote on. It can simply put a
-        question to a vote, or it can move funds when it passes.
+      <p className="text-sm text-muted-foreground">
+        Submit a proposal for the network to vote on. Add typed on-chain
+        actions, or leave the proposal empty for a signal vote.
       </p>
 
       {error && (
-        <div className="border border-destructive/50 bg-destructive/10 p-3 rounded-md">
-          <div className="text-destructive text-sm font-medium">{error}</div>
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3">
+          <div className="text-sm font-medium text-destructive">{error}</div>
         </div>
       )}
 
@@ -302,7 +296,7 @@ export function CreateProposalForm({
           <input
             id="proposal-title"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(event) => setTitle(event.target.value)}
             placeholder="A short name for the proposal"
             className={inputClassName}
             required
@@ -316,44 +310,157 @@ export function CreateProposalForm({
           <textarea
             id="proposal-description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="What is being decided, and why it matters"
             className={`${inputClassName} min-h-24 p-3`}
             required
           />
         </div>
 
-        {/* Actions */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium">On-chain actions</p>
-            <p className="text-muted-foreground text-xs">
-              What happens automatically if the proposal passes. Optional: a
-              proposal with no actions is a signal vote.
+            <p className="text-xs text-muted-foreground">
+              Actions execute in this order if the proposal passes. Every edit
+              is re-encoded into the preview below.
             </p>
           </div>
 
-          {prefill ? (
-            <div className="space-y-3">
-              <div className="border border-success/40 bg-success-soft p-4 text-sm">
-                <p className="font-medium">DAO proposal ready</p>
+          {prefill && (
+            <div className="border border-success/40 bg-success-soft p-4 text-sm">
+              <p className="font-medium">Editable action draft loaded</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Review or change the typed values here. The exact Safe calls and
+                portable proposal JSON update automatically.
+              </p>
+            </div>
+          )}
+
+          {drafts.map((draft, index) => {
+            const definition = governanceComposerDefinition(draft.actionKey)
+            return (
+              <Card
+                key={draft.id}
+                type="detail"
+                size="md"
+                className="space-y-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {categoryLabels[definition?.category ?? 'custom']} ·
+                      Action {index + 1}
+                    </p>
+                    <p className="mt-1 text-sm font-medium">
+                      {definition?.label ?? draft.actionKey}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {definition?.summary}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => moveDraft(index, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move action ${index + 1} up`}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => moveDraft(index, 1)}
+                      disabled={index === drafts.length - 1}
+                      aria-label={`Move action ${index + 1} down`}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => removeDraft(index)}
+                      variant="destructive"
+                      size="xs"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+                {definition?.danger && (
+                  <div className="border border-destructive/50 bg-destructive/10 p-3 text-xs text-foreground">
+                    <p className="font-medium">High-impact governance action</p>
+                    <p className="mt-1 text-muted-foreground">
+                      This changes an authority or an execution safety boundary.
+                      Verify every address and consequence before submitting.
+                    </p>
+                  </div>
+                )}
+                <GovernanceActionEditor
+                  draft={draft}
+                  onChange={(values) => updateDraft(index, values)}
+                />
+              </Card>
+            )
+          })}
+
+          <div className="flex flex-col gap-2 border border-border bg-muted/20 p-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <label className="text-xs font-medium" htmlFor="action-picker">
+                Add an action
+              </label>
+              <select
+                id="action-picker"
+                value={pickerKey}
+                onChange={(event) => {
+                  if (isGovernanceComposerActionKey(event.target.value)) {
+                    setPickerKey(event.target.value)
+                  }
+                }}
+                className={inputClassName}
+              >
+                {definitionsByCategory.map(([category, definitions]) => (
+                  <optgroup
+                    key={category}
+                    label={categoryLabels[category] ?? category}
+                  >
+                    {definitions.map((definition) => (
+                      <option key={definition.key} value={definition.key}>
+                        {definition.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <Button type="button" onClick={addDraft} size="sm">
+              + Add action
+            </Button>
+          </div>
+
+          {drafts.length > 0 && (
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <p className="text-sm font-medium">Live encoded preview</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Settings generated these calls from the validated scoring
-                  draft. If the vote passes, the Safe executes them in this
-                  order; no calldata needs to be reconstructed by hand.
+                  This is the exact ordered transaction span voters will review.
                 </p>
               </div>
-              <ProposalActionList
-                actions={prefill.actions}
-                proposalDescription={prefill.description}
-              />
-              <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Return to Settings to change the tuple. This proposal JSON is
-                  portable and includes the exact target, value, operation, and
-                  calldata arrays.
+              {previewError ? (
+                <p className="border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
+                  {previewError}
                 </p>
-                {proposalJson && (
+              ) : (
+                <ProposalActionList actions={previewActions} />
+              )}
+              {proposalJson && (
+                <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Portable JSON includes the exact target, value, operation,
+                    calldata, and description arrays.
+                  </p>
                   <CopyableText
                     text={proposalJson}
                     displayText="Copy DAO proposal JSON"
@@ -362,186 +469,13 @@ export function CreateProposalForm({
                     alwaysShowCopyIcon
                     className="min-h-11 shrink-0 border border-border px-3 py-2"
                   />
-                )}
-              </div>
-            </div>
-          ) : (
-            drafts.map((draft, index) => (
-              <Card key={index} type="detail" size="md" className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">
-                    {draft.kind === 'sendEth'
-                      ? 'Send ETH from the treasury'
-                      : 'Custom contract call'}
-                  </p>
-                  <Button
-                    type="button"
-                    onClick={() => removeDraft(index)}
-                    variant="destructive"
-                    size="xs"
-                  >
-                    Remove
-                  </Button>
                 </div>
-
-                {draft.kind === 'sendEth' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="text-muted-foreground text-xs font-medium">
-                        Recipient
-                      </div>
-                      <AccountIdentifierInput
-                        value={draft.recipient}
-                        onResolvedAddressChange={(previewAddress) =>
-                          updateDraft(index, { previewAddress })
-                        }
-                        onChange={(e) =>
-                          updateDraft(index, {
-                            recipient: e.target.value,
-                            previewAddress: null,
-                          })
-                        }
-                        placeholder="0x… or name.eth"
-                        className={`${inputClassName} font-mono`}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-muted-foreground text-xs font-medium">
-                        Amount (ETH)
-                      </div>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={draft.amountEth}
-                        onChange={(e) =>
-                          updateDraft(index, { amountEth: e.target.value })
-                        }
-                        placeholder="0.0"
-                        className={inputClassName}
-                        required
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <div className="text-muted-foreground text-xs font-medium">
-                          Target contract
-                        </div>
-                        <input
-                          type="text"
-                          value={draft.target}
-                          onChange={(e) =>
-                            updateDraft(index, { target: e.target.value })
-                          }
-                          placeholder="0x..."
-                          className={`${inputClassName} font-mono`}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="text-muted-foreground text-xs font-medium">
-                          Value (ETH)
-                        </div>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={draft.valueEth}
-                          onChange={(e) =>
-                            updateDraft(index, { valueEth: e.target.value })
-                          }
-                          placeholder="0"
-                          className={inputClassName}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="text-muted-foreground text-xs font-medium">
-                          Operation
-                        </div>
-                        <select
-                          value={draft.operation}
-                          onChange={(e) =>
-                            updateDraft(index, {
-                              operation: Number(e.target.value),
-                            })
-                          }
-                          className={inputClassName}
-                        >
-                          <option value={0}>Call</option>
-                          <option value={1}>DelegateCall (advanced)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {draft.operation === 1 && (
-                      <p className="text-xs text-warn">
-                        DelegateCall runs the target's code as the treasury
-                        itself. Only use it if you know exactly why you need it.
-                      </p>
-                    )}
-
-                    <div className="space-y-2">
-                      <div className="text-muted-foreground text-xs font-medium">
-                        What this call does
-                      </div>
-                      <input
-                        type="text"
-                        value={draft.description}
-                        onChange={(e) =>
-                          updateDraft(index, { description: e.target.value })
-                        }
-                        placeholder="Plain-language description voters will read"
-                        className={inputClassName}
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="text-muted-foreground text-xs font-medium">
-                        Calldata
-                      </div>
-                      <textarea
-                        value={draft.data}
-                        onChange={(e) =>
-                          updateDraft(index, { data: e.target.value })
-                        }
-                        placeholder="0x"
-                        className={`${inputClassName} font-mono`}
-                        rows={2}
-                      />
-                    </div>
-                  </>
-                )}
-              </Card>
-            ))
-          )}
-
-          {!prefill && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => addDraft(newSendEth())}
-                variant="brand"
-                size="xs"
-              >
-                + Send ETH
-              </Button>
-              <Button
-                type="button"
-                onClick={() => addDraft(newCustom())}
-                variant="secondary"
-                size="xs"
-              >
-                + Custom contract call
-              </Button>
+              )}
             </div>
           )}
         </div>
 
-        {/* Optional initial vote (saves a transaction) */}
-        <div className="border border-border bg-muted/20 p-4 rounded-md space-y-3">
+        <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">
               Cast your own vote now (optional)
@@ -552,7 +486,6 @@ export function CreateProposalForm({
               size="md"
             />
           </div>
-
           <div className="text-xs text-muted-foreground">
             Votes with your{' '}
             {userVotingPower
@@ -560,12 +493,11 @@ export function CreateProposalForm({
               : '0'}{' '}
             voting power in the same transaction.
           </div>
-
           <VoteButtons
             isLoading={isSubmitting || isLoading}
             selected={castVoteOnCreate ? voteType : null}
-            onSelect={(vt) => {
-              setVoteType(vt)
+            onSelect={(nextVote) => {
+              setVoteType(nextVote)
               setCastVoteOnCreate(true)
             }}
           />
@@ -574,10 +506,9 @@ export function CreateProposalForm({
         <div className="border-t border-border pt-4">
           {prefill && !canCreateProposal && (
             <p className="mb-3 border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
-              The proposal is complete and its calldata is copyable above.
+              The draft remains editable and its calldata is copyable above.
               Submission needs a connected wallet with current voting power in
-              this DAO; switch to an eligible member wallet to enable the
-              button.
+              this DAO.
             </p>
           )}
           <Button

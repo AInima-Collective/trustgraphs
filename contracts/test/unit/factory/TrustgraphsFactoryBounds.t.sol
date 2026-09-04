@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {TrustgraphsParamsValidator} from "src/params/TrustgraphsParamsValidator.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
 
 import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
@@ -49,25 +50,27 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     function test_RejectsSuppliedSchemaUid() public {
         ParamsCodec.Params memory p = _baseParams();
         p.schemaUid = keccak256("someone else's schema");
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.DerivedFieldNotZero.selector));
     }
 
     function test_RejectsSuppliedAccumulator() public {
         ParamsCodec.Params memory p = _baseParams();
         p.accumulator = address(0xACC);
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.DerivedFieldNotZero.selector));
     }
 
     function test_RejectsSuppliedChainId() public {
         ParamsCodec.Params memory p = _baseParams();
         p.chainId = 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.DerivedFieldNotZero.selector));
     }
 
     /// The golden vector itself carries all three derived fields, so submitting it verbatim — the
     /// most likely copy-paste a creator would attempt — is refused.
     function test_RejectsTheGoldenParamsVerbatim() public {
-        _expectRejected(_goldenParams(), abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
+        _expectRejected(
+            _goldenParams(), abi.encodeWithSelector(TrustgraphsParamsValidator.DerivedFieldNotZero.selector)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -79,36 +82,36 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     function test_RejectsZeroDamping() public {
         ParamsCodec.Params memory p = _baseParams();
         p.dampingFp = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidDamping.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidDamping.selector, 0));
     }
 
     function test_RejectsDampingAtOrAboveScale() public {
-        uint256 scale = factory.PRECISION_SCALE();
+        uint256 scale = TrustgraphsParamsValidator.PRECISION_SCALE;
         ParamsCodec.Params memory p = _baseParams();
         p.dampingFp = scale;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidDamping.selector, scale));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidDamping.selector, scale));
 
         p.dampingFp = scale + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidDamping.selector, scale + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidDamping.selector, scale + 1));
     }
 
     /// Tolerance zero never converges within the iteration cap; too loose and "converged" stops
     /// meaning anything (1e15 is 0.1% of a unit score).
     function test_RejectsToleranceBelowMin() public {
-        uint256 min = factory.MIN_TOLERANCE_FP();
+        uint256 min = TrustgraphsParamsValidator.MIN_TOLERANCE_FP;
         ParamsCodec.Params memory p = _baseParams();
         p.toleranceFp = min - 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTolerance.selector, min - 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTolerance.selector, min - 1));
 
         p.toleranceFp = min;
         factory.validateParams(p);
     }
 
     function test_RejectsToleranceAboveMax() public {
-        uint256 max = factory.MAX_TOLERANCE_FP();
+        uint256 max = TrustgraphsParamsValidator.MAX_TOLERANCE_FP;
         ParamsCodec.Params memory p = _baseParams();
         p.toleranceFp = max + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTolerance.selector, max + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTolerance.selector, max + 1));
 
         // The boundary itself is inside the envelope.
         p.toleranceFp = max;
@@ -118,15 +121,15 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     function test_RejectsZeroIterations() public {
         ParamsCodec.Params memory p = _baseParams();
         p.maxIterations = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidIterations.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidIterations.selector, 0));
     }
 
     /// Past the cap the guest's cycle count, not the mathematics, becomes the limit.
     function test_RejectsIterationsAboveMax() public {
-        uint32 max = factory.MAX_ITERATIONS();
+        uint32 max = TrustgraphsParamsValidator.MAX_ITERATIONS;
         ParamsCodec.Params memory p = _baseParams();
         p.maxIterations = max + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidIterations.selector, max + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidIterations.selector, max + 1));
 
         p.maxIterations = max;
         factory.validateParams(p);
@@ -137,7 +140,7 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.minWeightFp = 0;
         p.maxWeightFp = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightBounds.selector, 0, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidWeightBounds.selector, 0, 0));
     }
 
     /// An inverted window would clamp every weight to a value outside its own range.
@@ -145,7 +148,7 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.minWeightFp = 10e18;
         p.maxWeightFp = 1e18;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightBounds.selector, 10e18, 1e18));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidWeightBounds.selector, 10e18, 1e18));
     }
 
     /// A degenerate-but-coherent window (min == max) is a choice, not an error.
@@ -159,20 +162,20 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     /// Trust share is the fraction of rank mass reserved for the seeded component: above S it is not
     /// a fraction.
     function test_RejectsTrustShareAboveScale() public {
-        uint256 scale = factory.PRECISION_SCALE();
+        uint256 scale = TrustgraphsParamsValidator.PRECISION_SCALE;
         ParamsCodec.Params memory p = _baseParams();
         p.trustShareFp = scale + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustShare.selector, scale + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTrustShare.selector, scale + 1));
 
         p.trustShareFp = scale; // 100% seeded is extreme but coherent
         factory.validateParams(p);
     }
 
     function test_RejectsTrustDecayAboveScale() public {
-        uint256 scale = factory.PRECISION_SCALE();
+        uint256 scale = TrustgraphsParamsValidator.PRECISION_SCALE;
         ParamsCodec.Params memory p = _baseParams();
         p.trustDecayFp = scale + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustDecay.selector, scale + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTrustDecay.selector, scale + 1));
 
         p.trustDecayFp = scale;
         factory.validateParams(p);
@@ -183,25 +186,25 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     function test_RejectsWrongPrecisionScale() public {
         ParamsCodec.Params memory p = _baseParams();
         p.precisionScale = 1e17;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidPrecisionScale.selector, 1e17));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidPrecisionScale.selector, 1e17));
     }
 
     /// A zero pool scores every member zero — a network that renders as all-zeros forever.
     function test_RejectsZeroTotalPool() public {
         ParamsCodec.Params memory p = _baseParams();
         p.totalPool = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTotalPool.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTotalPool.selector));
     }
 
-    /// `weightFieldIndex` is fixed by the canonical vouch schema: `confidence` is ABI head slot 1.
-    /// Any other index reads a different field as the edge weight.
+    /// Native networks retain the canonical vouch schema's confidence at ABI head slot 1. The
+    /// imported sibling factory has its own validator entry point for foreign schema layouts.
     function test_RejectsWrongWeightFieldIndex() public {
         ParamsCodec.Params memory p = _baseParams();
         p.weightFieldIndex = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightFieldIndex.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidWeightFieldIndex.selector, 0));
 
         p.weightFieldIndex = 2;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightFieldIndex.selector, 2));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidWeightFieldIndex.selector, 2));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -213,20 +216,20 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     function test_RejectsEmptySeedSet() public {
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = new address[](0);
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.NoTrustedSeeds.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.NoTrustedSeeds.selector));
     }
 
     /// Seeds are hashed into a merkle root at creation; the loop stays bounded.
     function test_RejectsTooManySeeds() public {
-        uint256 max = factory.MAX_TRUSTED_SEEDS();
+        uint256 max = TrustgraphsParamsValidator.MAX_TRUSTED_SEEDS;
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = _seeds(max + 1);
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.TooManyTrustedSeeds.selector, max + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.TooManyTrustedSeeds.selector, max + 1));
     }
 
     function test_AcceptsExactlyMaxSeeds() public {
         ParamsCodec.Params memory p = _baseParams();
-        p.trustedSeeds = _seeds(factory.MAX_TRUSTED_SEEDS());
+        p.trustedSeeds = _seeds(TrustgraphsParamsValidator.MAX_TRUSTED_SEEDS);
         factory.validateParams(p);
 
         Created memory c = _create(_args("full-seed-set", p));
@@ -238,7 +241,7 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = _seeds(3);
         p.trustedSeeds[1] = address(0);
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidSeed.selector, address(0)));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidSeed.selector, address(0)));
     }
 
     /// `seedSetRoot` sorts and would absorb a duplicate silently, so a repeated seed is always a
@@ -247,7 +250,7 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = _seeds(4);
         p.trustedSeeds[3] = p.trustedSeeds[1];
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidSeed.selector, p.trustedSeeds[1]));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidSeed.selector, p.trustedSeeds[1]));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -261,13 +264,13 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.envelope0DomainSeparators = new bytes32[](1);
         p.envelope0DomainSeparators[0] = keccak256("some-eip712-domain");
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.Lane2NotSupported.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.Lane2NotSupported.selector));
     }
 
     function test_RejectsLane2MaxHeadAge() public {
         ParamsCodec.Params memory p = _baseParams();
         p.lane2MaxHeadAge = 86_400;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.Lane2NotSupported.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsParamsValidator.Lane2NotSupported.selector));
     }
 
     /*//////////////////////////////////////////////////////////////

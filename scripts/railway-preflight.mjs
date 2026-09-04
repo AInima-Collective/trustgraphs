@@ -41,6 +41,8 @@ for (const required of [
   "'/data': operatorState",
   "RAILWAY_RUN_UID: '0'",
   "FRONTEND_URL: 'https://trustgraphs.xyz'",
+  "PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v5'",
+  "PONDER_VIEWS_SCHEMA: 'trust-graph'",
   'ctx.shared.RPC_URL_11155111_0',
   // The indexer RPC list is pinned alchemy-first (as a resolved shared template) with the two
   // independent public fallbacks; a pool without a host independent of the metered primary is

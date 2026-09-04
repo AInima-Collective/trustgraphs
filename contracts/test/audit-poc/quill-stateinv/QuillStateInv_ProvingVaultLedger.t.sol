@@ -174,7 +174,8 @@ contract QuillStateInv_ProvingVaultLedger is Test {
             keccak256("params"),
             IAttestationAccumulator(address(accumulator)),
             address(handler),
-            address(this)
+            address(this),
+            ""
         );
         handler.bindSnapshot(snapshot);
 

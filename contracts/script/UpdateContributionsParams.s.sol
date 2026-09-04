@@ -3,8 +3,8 @@ pragma solidity ^0.8.22;
 
 import {console} from "forge-std/console.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
 
 import {ContributionsParamsController} from "src/factory/ContributionsParamsController.sol";
 import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
@@ -51,7 +51,7 @@ contract UpdateContributionsParams is Common {
 
         if (!SafeOwnerPolicy.isSafe(authority)) revert UnsupportedParamsAuthority(authority);
 
-        GnosisSafe safe = GnosisSafe(payable(authority));
+        Safe safe = Safe(payable(authority));
         uint256 threshold = safe.getThreshold();
         if (threshold != 1) revert DevSafeThresholdNotOne(authority, threshold);
         if (!safe.isOwner(broadcaster)) revert BroadcasterNotDevSafeOwner(authority, broadcaster);

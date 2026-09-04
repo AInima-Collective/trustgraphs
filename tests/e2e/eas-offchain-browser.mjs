@@ -5,11 +5,18 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+const requireFromFrontend = createRequire(
+  new URL('../../packages/frontend/package.json', import.meta.url)
+)
 const loadPlaywright = () => {
   try {
     return require('playwright')
   } catch {
-    return require('/usr/lib/node_modules/playwright')
+    try {
+      return requireFromFrontend('playwright')
+    } catch {
+      return require('/usr/lib/node_modules/playwright')
+    }
   }
 }
 const { chromium } = loadPlaywright()
@@ -317,7 +324,7 @@ const createHybridNetwork = async (page) => {
     waitUntil: 'domcontentloaded',
     timeout: 90_000,
   })
-  await page.getByRole('button', { name: 'Start a standard network' }).click()
+  await page.getByRole('link', { name: 'Start a standard network' }).click()
   await connect(page)
 
   await page.getByLabel('Name').fill(networkName)
@@ -442,7 +449,20 @@ const main = async () => {
       waitUntil: 'domcontentloaded',
       timeout: 90_000,
     })
-    await page.getByText(networkName, { exact: true }).first().waitFor()
+    const detailReady = await page
+      // Before the wallet connects, the disabled trigger's tooltip supplies an
+      // accessible name explaining why it is disabled. Its visible label is
+      // still the stable signal that the interactive detail view has mounted.
+      .getByText('Make attestation', { exact: true })
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!detailReady) {
+      throw new Error(
+        `network detail did not become interactive; visible page: ${(await page.locator('body').innerText()).slice(0, 8_000)}`
+      )
+    }
     if (phase !== 'render-final') await connect(page)
 
     if (phase === 'onchain-create') {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 
@@ -83,7 +83,7 @@ contract ContributionsInstanceTest is Test {
         mirror = new TrustAccumulatorMirror(IAttestationAccumulator(address(trustResolver)));
         verifier = new MockZkVerifier();
         snapshot = new MerkleSnapshot(
-            verifier, PARAMS_HASH, IAttestationAccumulator(address(mirror)), address(this), address(this)
+            verifier, PARAMS_HASH, IAttestationAccumulator(address(mirror)), address(this), address(this), ""
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(contribResolver)));
         snapshot.setEpochLength(EPOCH_LENGTH);
@@ -197,7 +197,7 @@ contract ContributionsInstanceTest is Test {
         view
         returns (bytes32)
     {
-        // Journal v3, field order frozen: slot A (acc, leafCount) then slot B
+        // The journal, field order frozen: slot A (acc, leafCount) then slot B
         // (anchorAcc, anchorCount) — INTERFACES.md §4 — then the two v3 bindings.
         return keccak256(
             abi.encode(

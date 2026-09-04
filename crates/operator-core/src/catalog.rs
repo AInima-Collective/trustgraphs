@@ -191,7 +191,7 @@ pub struct CatalogEntry {
     pub contributions_params: Option<ContributionsParams>,
     /// Complete frozen V1 tuple for the isolated weighted-prior program.
     pub weighted_params: Option<WeightedParams>,
-    /// Complete frozen V1 tuple for the isolated composition program.
+    /// Complete typed tuple for the isolated composition program.
     pub composition_params: Option<CompositionParams>,
     /// The hash our reconstruction produces. Equal to the snapshot's, or this would be a skip.
     pub reconstructed_params_hash: B256,

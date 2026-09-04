@@ -39,7 +39,7 @@ only a redacted assertion and evidence digest.
 
 ## Freeze and dark deploy
 
-1. Record the git commit, SP1 version `6.3.1`, guest ELF SHA-256, locally derived program vkey,
+1. Record the git commit, SP1 version `6.6.0`, guest ELF SHA-256, locally derived program vkey,
    chain ID, EAS address/version, canonical gateway, factory/deployer addresses, source-verification
    links, operator image digest, relay image digests, and configuration digests. Never identify code
    by a mutable image tag or branch name.

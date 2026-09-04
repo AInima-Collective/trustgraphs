@@ -9,12 +9,14 @@ import {ISnapshotAccumulatorView} from "interfaces/merkle/ISnapshotAccumulatorVi
 
 /// @title CompositionSourceAccumulator
 /// @notice Pulls 2–8 authenticated source states at trigger time and freezes the exact canonical
-///         `TGCM` bytes under the standard accumulator checkpoint interface.
+///         `TGCM` bytes under the standard accumulator checkpoint interface. Records carry
+///         each source's real output domain, derived from the adapter's authenticated program ID —
+///         never from caller input — and checked against the committed policy bytes.
 contract CompositionSourceAccumulator is IAttestationAccumulator {
     bytes4 public constant CAPTURE_MAGIC = 0x5447434d; // "TGCM"
     uint16 public constant MANIFEST_VERSION = 1;
     uint256 public constant POLICY_HEADER_LENGTH = 15;
-    uint256 public constant POLICY_RECORD_LENGTH = 133;
+    uint256 public constant POLICY_RECORD_LENGTH = 165;
     bytes32 public constant ALLOCATION_OUTPUT_KIND = keccak256("allocation");
 
     struct PolicySource {
@@ -60,6 +62,7 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
     error UnauthenticatedAdapter(uint8 index, address adapter);
     error DuplicateAdapter(uint8 index, address adapter);
     error AdapterPolicyMismatch(uint8 index);
+    error UnadmittedAdapterProgram(uint8 index, bytes32 programId);
     error WrongOutputKind(uint8 index, bytes32 outputKind);
     error WrongAdapterChain(uint8 index, uint64 chainId);
     error CaptureBlockTooLarge(uint256 blockNumber);
@@ -112,7 +115,7 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
         delete _policy;
         uint8 count = commitment.sourceCount;
         for (uint8 i; i < count; ++i) {
-            (,,,, uint64 weight, uint64 maxAgeBlocks) = _policyRecord(manifest, i);
+            (,,,,, uint64 weight, uint64 maxAgeBlocks) = _policyRecord(manifest, i);
             _policy.push(
                 PolicySource({
                     adapter: ICompositionSourceAdapter(adapters[i]), weight: weight, maxAgeBlocks: maxAgeBlocks
@@ -202,13 +205,17 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
             if (block.number - state.freezeBlock > policy.maxAgeBlocks) {
                 revert StaleSource(i, state.freezeBlock, policy.maxAgeBlocks);
             }
+            bytes32 programId = adapter.programId();
+            bytes32 sourceOutputDomain = TrustComposeValidator.admittedSourceOutputDomain(programId);
+            if (sourceOutputDomain == bytes32(0)) revert UnadmittedAdapterProgram(i, programId);
             manifest = bytes.concat(
                 manifest,
                 abi.encodePacked(
                     adapter.sourceId(),
                     adapter.snapshot(),
                     adapter.familyId(),
-                    adapter.programId(),
+                    programId,
+                    sourceOutputDomain,
                     state.stateIndex,
                     state.freezeBlock,
                     state.outputRoot,
@@ -228,9 +235,7 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
         view
         returns (TrustComposeValidator.Commitment memory commitment)
     {
-        commitment = TrustComposeValidator.validatePolicyManifest(
-            manifest, uint64(block.chainid), _manifestProgram(manifest), type(uint64).max
-        );
+        commitment = TrustComposeValidator.validatePolicyManifest(manifest, uint64(block.chainid), type(uint64).max);
         uint8 count = commitment.sourceCount;
         if (adapters.length != count) revert AdapterCountMismatch(count, adapters.length);
 
@@ -241,25 +246,28 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
                 if (adapters[j] == adapterAddress) revert DuplicateAdapter(i, adapterAddress);
             }
             ICompositionSourceAdapter adapter = ICompositionSourceAdapter(adapterAddress);
-            (bytes32 sourceId_, address snapshot_, bytes32 familyId_, bytes32 programId_,, uint64 maxAgeBlocks) =
-                _policyRecord(manifest, i);
+            (
+                bytes32 sourceId_,
+                address snapshot_,
+                bytes32 familyId_,
+                bytes32 programId_,
+                bytes32 sourceOutputDomain_,,
+                uint64 maxAgeBlocks
+            ) = _policyRecord(manifest, i);
             if (
                 adapter.sourceId() != sourceId_ || adapter.snapshot() != snapshot_ || adapter.familyId() != familyId_
                     || adapter.programId() != programId_ || adapter.deploymentProvenance() == bytes32(0)
                     || maxAgeBlocks == 0
             ) revert AdapterPolicyMismatch(i);
+            // The committed output domain must be the one derived from the adapter's authenticated
+            // program, not merely a value consistent with the manifest's own program column.
+            bytes32 derivedDomain = TrustComposeValidator.admittedSourceOutputDomain(adapter.programId());
+            if (derivedDomain == bytes32(0)) revert UnadmittedAdapterProgram(i, adapter.programId());
+            if (derivedDomain != sourceOutputDomain_) revert AdapterPolicyMismatch(i);
             bytes32 adapterOutputKind = adapter.outputKind();
             if (adapterOutputKind != ALLOCATION_OUTPUT_KIND) revert WrongOutputKind(i, adapterOutputKind);
             uint64 adapterChain = adapter.chainId();
             if (adapterChain != uint64(block.chainid)) revert WrongAdapterChain(i, adapterChain);
-        }
-    }
-
-    function _manifestProgram(bytes calldata manifest) private pure returns (bytes32 programId_) {
-        if (manifest.length >= POLICY_HEADER_LENGTH + 116) {
-            assembly ("memory-safe") {
-                programId_ := calldataload(add(manifest.offset, 99))
-            }
         }
     }
 
@@ -271,6 +279,7 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
             address snapshot_,
             bytes32 familyId_,
             bytes32 programId_,
+            bytes32 sourceOutputDomain_,
             uint64 weight_,
             uint64 maxAgeBlocks_
         )
@@ -281,8 +290,9 @@ contract CompositionSourceAccumulator is IAttestationAccumulator {
             snapshot_ := shr(96, calldataload(add(add(manifest.offset, offset), 32)))
             familyId_ := calldataload(add(add(manifest.offset, offset), 52))
             programId_ := calldataload(add(add(manifest.offset, offset), 84))
-            weight_ := shr(192, calldataload(add(add(manifest.offset, offset), 116)))
-            maxAgeBlocks_ := shr(192, calldataload(add(add(manifest.offset, offset), 124)))
+            sourceOutputDomain_ := calldataload(add(add(manifest.offset, offset), 116))
+            weight_ := shr(192, calldataload(add(add(manifest.offset, offset), 148)))
+            maxAgeBlocks_ := shr(192, calldataload(add(add(manifest.offset, offset), 156)))
         }
     }
 }

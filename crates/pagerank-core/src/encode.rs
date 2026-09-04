@@ -7,8 +7,8 @@
 //! `abi.encode` is simply the concatenation of 32-byte big-endian words. We hand-roll it (rather
 //! than pull in a proc-macro ABI crate) for auditability and zkVM-friendliness.
 
-use crate::{merkle, Journal, Params, SelectionParams, SignerJournal, PARAMS_SCHEMA_VERSION};
-use alloy_primitives::{keccak256, Address, B256, U256};
+use crate::{merkle, Params, SelectionParams, SignerJournal, PARAMS_SCHEMA_VERSION};
+use alloy_primitives::{keccak256, B256, U256};
 
 // The word encoders and the accumulator fold are program-agnostic and live in `zk-core`;
 // re-exported so every existing `encode::word_*` / `encode::fold` call site is unchanged.
@@ -16,73 +16,11 @@ pub use zk_core::fold::fold;
 // Journal-v3 domain separation is universal, so it lives in `zk-core` and every program crate
 // re-exports it from the same place its journal encoder lives.
 pub use zk_core::journal::instance_domain;
+// The lane-1 accumulator encodings and the journal-v3 tuple are shared with the other
+// root-producer programs and live in `zk-core`; re-exported so call sites are unchanged.
+pub use zk_core::edge::{accumulate, edge_leaf};
+pub use zk_core::journal::{journal_digest, journal_encoded};
 pub use zk_core::words::{word_addr, word_u256, word_u32, word_u64, word_u8};
-
-/// The accumulator edge leaf:
-/// `keccak256(abi.encode(uint8 kind, address attester, address recipient, bytes32 uid,
-///                       uint256 blockTimestamp, bytes32 dataHash))`.
-pub fn edge_leaf(
-    kind: u8,
-    attester: Address,
-    recipient: Address,
-    uid: B256,
-    block_timestamp: u64,
-    data_hash: B256,
-) -> B256 {
-    let mut buf = Vec::with_capacity(32 * 6);
-    buf.extend_from_slice(&word_u8(kind));
-    buf.extend_from_slice(&word_addr(attester));
-    buf.extend_from_slice(&word_addr(recipient));
-    buf.extend_from_slice(uid.as_slice());
-    buf.extend_from_slice(&word_u256(U256::from(block_timestamp)));
-    buf.extend_from_slice(data_hash.as_slice());
-    keccak256(&buf)
-}
-
-/// Recompute the running accumulator over the full edge set, returning `(acc, leafCount)`.
-/// `acc_0 = bytes32(0)`.
-pub fn accumulate(edges: &[crate::RawEdge]) -> (B256, u64) {
-    let mut acc = B256::ZERO;
-    for e in edges {
-        let data_hash = keccak256(&e.data);
-        let leaf = edge_leaf(e.kind, e.attester, e.recipient, e.uid, e.block_timestamp, data_hash);
-        acc = fold(acc, leaf);
-    }
-    (acc, edges.len() as u64)
-}
-
-/// The ABI-encoded journal-v3 tuple — the exact bytes the SP1 guest commits as `publicValues`,
-/// and the preimage of the journal digest (field order FROZEN, OFFCHAIN doc §4.3 + the two v3
-/// bindings appended):
-/// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 anchorAcc, uint64 anchorCount,
-///             bytes32 paramsHash, bytes32 outputRoot, bytes32 ipfsHash, bytes32 cidDigest,
-///             uint256 totalValue, bytes32 skippedDigest,
-///             address recipient, bytes32 instanceDomain)`.
-///
-/// The last two words are pass-throughs the guest copies from its witness; both are made binding
-/// by `MerkleSnapshot.submitProof`, which rebuilds the digest with its own `recipient` argument
-/// and an `instanceDomain` derived from `address(this)` + `block.chainid`.
-pub fn journal_encoded(j: &Journal) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(32 * 12);
-    buf.extend_from_slice(j.acc.as_slice());
-    buf.extend_from_slice(&word_u64(j.leaf_count));
-    buf.extend_from_slice(j.anchor_acc.as_slice());
-    buf.extend_from_slice(&word_u64(j.anchor_count));
-    buf.extend_from_slice(j.params_hash.as_slice());
-    buf.extend_from_slice(j.output_root.as_slice());
-    buf.extend_from_slice(j.ipfs_hash.as_slice());
-    buf.extend_from_slice(j.cid_digest.as_slice());
-    buf.extend_from_slice(&word_u256(j.total_value));
-    buf.extend_from_slice(j.skipped_digest.as_slice());
-    buf.extend_from_slice(&word_addr(j.recipient));
-    buf.extend_from_slice(j.instance_domain.as_slice());
-    buf
-}
-
-/// The journal digest = `keccak256(journal_encoded(j))`. This is what the on-chain verifier binds.
-pub fn journal_digest(j: &Journal) -> B256 {
-    keccak256(journal_encoded(j))
-}
 
 /// The lane-2 domain-set word: zero for disabled/empty, otherwise keccak of the ordered separators.
 pub fn domain_set_hash(separators: &[B256]) -> B256 {

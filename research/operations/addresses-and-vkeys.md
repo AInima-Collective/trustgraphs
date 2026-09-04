@@ -58,11 +58,19 @@ a proof from any other binary does not verify.
 | --- | --- | --- |
 | trust-graph | `0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e` | verifier and factory live |
 | trust-graph-weighted | `0x0027625a41e9d165ab50ca4ff9afbc134385b99688a5fd69cdf03d5056f5abb2` | verifier and factory live |
-| trust-compose | `0x00e2847cc257d916a6422283094e8764296045e5f9ed8805b7aaa9b3dd6f7aed` | verifier and factory live |
+| trust-compose | superseded — see note below | replacement pending |
 | signer-sync | `0x00d1b981df6bee1682be2b212151d2ac74c30108215d8e949a84a604ae4baadb` | verifier and governed creation path live |
 | contributions | `0x0083cb62532a5c855c0c1b61a1eb7b7d5d6d924784342ea661c80baf79cfa243` | verifier and factory live |
 | hypercerts | `0x009890d8fed8be4836e060c25ad267049efbe79ce929b0e63c1e086007008d40` | release identity only |
 | nostr-workspace | `0x003a7984610aa854a8daa012d2d78846ba663781c8fe3aa74fed99be047b6566` | release identity only |
+
+The `trust-compose` row is in transition: the guest was replaced 2026-09-01 by the mixed
+standard/weighted-source program (see `research/MIXED_COMPOSITION_V2.md`, historical file name),
+so the previously published vkey
+(`0x00e2847cc257d916a6422283094e8764296045e5f9ed8805b7aaa9b3dd6f7aed`) identifies a deleted
+binary. The next reproducible release publishes the new vkey, and the Sepolia composition
+verifier + factory must be redeployed against it; the live pair above predates the replacement
+and will not verify new-format proofs.
 
 Dev-derived values for each program appear in
 [`concepts/networks-and-programs.md`](../../docs/concepts/networks-and-programs.md).

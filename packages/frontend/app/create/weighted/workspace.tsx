@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Address,
   type Hex,
+  encodeFunctionData,
   getAddress,
   isAddress,
   isHex,
@@ -643,11 +644,6 @@ export const WeightedPriorWorkspace = ({
       return
     }
     const params = new URLSearchParams(window.location.search)
-    const instance = params.get('instance')
-    if (instance && isHex(instance) && instance.length === 66) {
-      router.replace(`/networks/${instance}/settings?tab=scoring`)
-      return
-    }
     const accounts = (params.get('accounts') ?? '')
       .split(',')
       .map((value) => value.trim())
@@ -853,21 +849,19 @@ export const WeightedPriorWorkspace = ({
           const fingerprint = keccak256(data)
           const nextParamsHash = rotatedParamsHash(rotationInstance, exact)
           saveGovernancePrefill({
+            version: 2,
             networkId: rotationInstance.id,
             fingerprint,
-            parentHash: active.commitments.paramsHash,
-            proposedHash: nextParamsHash,
             title: 'Change weighted starting shares',
             description: `Replace the network's persistent starting-share distribution with the reviewed ${exact.priorCount}-account manifest. Vouches and ordinary score updates do not require this action.\n\nCurrent params hash: ${active.commitments.paramsHash}\nProposed params hash: ${nextParamsHash}\nPrior root: ${exact.priorRoot}\nManifest SHA-256: ${exact.manifestSha256}\n\nIf this proposal passes and the Safe executes it, the controller's separate activation delay must still elapse before anyone can activate the new version.`,
             actions: [
               {
-                target: active.controller,
-                value: '0',
-                data,
-                operation: 0,
-                description: 'Propose the reviewed weighted starting shares',
-                contractName: 'WeightedPriorParamsController',
-                functionSignature: 'proposePrior(bytes,bytes32)',
+                actionKey: 'rotate-weighted-prior',
+                values: {
+                  controller: active.controller,
+                  manifest: exact.manifest,
+                  metadataDigest: exact.metadataDigest,
+                },
               },
             ],
             createdAt: Date.now(),
@@ -987,6 +981,50 @@ export const WeightedPriorWorkspace = ({
         successMessage: `Version ${pending.version} is now active.`,
       })
       setSuccess(`Version ${pending.version} is active.`)
+      await loadRotation()
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelPending = async () => {
+    if (!pending || !rotationInstance) return
+    setBusy(true)
+    setProblem(null)
+    try {
+      if (wrongChain)
+        throw new Error('Switch the wallet to the target chain first.')
+      if (rotationInstance.governance) {
+        const data = encodeFunctionData({
+          abi: weightedPriorParamsControllerAbi,
+          functionName: 'cancelPrior',
+        })
+        const fingerprint = keccak256(data)
+        saveGovernancePrefill({
+          version: 2,
+          networkId: rotationInstance.id,
+          fingerprint,
+          title: `Cancel weighted starting shares version ${pending.version}`,
+          description: `Cancel the currently pending weighted-prior version ${pending.version}.`,
+          actions: [{ actionKey: 'cancel-weighted-prior', values: {} }],
+          createdAt: Date.now(),
+        })
+        router.push(
+          `/networks/${rotationInstance.id}/governance?new=1&actionDraft=${fingerprint}`
+        )
+        return
+      }
+      await txToast({
+        tx: {
+          address: pending.controller as Address,
+          abi: weightedPriorParamsControllerAbi,
+          functionName: 'cancelPrior',
+        },
+        successMessage: `Version ${pending.version} cancelled.`,
+      })
+      setSuccess(`Version ${pending.version} was cancelled.`)
       await loadRotation()
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -1216,18 +1254,30 @@ export const WeightedPriorWorkspace = ({
                   {pendingDiagnosis}
                 </p>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={activate}
-                disabled={
-                  busy ||
-                  wrongChain ||
-                  pending.availability.status === 'unavailable'
-                }
-              >
-                Activate after the delay
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelPending}
+                  disabled={busy || wrongChain}
+                >
+                  {governedRotation
+                    ? 'Review cancellation proposal'
+                    : 'Cancel pending'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={activate}
+                  disabled={
+                    busy ||
+                    wrongChain ||
+                    pending.availability.status === 'unavailable'
+                  }
+                >
+                  Activate after the delay
+                </Button>
+              </div>
             </div>
           )}
         </Card>

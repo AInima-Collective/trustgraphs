@@ -143,12 +143,18 @@ export const ingestCompositionScores = async (
   // CIDs are derived from the TGCM sha256 fields by the recomputer, but source downloads need the
   // strings up front. rawCompositionCid is the only accepted derivation.
   const captureHex = manifestBytes.slice(2)
-  const captureRecordBytes = 261
+  // Each 293-byte record carries its source's real output domain after the
+  // program ID; the committed blob sha256 sits one word past the output root.
+  const captureRecordBytes = 293
+  const blobSha256Offset = 196
   const captureHeaderBytes = 23
   const sourcePreimages = await Promise.all(
     sourceCheckpointIds.map(async (_sourceCheckpointId, position) => {
       const start =
-        (captureHeaderBytes + position * captureRecordBytes + 164) * 2
+        (captureHeaderBytes +
+          position * captureRecordBytes +
+          blobSha256Offset) *
+        2
       const blobSha256 = `0x${captureHex.slice(start, start + 64)}` as Hex
       const cid = rawCompositionCid(blobSha256)
       return { cid, blob: await fetchSource(cid) }
@@ -253,6 +259,7 @@ export const ingestCompositionScores = async (
         snapshot: source.snapshot,
         familyId: source.familyId,
         programId: source.programId,
+        sourceOutputDomain: source.sourceOutputDomain,
         adapter: adapter.adapter,
         deploymentProvenance: adapter.deploymentProvenance,
         stateIndex: source.stateIndex,

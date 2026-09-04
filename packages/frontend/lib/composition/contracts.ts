@@ -11,8 +11,9 @@ import {
   COMPOSITION_IDENTITY_DOMAIN,
   COMPOSITION_OUTPUT_DOMAIN,
   COMPOSITION_OUTPUT_KIND,
+  COMPOSITION_PARAMS_VERSION,
   COMPOSITION_PROGRAM_ID,
-  COMPOSITION_VERSION,
+  COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
   type CompositionConfig,
   type CompositionPreview,
   type CompositionSource,
@@ -28,8 +29,9 @@ import {
 import { ZERO_ADDRESS, ZERO_HASH } from '../pagerank/words'
 import type { InitialProvingPolicy } from '../proving-prepay'
 
+/** The frozen 20-word tuple; word 6 is the closed source compatibility class. */
 const PARAMS =
-  '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
+  '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 sourceCompatibilityClass,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
 
 /** `TrustComposeFactory.CreateArgs`, shared by the base and governed creation paths. */
 const CREATE_ARGS =
@@ -58,7 +60,6 @@ const TRUST_COMPOSE_FACTORY_ERRORS = [
   'error InvalidIdentityDomain(bytes32 identityDomain)',
   'error InvalidOutputKind(bytes32 outputKind)',
   'error InvalidOutputDomain(bytes32 outputDomain)',
-  'error InvalidAdmittedProgram(bytes32 programId)',
   'error InvalidWeightScale(uint64 weightScale)',
   'error InvalidOutputPool()',
   'error InvalidSourceCount(uint8 count)',
@@ -95,6 +96,9 @@ const TRUST_COMPOSE_FACTORY_ERRORS = [
   'error AdapterPolicyMismatch(uint8 index)',
   'error WrongOutputKind(uint8 index, bytes32 outputKind)',
   'error WrongAdapterChain(uint8 index, uint64 chainId)',
+  'error InvalidCompatibilityClass(bytes32 class)',
+  'error WrongSourceOutputDomain(uint8 index, bytes32 programId, bytes32 sourceOutputDomain)',
+  'error UnadmittedAdapterProgram(uint8 index, bytes32 programId)',
 ] as const
 
 export const trustComposeFactoryAbi = parseAbi([
@@ -102,7 +106,7 @@ export const trustComposeFactoryAbi = parseAbi([
   'event TrustComposeParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
   `function createInstance(${CREATE_ARGS} args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
   'function computeInstanceId(address creator,string name,bytes32 salt) pure returns (bytes32)',
-  'function validateCreation((uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId) params,bytes manifest) view',
+  `function validateCreation(${PARAMS} params,bytes manifest) view`,
   'function EPOCH_FLOOR() view returns (uint64)',
   'function POLICY_ACTIVATION_DELAY() view returns (uint48)',
   'function SOURCE_ADAPTER_FACTORY() view returns (address)',
@@ -225,10 +229,31 @@ export const compositionMetadataDigest = (
     )
   )
 
-export const compositionAdapterSetHash = (adapters: Address[]): Hex =>
-  keccak256(encodeAbiParameters([{ type: 'address[]' }], [adapters]))
+const sharedParamsFields = (config: CompositionConfig) => ({
+  version: COMPOSITION_PARAMS_VERSION,
+  programId: COMPOSITION_PROGRAM_ID,
+  scopeHash: config.scopeHash,
+  identityDomain: COMPOSITION_IDENTITY_DOMAIN,
+  outputKind: COMPOSITION_OUTPUT_KIND,
+  outputDomain: COMPOSITION_OUTPUT_DOMAIN,
+  weightScale: WEIGHT_SCALE,
+  outputPool: config.outputPool,
+  // The factory derives these five fields after it deploys the accumulator. Supplying their
+  // preview values would make otherwise correct creation calldata revert.
+  sourcePolicyRoot: ZERO_HASH,
+  sourceCount: 0,
+  policyManifestSha256: ZERO_HASH,
+  maxSources: config.bounds.maxSources,
+  maxEntriesPerSource: config.bounds.maxEntriesPerSource,
+  maxAggregateEntries: config.bounds.maxAggregateEntries,
+  maxUnionAccounts: config.bounds.maxUnionAccounts,
+  maxAggregateBlobBytes: config.bounds.maxAggregateBlobBytes,
+  maxSourceAgeBlocks: MAX_SOURCE_AGE_BLOCKS,
+  accumulator: ZERO_ADDRESS,
+  chainId: 0n,
+})
 
-export const compositionCreateArgs = (
+const sharedCreateFields = (
   fields: CompositionCreationFields,
   config: CompositionConfig,
   preview: CompositionPreview
@@ -237,30 +262,6 @@ export const compositionCreateArgs = (
   return {
     name: fields.name.trim(),
     metadataURI: fields.metadataURI.trim(),
-    params: {
-      version: COMPOSITION_VERSION,
-      programId: COMPOSITION_PROGRAM_ID,
-      scopeHash: config.scopeHash,
-      identityDomain: COMPOSITION_IDENTITY_DOMAIN,
-      outputKind: COMPOSITION_OUTPUT_KIND,
-      outputDomain: COMPOSITION_OUTPUT_DOMAIN,
-      admittedProgramId: config.admittedProgramId,
-      weightScale: WEIGHT_SCALE,
-      outputPool: config.outputPool,
-      // The factory derives these five fields after it deploys the accumulator. Supplying their
-      // preview values would make otherwise correct creation calldata revert.
-      sourcePolicyRoot: ZERO_HASH,
-      sourceCount: 0,
-      policyManifestSha256: ZERO_HASH,
-      maxSources: config.bounds.maxSources,
-      maxEntriesPerSource: config.bounds.maxEntriesPerSource,
-      maxAggregateEntries: config.bounds.maxAggregateEntries,
-      maxUnionAccounts: config.bounds.maxUnionAccounts,
-      maxAggregateBlobBytes: config.bounds.maxAggregateBlobBytes,
-      maxSourceAgeBlocks: MAX_SOURCE_AGE_BLOCKS,
-      accumulator: ZERO_ADDRESS,
-      chainId: 0n,
-    },
     policyManifest: preview.policyManifest,
     sourceAdapters: adapters,
     metadataDigest: compositionMetadataDigest(preview, adapters),
@@ -271,6 +272,18 @@ export const compositionCreateArgs = (
     salt: fields.salt,
   }
 }
+
+export const compositionCreateArgs = (
+  fields: CompositionCreationFields,
+  config: CompositionConfig,
+  preview: CompositionPreview
+) => ({
+  ...sharedCreateFields(fields, config, preview),
+  params: {
+    ...sharedParamsFields(config),
+    sourceCompatibilityClass: COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
+  },
+})
 
 export const compositionCreatePayload = (
   fields: CompositionCreationFields,

@@ -22,7 +22,12 @@ import {
   mergeInstance,
   resolveNetwork,
 } from './catalog'
-import { APIS } from './config'
+import {
+  APIS,
+  CONTRIBUTIONS_FACTORY,
+  FAST_CONTRIBUTIONS_FACTORY,
+  PROVING_VAULT,
+} from './config'
 import { Network } from './types'
 import { getWeightedNetwork } from './weighted-prior/network.server'
 
@@ -98,7 +103,15 @@ export const getNetwork = async (
     // resolve to the same address-keyed Network shape once discovered, so every network sub-route
     // (governance, rewards, settings) must share this fallback rather than special-casing only the
     // overview page.
-    const weighted = await getWeightedNetwork(id, APIS.ponder)
+    const weighted = await getWeightedNetwork(id, APIS.ponder, {
+      ...(PROVING_VAULT ? { provingVault: PROVING_VAULT } : {}),
+      ...(FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY
+        ? {
+            contributionsFactory: (FAST_CONTRIBUTIONS_FACTORY ||
+              CONTRIBUTIONS_FACTORY) as `0x${string}`,
+          }
+        : {}),
+    })
     if (weighted.network) {
       return {
         network: weighted.network,
@@ -120,7 +133,7 @@ export const getNetwork = async (
  *
  * `instanceToNetwork` intentionally narrows the 17-field params tuple to what the existing graph
  * screens consume. The settings page is the one place where that loss is unacceptable, so it
- * asks for the authoritative catalog row separately. Failure is non-fatal: seed-only and legacy
+ * asks for the authoritative catalog row separately. Failure is non-fatal: seed-only and pre-factory
  * networks still have useful live contract settings to show.
  */
 export const getInstanceDetails = async (

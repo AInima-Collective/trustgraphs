@@ -355,11 +355,11 @@ fn add_weighted(chain: &mut FakeChain, seed: u8) -> B256 {
 }
 
 fn composition_params(accumulator: Address) -> composition_core::Params {
-    let sample = composition_core::fixture::sample_input();
+    let mixed = composition_core::fixture::mixed_input();
     let capture =
-        composition_core::codec::parse_capture_manifest(&sample.manifest, sample.params.chain_id)
+        composition_core::codec::parse_capture_manifest(&mixed.manifest, mixed.params.chain_id)
             .unwrap();
-    let mut params = sample.params;
+    let mut params = mixed.params;
     params.chain_id = 31_337;
     params.accumulator = accumulator;
     params.source_policy_root = composition_core::codec::source_policy_root(&capture.sources);
@@ -369,12 +369,11 @@ fn composition_params(accumulator: Address) -> composition_core::Params {
     params
 }
 
-fn add_composition(chain: &mut FakeChain, seed: u8) -> B256 {
+fn add_composition_with(chain: &mut FakeChain, seed: u8, params: composition_core::Params) -> B256 {
     let id = B256::from([seed; 32]);
     let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
-    let accumulator = Address::from([seed.wrapping_add(0x20); 20]);
+    let accumulator = params.accumulator;
     let controller = Address::from([seed.wrapping_add(0x40); 20]);
-    let params = composition_params(accumulator);
     let hash = composition_core::codec::params_hash(&params);
     chain.ids.push(id);
     chain.records.insert(
@@ -401,6 +400,11 @@ fn add_composition(chain: &mut FakeChain, seed: u8) -> B256 {
         },
     );
     id
+}
+
+fn add_composition(chain: &mut FakeChain, seed: u8) -> B256 {
+    let accumulator = Address::from([seed.wrapping_add(0x20); 20]);
+    add_composition_with(chain, seed, composition_params(accumulator))
 }
 
 fn add_nostr_workspace(chain: &mut FakeChain, seed: u8) -> (B256, ManifestEntry) {
@@ -535,7 +539,12 @@ fn composition_is_discovered_only_through_its_typed_controller_and_program_id() 
     assert!(entry.params.is_none());
     assert!(entry.weighted_params.is_none());
     let params = entry.composition_params.as_ref().expect("composition tuple");
+    assert_eq!(params.version, composition_core::PARAMS_VERSION);
     assert_eq!(composition_core::codec::params_hash(params), entry.reconstructed_params_hash);
+    assert_eq!(
+        params.source_compatibility_class,
+        composition_core::source_compatibility_class_v1()
+    );
 }
 
 #[test]

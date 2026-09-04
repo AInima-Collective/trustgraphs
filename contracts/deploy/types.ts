@@ -70,7 +70,7 @@ export type ProgramContext = {
 
 export type NetworkDeploy = {
   deployer: Hex
-  /** Present on direct DeployNetwork artifacts; older and factory-derived files omit it. */
+  /** Optional: factory-derived deploy files omit it. */
   epoch_length?: number
   contracts: {
     merkle_snapshot: Hex
@@ -103,34 +103,6 @@ export type DeployedSchema = {
   resolver: Hex
   revocable: boolean
   schema: string
-}
-
-/**
- * Shape written by `contracts/script/DeployContributionsInstance.s.sol` to
- * `.docker/contributions_instance_<label>_deploy.json`.
- */
-export type ContributionsInstanceDeploy = {
-  deployer: Hex
-  instance_id: Hex
-  params_hash: Hex
-  epoch_length: number
-  contracts: {
-    contribution_resolver: Hex
-    trust_accumulator_mirror: Hex
-    trust_accumulator: Hex
-    sp1_gateway: Hex
-    zk_verifier: Hex
-    merkle_snapshot: Hex
-    params_controller: Hex
-    instance_registry: Hex
-    fund_distributor: Hex
-    pool_token: Hex
-  }
-  schemas: {
-    claim: DeployedSchema
-    response: DeployedSchema
-    valuation: DeployedSchema
-  }
 }
 
 export type SafeZodiacSignerSyncDeploy = {

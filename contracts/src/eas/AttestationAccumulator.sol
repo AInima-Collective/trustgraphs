@@ -5,10 +5,11 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {ISnapshotAccumulatorView} from "interfaces/merkle/ISnapshotAccumulatorView.sol";
 
 /// @title AttestationAccumulator
-/// @notice Abstract mix-in that folds every edge passing through a resolver into a chained keccak
-///         hash and lets anyone checkpoint the running state. Inherited by exactly ONE live feeder
-///         (the single-schema EASIndexerResolver) so there is one ordered log = one `acc`
-///         (see ZK_ARCHITECTURE.md §3.2, the one-accumulator-per-checkpoint invariant).
+/// @notice Abstract mix-in that folds every authenticated edge into a chained keccak hash and lets
+///         the bound snapshot checkpoint the running state. Each deployed accumulator has exactly
+///         one live feeder (for example an inline EAS resolver or a storage-authenticated importer),
+///         so there is one ordered log = one `acc` (see ZK_ARCHITECTURE.md §3.2, the
+///         one-accumulator-per-checkpoint invariant).
 ///
 /// @dev The leaf and fold encodings are frozen and reproduced byte-for-byte by the zkVM guest
 ///      (`pagerank-core::encode`): the guest re-folds all leaves and asserts it reproduces `acc`,
@@ -25,15 +26,12 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
 
     /// @notice The only address allowed to mint checkpoints: the `MerkleSnapshot` whose
     ///         `trigger()` freezes this lane. Set once, via `bindSnapshot`.
-    /// @dev Before this existed, `checkpoint()` was open to anyone (issue #10), which broke two
-    ///      things the rest of the system asserts. First, `MerkleSnapshot`'s `epochLength` gate:
-    ///      a prover wanting a boundary at block N called `checkpoint()` at block N and proved
-    ///      against it, so "epoch boundaries are never prover-chosen"
-    ///      (`MerkleSnapshot.sol:44-46`) was false. Second, and worse for a two-lane instance, a
-    ///      directly-minted id was never seen by `trigger()`, so the snapshot's
-    ///      `anchorCheckpoints[id]` sat at `(0, 0)` and a proof over an EMPTY lane 2 verified
-    ///      against it — the research/audits/2026-07-M6.md M6-1 shape, which `TrustAccumulatorMirror` was already
-    ///      hardened against but this mix-in was not.
+    /// @dev Open minting would break two invariants the rest of the system asserts. First,
+    ///      `MerkleSnapshot`'s `epochLength` gate: a prover wanting a boundary at block N could
+    ///      mint a checkpoint at block N and prove against it, making epoch boundaries
+    ///      prover-chosen. Second, and worse for a two-lane instance, an id minted outside
+    ///      `trigger()` has no `anchorCheckpoints` entry, so a proof over an EMPTY lane 2 would
+    ///      verify against it (research/audits/2026-07-M6.md finding M6-1).
     address public snapshot;
 
     /// @notice The deployer, and the only address that may perform the one-shot `bindSnapshot`.
@@ -92,7 +90,25 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
     /// @param uid The attestation uid.
     /// @param dataHash keccak256 of the raw attestation data.
     function _fold(uint8 kind, address attester, address recipient, bytes32 uid, bytes32 dataHash) internal {
-        bytes32 leaf = keccak256(abi.encode(kind, attester, recipient, uid, block.timestamp, dataHash));
+        _foldAt(kind, attester, recipient, uid, block.timestamp, dataHash);
+    }
+
+    /// @notice Fold one edge using an explicitly authenticated source timestamp.
+    /// @dev This is the deferred-ingress counterpart to `_fold`. The leaf ABI is deliberately
+    ///      identical: `timestamp` occupies the same 32-byte ABI word as `block.timestamp`, so
+    ///      inline resolver leaves and imported leaves are byte-for-byte interchangeable. Callers
+    ///      MUST derive the timestamp from an authenticated source rather than calldata; otherwise
+    ///      they hand reconciliation order to the transaction sender.
+    /// @param kind 0 = attest, 1 = revoke.
+    /// @param attester The attester address.
+    /// @param recipient The recipient address.
+    /// @param uid The attestation uid.
+    /// @param timestamp The authenticated event timestamp used for reconciliation ordering.
+    /// @param dataHash keccak256 of the raw attestation data.
+    function _foldAt(uint8 kind, address attester, address recipient, bytes32 uid, uint256 timestamp, bytes32 dataHash)
+        internal
+    {
+        bytes32 leaf = keccak256(abi.encode(kind, attester, recipient, uid, timestamp, dataHash));
         acc = keccak256(abi.encode(acc, leaf));
         emit EdgeFolded(leafCount, leaf, acc);
         leafCount++;

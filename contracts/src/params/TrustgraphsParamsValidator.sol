@@ -9,6 +9,7 @@ import {ParamsCodec} from "src/params/ParamsCodec.sol";
 ///      validator was factored out, and existing clients use them for field-level feedback.
 library TrustgraphsParamsValidator {
     uint256 internal constant PRECISION_SCALE = 1e18;
+    /// @notice Canonical native-vouch schema slot. Imported instances may pin another slot.
     uint32 internal constant WEIGHT_FIELD_INDEX = 1;
     uint32 internal constant MAX_ITERATIONS = 500;
     uint256 internal constant MAX_TOLERANCE_FP = 1e15;
@@ -35,12 +36,25 @@ library TrustgraphsParamsValidator {
     /// @notice Validate the tuple accepted by `TrustgraphsFactory.createInstance`.
     /// @dev The factory derives the three instance-domain fields after this check.
     function validateCreation(ParamsCodec.Params memory p) internal pure {
+        _validateCreation(p);
+        if (p.weightFieldIndex != WEIGHT_FIELD_INDEX) {
+            revert InvalidWeightFieldIndex(p.weightFieldIndex);
+        }
+    }
+
+    /// @notice Validate a legacy-schema creation whose immutable numeric ABI head is chosen by the
+    ///         creator. The decoder bounds every uint32 and falls back to minWeight when absent.
+    function validateImportedCreation(ParamsCodec.Params memory p) internal pure {
+        _validateCreation(p);
+    }
+
+    function _validateCreation(ParamsCodec.Params memory p) private pure {
         if (p.schemaUid != bytes32(0) || p.accumulator != address(0) || p.chainId != 0) {
             revert DerivedFieldNotZero();
         }
         validateComputationalEnvelope(p);
-        // The legacy factory selector remains lane-1-only. The additive hybrid selector derives
-        // both separators itself only after the EAS resolver and head registry exist.
+        // `createInstance` remains lane-1-only. The hybrid selector derives both separators
+        // itself only after the EAS resolver and head registry exist.
         if (p.envelope0DomainSeparators.length != 0 || p.lane2MaxHeadAge != 0) {
             revert Lane2NotSupported();
         }
@@ -83,9 +97,9 @@ library TrustgraphsParamsValidator {
         if (p.trustDecayFp > PRECISION_SCALE) revert InvalidTrustDecay(p.trustDecayFp);
         if (p.precisionScale != PRECISION_SCALE) revert InvalidPrecisionScale(p.precisionScale);
         if (p.totalPool == 0) revert InvalidTotalPool();
-        if (p.weightFieldIndex != WEIGHT_FIELD_INDEX) {
-            revert InvalidWeightFieldIndex(p.weightFieldIndex);
-        }
+        // Imported creation accepts any uint32 because the checked decoder deterministically falls
+        // back to minWeight for an absent head slot. Native creation pins slot 1 in
+        // `validateCreation`; every flavor pins the selected value in `validateUpdate`.
 
         uint256 seedCount = p.trustedSeeds.length;
         if (seedCount == 0) revert NoTrustedSeeds();
@@ -99,8 +113,8 @@ library TrustgraphsParamsValidator {
         }
     }
 
-    /// Lane 2 is either absent or the strict v2 pair `[EAS domain, head domain]`. Head freshness is
-    /// checked against the first lane-1 anchor inside the guest, so the old wall-clock age knob is
+    /// Lane 2 is either absent or the strict pair `[EAS domain, head domain]`. Head freshness is
+    /// checked against the first lane-1 anchor inside the guest, so `lane2MaxHeadAge` is
     /// deliberately fixed to zero for both profiles.
     function _validateLane2Profile(ParamsCodec.Params memory p) private pure {
         uint256 length = p.envelope0DomainSeparators.length;

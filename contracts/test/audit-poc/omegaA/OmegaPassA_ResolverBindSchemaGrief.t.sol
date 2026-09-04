@@ -30,7 +30,7 @@ import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 /// true of REAL UIDs and irrelevant: nothing requires the argument to be a registered UID at all.
 ///
 /// `TrustgraphsFactory` closes the window by binding in the same transaction. The two script
-/// deploy paths do not — `DeployNetwork._deployNetwork` and `DeployEasResolver.run` deploy the
+/// deploy paths do not — `DeployEasResolver.run` deploys the
 /// resolver and bind it in separate broadcast transactions, so a watcher can bind garbage in
 /// between and permanently brick the resolver (and, with it, the whole network being deployed:
 /// `acc` is a chained hash with no rotation path once checkpoints exist).

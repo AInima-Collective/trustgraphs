@@ -48,13 +48,6 @@ export interface EasRelayAttestationGroup {
   deadline: string
 }
 
-export interface EasRelayAttestationPayload {
-  kind: 'attest'
-  chainId: number
-  eas: Address
-  requests: EasRelayAttestationGroup[]
-}
-
 export const easDelegationDomain = (
   chainId: number,
   eas: Address,

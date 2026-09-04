@@ -2,10 +2,12 @@
 
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
-import { Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
+import { type Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
 
 import { useNetwork } from '@/contexts/NetworkContext'
+import { normalizeSafeActions } from '@/lib/actions'
+import type { SafeAction } from '@/lib/actions'
 import { merkleGovModuleAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
@@ -18,13 +20,11 @@ import {
 } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
-// Types matching the MerkleGovModule contract structs
-export interface ProposalAction {
-  target: string
-  value: string
-  data: string
-  operation: number // Operation enum (0 = Call, 1 = DelegateCall)
-  description?: string // For UI purposes
+export type ProposalAction = SafeAction
+
+export type ProposalActionsView = {
+  actions: ProposalAction[]
+  actionsError?: string
 }
 
 export interface ProposalCore {
@@ -44,14 +44,6 @@ export interface ProposalCore {
   quorumFraction: bigint
   executionDeadlineBlock: bigint
   state: number // ProposalState enum
-  blockNumber: bigint
-  timestamp: bigint
-}
-
-export interface ProposalVote {
-  voter: string
-  voteType: number
-  votingPower: bigint
   blockNumber: bigint
   timestamp: bigint
 }
@@ -259,7 +251,11 @@ export function useGovernance() {
   const proposalsWithState = useMemo(() => {
     return proposals.map((proposal) => {
       const state = computeProposalState(proposal, currentBlockNumber)
-      const actions = (proposal.actions as ProposalAction[]) || []
+      const normalizedActions = normalizeSafeActions(proposal.actions)
+      const actions = normalizedActions.ok ? normalizedActions.actions : []
+      const actionsError = normalizedActions.ok
+        ? undefined
+        : normalizedActions.reason
 
       const core: ProposalCore = {
         id: proposal.id,
@@ -282,7 +278,7 @@ export function useGovernance() {
         timestamp: proposal.timestamp,
       }
 
-      return { core, actions }
+      return { core, actions, ...(actionsError ? { actionsError } : {}) }
     })
   }, [proposals, currentBlockNumber])
 
@@ -290,7 +286,7 @@ export function useGovernance() {
   const getProposal = useCallback(
     (
       proposalId: number
-    ): { core: ProposalCore; actions: ProposalAction[] } | null => {
+    ): ({ core: ProposalCore } & ProposalActionsView) | null => {
       const proposal = proposalsWithState.find(
         (p) => Number(p.core.id) === proposalId
       )
@@ -303,6 +299,7 @@ export function useGovernance() {
   const getAllProposals = useCallback((): {
     core: ProposalCore
     actions: ProposalAction[]
+    actionsError?: string
   }[] => {
     return proposalsWithState
   }, [proposalsWithState])

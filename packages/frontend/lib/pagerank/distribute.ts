@@ -1,6 +1,6 @@
 //! Point distribution — the integer port of `pagerank_core::distribute`.
 //!
-//! Scores (scaled by S) are re-scaled to the legacy 1e6 quantum, sorted descending (ties broken by
+//! Scores (scaled by S) are re-scaled to the fixed 1e6 payout quantum, sorted descending (ties broken by
 //! address ascending), and paid out proportionally; the last account absorbs the remainder so the
 //! total equals `totalPool` exactly.
 
@@ -10,7 +10,7 @@ import { mulDiv } from './fixed'
 import { type Params } from './types'
 import { cmpBig, cmpHex } from './words'
 
-/** The legacy precision quantum: `f64` scores were scaled to `u64` by 1e6 before distribution. */
+/** The fixed payout quantum: scores are scaled to `u64` by 1e6 before distribution. Consensus-frozen. */
 const QUANTUM = 1_000_000n
 
 /**

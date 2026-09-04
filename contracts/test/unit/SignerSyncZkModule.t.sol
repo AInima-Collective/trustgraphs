@@ -3,8 +3,8 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {
     SignerSyncZkModule,
@@ -41,9 +41,9 @@ contract MockSignerActivitySource is ISignerActivitySource {
 }
 
 contract SignerSyncZkModuleTest is Test {
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
-    GnosisSafe internal safe;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
+    Safe internal safe;
 
     SignerSyncZkModule internal module;
     MockZkVerifier internal verifier;
@@ -66,8 +66,8 @@ contract SignerSyncZkModuleTest is Test {
     bytes internal constant PROOF = hex"1234";
 
     function setUp() public {
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
 
         // Safe with initial owners {A,B,C}, threshold 2.
         address[] memory initial = new address[](3);
@@ -85,7 +85,7 @@ contract SignerSyncZkModuleTest is Test {
             0,
             address(0)
         );
-        safe = GnosisSafe(
+        safe = Safe(
             payable(address(
                     safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(keccak256("salt")))
                 ))
@@ -111,7 +111,6 @@ contract SignerSyncZkModuleTest is Test {
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,
@@ -182,7 +181,6 @@ contract SignerSyncZkModuleTest is Test {
             accumulator_,
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,
@@ -197,8 +195,6 @@ contract SignerSyncZkModuleTest is Test {
         assertEq(module.avatar(), address(safe));
         assertEq(module.target(), address(safe));
         assertEq(module.owner(), owner);
-        assertEq(module.paramsAuthority(), owner);
-        assertEq(module.paramsHash(), PARAMS_HASH);
         assertEq(module.selectionParamsHash(), SEL_HASH);
         assertTrue(safe.isModuleEnabled(address(module)));
     }
@@ -213,7 +209,6 @@ contract SignerSyncZkModuleTest is Test {
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,
@@ -225,8 +220,6 @@ contract SignerSyncZkModuleTest is Test {
     function test_Governance_OnlyOwner() public {
         vm.startPrank(address(0xdead));
         vm.expectRevert();
-        module.setParamsHash(bytes32(uint256(1)));
-        vm.expectRevert();
         module.setSelectionParams(5, 2, 5_000, 151_200, 2);
         vm.expectRevert();
         module.setZkVerifier(IZkVerifier(address(0x1234)));
@@ -237,10 +230,8 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_Governance_OwnerUpdates() public {
         vm.startPrank(owner);
-        module.setParamsHash(bytes32(uint256(7)));
         module.setSelectionParams(4, 2, 6_000, 100_000, 2);
         vm.stopPrank();
-        assertEq(module.paramsHash(), bytes32(uint256(7)));
         assertEq(
             module.selectionParamsHash(),
             keccak256(abi.encode(uint32(4), uint32(2), uint32(6000), uint64(100_000), uint32(2)))
@@ -319,36 +310,9 @@ contract SignerSyncZkModuleTest is Test {
         bytes32 expected = _expectedDigest(module, keccak256("acc0"), 10, signers, 2);
         verifier.setExpectedDigest(expected);
 
-        vm.prank(owner);
-        module.setParamsHash(keccak256("next params"));
-        assertTrue(module.paramsHash() != PARAMS_HASH, "live status should show the rotation");
-
         module.submitSignerProof(0, 0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
     }
-
-    function test_Governance_ParamsAuthorityTransfersWithoutModuleOwnership() public {
-        vm.prank(owner);
-        module.transferParamsAuthority(D);
-        assertEq(module.paramsAuthority(), owner, "authority remains live until acceptance");
-        assertEq(module.pendingParamsAuthority(), D);
-
-        vm.prank(D);
-        module.acceptParamsAuthority();
-        assertEq(module.paramsAuthority(), D);
-        assertEq(module.pendingParamsAuthority(), address(0));
-        assertEq(module.owner(), owner, "verifier/accumulator governance stays with the owner");
-
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.NotParamsAuthority.selector, owner));
-        module.setParamsHash(bytes32(uint256(9)));
-
-        vm.prank(D);
-        module.setParamsHash(bytes32(uint256(9)));
-        assertEq(module.paramsHash(), bytes32(uint256(9)));
-    }
-
-    /*//////////////////////// rotation scenarios ////////////////////////*/
 
     function test_Rotate_FullSwap() public {
         // {A,B,C} -> {D,E,F} : 3 removes, 3 adds -> 3 swaps, count unchanged.
@@ -493,7 +457,9 @@ contract SignerSyncZkModuleTest is Test {
             abi.encode(
                 acc,
                 leafCount,
-                mod_.paramsHash(),
+                // The digest binds the snapshot's checkpoint-pinned params hash; every mock
+                // checkpoint in this suite pins PARAMS_HASH.
+                PARAMS_HASH,
                 mod_.selectionParamsHash(),
                 activity.acc,
                 activity.count,
@@ -559,7 +525,6 @@ contract SignerSyncZkModuleTest is Test {
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,

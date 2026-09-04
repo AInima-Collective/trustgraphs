@@ -16,7 +16,6 @@ interface ModalProps {
   className?: string
   contentClassName?: string
   footer?: ReactNode
-  backgroundContent?: ReactNode
 }
 
 export function Modal({
@@ -27,7 +26,6 @@ export function Modal({
   className,
   contentClassName,
   footer,
-  backgroundContent,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -193,12 +191,6 @@ export function Modal({
           <div className="p-4 border-t border-border shrink-0">{footer}</div>
         )}
       </Card>
-
-      {backgroundContent && (
-        <div className="absolute inset-0 z-40 pointer-events-none">
-          {backgroundContent}
-        </div>
-      )}
     </div>
   )
 }

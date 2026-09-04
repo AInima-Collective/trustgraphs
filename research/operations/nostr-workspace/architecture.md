@@ -40,7 +40,7 @@ unchanged. This is necessary because even adding a disabled feature changes Rust
 can rotate every legacy SP1 consumer.
 
 `zk/nostr-program` is a detached workspace with one lockfile. It pins `sp1-sdk`, `sp1-zkvm`, and
-all resolved `sp1-*`/`slop-*` components to 6.3.1 and contains:
+all resolved `sp1-*`/`slop-*` components to 6.6.0 and contains:
 
 - `nostr-conformance`, which commits the six Envelope-2 conformance words;
 - `nostr-workspace`, which commits the common 12-word journal v3;

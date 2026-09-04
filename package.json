@@ -5,6 +5,8 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "postinstall": "SYMLINK_TARGET=$(pwd)/node_modules/@morpho-org/universal-rewards-distributor/lib/openzeppelin-contracts bash -c 'mkdir -p $(dirname $SYMLINK_TARGET) && if ! test -e $SYMLINK_TARGET; then rm -f $SYMLINK_TARGET && ln -s $(pwd)/node_modules/@openzeppelin $SYMLINK_TARGET; fi'",
+    "check:typescript-version": "node scripts/check-typescript-version.mjs",
+    "typecheck:all": "pnpm check:typescript-version && tsc --noEmit && pnpm --filter './packages/*' --if-present typecheck",
     "frontend": "pnpm --filter trustgraphs-frontend",
     "indexer": "pnpm --filter trustgraphs-indexer",
     "deploy:full": "pnpm deploy:create-deployer && pnpm deploy:contracts",
@@ -16,49 +18,75 @@
     "deploy:create-deployer": "tsx contracts/deploy/create-deployer.ts",
     "verify:contracts": "tsx contracts/deploy/verify-contracts.ts",
     "railway:check": "node scripts/railway-preflight.mjs",
+    "eas-import:sweep": "tsx scripts/eas-import-sweeper.ts",
     "docker:log": "docker compose -f docker-compose.prod.yml logs -f -n 100",
     "docker:indexer:restart": "docker compose -f docker-compose.prod.yml up -d --force-recreate ponder ponder-server"
   },
   "dependencies": {
     "@commitlint/cli": "19.3.0",
     "@commitlint/config-conventional": "19.2.2",
-    "@ethereum-attestation-service/eas-sdk": "2.9.0",
-    "@ethereum-attestation-service/eas-contracts": "^1.8.0",
-    "@gnosis-guild/zodiac-core": "^3.0.1",
-    "@gnosis.pm/safe-contracts": "^1.3.0",
+    "@ethereum-attestation-service/eas-contracts": "^1.9.0",
+    "@ethereum-attestation-service/eas-sdk": "2.10.0",
+    "@gnosis-guild/zodiac-core": "^4.3.0",
     "@morpho-org/universal-rewards-distributor": "github:lay3rlabs/universal-rewards-distributor#0de86bde8f949b35fdc61e533cc240fa541e27fe",
-    "@noble/hashes": "^2.0.1",
-    "@openzeppelin/contracts": "^5.2.0",
-    "@openzeppelin/contracts-upgradeable": "^5.2.0",
+    "@noble/hashes": "^2.4.0",
+    "@openzeppelin/contracts": "^5.6.1",
+    "@openzeppelin/contracts-upgradeable": "^5.6.1",
+    "@safe-global/safe-smart-account": "1.5.0",
     "@trustgraphs/eas-offchain-client": "workspace:*",
-    "@types/lodash": "^4.17.20",
+    "@types/lodash": "^4.17.25",
     "chalk": "^5.6.2",
-    "commander": "^14.0.2",
-    "dotenv": "^17.2.3",
-    "forge-std": "github:foundry-rs/forge-std#v1.9.6",
-    "lodash": "^4.17.21",
-    "tsx": "^4.20.6",
-    "viem": "^2.39.0"
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
+    "forge-std": "github:foundry-rs/forge-std#v1.16.2",
+    "lodash": "^4.18.1",
+    "tsx": "^4.23.13",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
-    "@types/node": "22.15.3",
-    "@typescript-eslint/eslint-plugin": "^8.39.1",
-    "@typescript-eslint/parser": "^8.39.1",
+    "@types/node": "22.20.1",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@typescript-eslint/eslint-plugin": "^8.69.0",
+    "@typescript-eslint/parser": "^8.69.0",
     "eslint": "^8.57.1",
-    "eslint-config-prettier": "^8.10.2",
-    "eslint-plugin-import": "^2.26.0",
-    "eslint-plugin-prettier": "^5.5.4",
-    "eslint-plugin-unused-imports": "^3.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-unused-imports": "^4.4.1",
     "napa": "^3.0.0",
-    "prettier": "^3.6.2",
+    "prettier": "3.6.2",
     "railway": "3.11.0",
-    "typescript": "5.5.4"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
       "version": "10.18.3+sha512.bbd16e6d7286fd7e01f6b3c0b3c932cda2965c06a908328f74663f10a9aea51f1129eea615134bf992831b009eabe167ecb7008b597f40ff9bc75946aadfb08d",
       "onFail": "error"
+    }
+  },
+  "pnpm": {
+    "overrides": {
+      "@hono/node-server": "1.19.15",
+      "adm-zip": "0.6.0",
+      "axios": "1.18.0",
+      "cookie": "0.7.2",
+      "decode-uri-component": "0.5.0",
+      "drizzle-orm": "0.45.2",
+      "esbuild": "0.25.12",
+      "kysely": "0.28.17",
+      "postcss": "8.5.28",
+      "serialize-javascript": "7.0.5",
+      "tmp": "0.2.7",
+      "undici": "6.28.0",
+      "uuid": "11.1.1",
+      "vite": "6.4.3",
+      "ws": "8.21.0"
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "typescript": "6.0.2"
+      }
     }
   },
   "packageManager": "pnpm@10.18.3+sha512.bbd16e6d7286fd7e01f6b3c0b3c932cda2965c06a908328f74663f10a9aea51f1129eea615134bf992831b009eabe167ecb7008b597f40ff9bc75946aadfb08d"

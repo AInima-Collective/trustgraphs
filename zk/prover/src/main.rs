@@ -51,7 +51,8 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::weighted::Command,
     },
-    /// Normalized final-distribution composition over captured complete source outputs.
+    /// Normalized final-distribution composition over captured complete mixed
+    /// standard/weighted source outputs (closed compatibility class).
     #[command(name = "trust-compose")]
     Composition {
         #[command(subcommand)]

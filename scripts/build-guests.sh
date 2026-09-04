@@ -25,9 +25,9 @@ cd "$ROOT"
 # Pinned deliberately and separately from the sp1-build crate version, so a dependency bump cannot
 # silently change every vkey in the system. Moving it is a decision, and it is one that changes
 # every deployed verifier.
-SP1_DOCKER_TAG="${SP1_DOCKER_TAG:-v6.3.1}"
+SP1_DOCKER_TAG="${SP1_DOCKER_TAG:-v6.6.0}"
 
-GUESTS="zk/program zk/trustgraph-program-v2 zk/weighted-program zk/composition-program"
+GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program"
 LOCKED_GUESTS="zk/nostr-program/program"
 
 command -v cargo-prove >/dev/null 2>&1 || {

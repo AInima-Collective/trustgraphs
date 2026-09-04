@@ -1,12 +1,15 @@
-//! Top-level composition shared byte-for-byte by native hosts and the SP1 guest.
+//! Top-level composition shared byte-for-byte by native hosts and the SP1
+//! guest. The blend arithmetic is identical to V1; only source admission (the
+//! closed program/output-domain class) and the widened commitments differ.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 
 use crate::{
-    blob, codec, hamilton::apportion, AllocationEntry, CompositionError, ComputeResult, GuestInput,
-    Journal, SourceAllocation, SourcePreimage, WEIGHT_SCALE,
+    admitted_source_output_domain, blob, codec, hamilton::apportion, AllocationEntry,
+    CompositionError, ComputeResult, GuestInput, Journal, SourceAllocation, SourcePreimage,
+    WEIGHT_SCALE,
 };
 
 struct ValidatedSource {
@@ -85,6 +88,8 @@ pub fn compute(input: &GuestInput) -> Result<ComputeResult, CompositionError> {
         });
     }
 
+    // Every static policy check, including program/output-domain admission,
+    // runs before any source blob preimage is touched.
     let mut previous_id = None;
     let mut snapshots = BTreeSet::new();
     let mut weight_sum = 0u128;
@@ -108,8 +113,14 @@ pub fn compute(input: &GuestInput) -> Result<ComputeResult, CompositionError> {
         if source.program_id == crate::program_id() {
             return Err(CompositionError::CompositeSourceForbidden);
         }
-        if source.program_id != input.params.admitted_program_id {
+        let Some(admitted_domain) = admitted_source_output_domain(source.program_id) else {
             return Err(CompositionError::UnadmittedSourceProgram(source.program_id));
+        };
+        if source.source_output_domain != admitted_domain {
+            return Err(CompositionError::WrongSourceOutputDomain {
+                program_id: source.program_id,
+                domain: source.source_output_domain,
+            });
         }
         if !source.required {
             return Err(CompositionError::OptionalSourceUnsupported);

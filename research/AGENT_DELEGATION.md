@@ -207,8 +207,8 @@ upgrading, since the mapping can later be populated by a resolver.
 ## Delegated vouching and other EAS operations
 
 For vouch, rate, and respond, the recommendation is **human-signed, agent-relayed**, via the
-EAS delegated-attestation functions that are already deployed and already in
-`packages/frontend/lib/contracts.ts`:
+EAS delegated-attestation functions that are already deployed and already in the generated EAS
+ABI (`packages/frontend/lib/contract-abis.ts`):
 
 - The agent does the work: watches the graph, drafts vouches or a batch of contribution
   ratings, presents them with rationale.

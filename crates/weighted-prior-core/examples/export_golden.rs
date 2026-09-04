@@ -135,7 +135,7 @@ fn main() {
                 "uid": hx(first_edge.uid.as_slice()),
                 "blockTimestamp": first_edge.block_timestamp,
                 "dataHash": hx(keccak256(&first_edge.data).as_slice()),
-                "leaf": hx(encode::edge_leaf(first_edge).as_slice()),
+                "leaf": hx(first_edge.leaf().as_slice()),
             },
             "acc": hx(acc.as_slice()),
             "leafCount": leaf_count,

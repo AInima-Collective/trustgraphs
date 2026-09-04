@@ -153,9 +153,6 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
     let base = compute::compute(&GuestInput {
         edges: input.edges.clone(),
         params: input.params.clone(),
-        // The signer journal has no lane-2 fields to bind, so signer selection is lane-1-only
-        // until its journal shape deliberately grows (a vkey + module event, not a default).
-        lane2: None,
         // The base computation carries no bounty recipient (`SignerSyncZkModule` pays none); its
         // binding words are unused here — the signer journal commits its OWN `instance_domain`
         // below (audit M-3), which `submitSignerProof` rebuilds from `address(this)` +

@@ -22,13 +22,13 @@
 !**/.env.example
 
 !zk/program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
-!zk/trustgraph-program-v2/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
+!zk/trust-graph-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 !zk/weighted-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 !zk/composition-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 !zk/nostr-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 
 !zk/program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
-!zk/trustgraph-program-v2/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
+!zk/trust-graph-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
 !zk/weighted-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
 !zk/composition-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
 !zk/nostr-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*

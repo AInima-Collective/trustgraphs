@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 // AUDIT POC (disposable) — zk-soundness pass, 2026-08-22.
 // Demonstrates that `EASIndexerResolver.bindSchema` is permissionless and one-shot, so on any
 // deploy path where the resolver is deployed in one transaction and bound in a later one
-// (contracts/script/DeployNetwork.s.sol, contracts/script/DeployEasResolver.s.sol), a stranger
+// (contracts/script/DeployEasResolver.s.sol), a stranger
 // can bind a junk UID first and permanently brick the instance: every real attestation then
 // reverts `ForeignSchema` and `boundSchema` can never be changed.
 

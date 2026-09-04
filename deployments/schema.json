@@ -80,6 +80,8 @@
         "governedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
         "governedTrustgraphsFactoryFast": { "$ref": "#/$defs/deployment" },
         "signerSyncModuleDeployer": { "$ref": "#/$defs/deployment" },
+        "parentAuthorityModuleDeployer": { "$ref": "#/$defs/deployment" },
+        "subnetworkRegistry": { "$ref": "#/$defs/deployment" },
         "safeSingleton": { "$ref": "#/$defs/deployment" },
         "safeProxyFactory": { "$ref": "#/$defs/deployment" },
         "weightedVerifier": { "$ref": "#/$defs/deployment" },
@@ -117,7 +119,7 @@
           "additionalProperties": false,
           "required": ["sp1Version", "elfSha256", "vkey"],
           "properties": {
-            "sp1Version": { "const": "6.3.1" },
+            "sp1Version": { "enum": ["6.3.1", "6.6.0"] },
             "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
             "vkey": { "$ref": "#/$defs/nullableBytes32" }
           }
@@ -127,7 +129,7 @@
           "additionalProperties": false,
           "required": ["sp1Version", "elfSha256", "vkey"],
           "properties": {
-            "sp1Version": { "const": "6.3.1" },
+            "sp1Version": { "enum": ["6.3.1", "6.6.0"] },
             "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
             "vkey": { "$ref": "#/$defs/nullableBytes32" }
           }
@@ -206,7 +208,7 @@
       "additionalProperties": false,
       "required": ["sp1Version", "elfSha256", "vkey"],
       "properties": {
-        "sp1Version": { "const": "6.3.1" },
+        "sp1Version": { "enum": ["6.3.1", "6.6.0"] },
         "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
         "vkey": { "$ref": "#/$defs/nullableBytes32" }
       }

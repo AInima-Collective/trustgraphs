@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpRight, Check, ListFilter } from 'lucide-react'
+import { Check, ListFilter } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -11,9 +11,11 @@ import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
+import { CreateBatchAttestationModal } from '@/components/CreateBatchAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { HybridVouchAudit } from '@/components/HybridVouchAudit'
+import { ImportedEasStatus } from '@/components/ImportedEasStatus'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
 import { ScoresAsOf } from '@/components/ScoresAsOf'
@@ -52,7 +54,6 @@ export const NetworkPage = () => {
     totalParticipants,
     averageValue,
     medianValue,
-    gnosisSafe,
     refresh,
     simulationConfig,
   } = useNetwork()
@@ -204,6 +205,7 @@ export const NetworkPage = () => {
 
           <div className="flex shrink-0 flex-row flex-wrap items-center gap-3 lg:pt-1">
             <ScoreUpdateChip snapshot={network.contracts.merkleSnapshot} />
+            <CreateBatchAttestationModal className="h-11 px-5" />
             <CreateAttestationModal
               title="Make attestation"
               className="h-11 px-5"
@@ -211,6 +213,8 @@ export const NetworkPage = () => {
           </div>
         </div>
       </header>
+
+      {network.importedLane && <ImportedEasStatus network={network} />}
 
       {/* The graph is the overview. Stats are docked to its canvas as a quiet
           instrument rail instead of repeated as a row of cards below it. */}
@@ -240,7 +244,6 @@ export const NetworkPage = () => {
           totalValue={totalValue}
           averageValue={averageValue}
           medianValue={medianValue}
-          gnosisSafe={gnosisSafe}
         />
       </section>
 
@@ -374,18 +377,12 @@ function NetworkGraphStats({
   totalValue,
   averageValue,
   medianValue,
-  gnosisSafe,
 }: {
   isLoading: boolean
   totalParticipants: number
   totalValue: number
   averageValue: number
   medianValue: number
-  gnosisSafe?: {
-    address: `0x${string}`
-    owners: `0x${string}`[]
-    threshold: number
-  }
 }) {
   const loadingValue = isLoading ? '—' : null
 
@@ -406,7 +403,7 @@ function NetworkGraphStats({
       />
       <GraphStat
         label="Average / median"
-        wide={!gnosisSafe}
+        wide
         value={
           loadingValue ??
           `${formatBigNumber(Math.round(averageValue), 18)} / ${formatBigNumber(
@@ -415,13 +412,6 @@ function NetworkGraphStats({
           )}`
         }
       />
-      {gnosisSafe && (
-        <GraphStat
-          label="Safe"
-          value={`${gnosisSafe.threshold}-of-${gnosisSafe.owners.length}`}
-          href={`https://app.safe.global/home?safe=oeth:${gnosisSafe.address}`}
-        />
-      )}
     </aside>
   )
 }
@@ -429,46 +419,25 @@ function NetworkGraphStats({
 function GraphStat({
   label,
   value,
-  href,
   wide = false,
 }: {
   label: string
   value: string
-  href?: string
   wide?: boolean
 }) {
-  const content = (
-    <>
-      <dt className="text-[9px] uppercase tracking-wider text-text-subtle">
-        {label}
-      </dt>
-      <dd className="mt-1 flex items-center gap-1.5 text-sm tabular-nums text-text">
-        {value}
-        {href && <ArrowUpRight aria-hidden="true" className="h-3 w-3" />}
-      </dd>
-    </>
-  )
-
-  return href ? (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn(
-        'pointer-events-auto border-b border-r border-hairline px-3 py-2.5 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink even:border-r-0 sm:border-r-0 sm:last:border-b-0',
-        wide && 'col-span-2 sm:col-span-1'
-      )}
-    >
-      <dl>{content}</dl>
-    </a>
-  ) : (
+  return (
     <dl
       className={cn(
         'border-b border-r border-hairline px-3 py-2.5 even:border-r-0 sm:border-r-0 sm:last:border-b-0',
         wide && 'col-span-2 border-r-0 sm:col-span-1'
       )}
     >
-      {content}
+      <dt className="text-[9px] uppercase tracking-wider text-text-subtle">
+        {label}
+      </dt>
+      <dd className="mt-1 flex items-center gap-1.5 text-sm tabular-nums text-text">
+        {value}
+      </dd>
     </dl>
   )
 }

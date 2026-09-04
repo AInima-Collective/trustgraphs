@@ -7,110 +7,107 @@ import { type Hex, hexToBytes } from 'viem'
 import {
   COMPOSITION_OUTPUT_DOMAIN,
   COMPOSITION_PROGRAM,
+  COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
   type CompositionAcceptedState,
   type CompositionParams,
+  TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN,
+  TRUST_GRAPH_SOURCE_PROGRAM,
+  WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN,
+  WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM,
   computeComposition,
   serializeCompositionAttribution,
   verifyCompositionAcceptance,
 } from './composition-shared'
 
-const production = JSON.parse(
+const golden = JSON.parse(
   readFileSync(
     new URL('../../../tests/golden/trust-compose.json', import.meta.url),
     'utf8'
   )
 ) as any
-const research = JSON.parse(
-  readFileSync(
-    new URL('../../../research/composition/golden.json', import.meta.url),
-    'utf8'
-  )
-) as any
-const trustGraph = JSON.parse(
-  readFileSync(
-    new URL('../../../tests/golden/trust-graph.json', import.meta.url),
-    'utf8'
-  )
-) as any
 
 const params = (): CompositionParams => ({
-  version: production.params.version,
-  programId: production.params.programId,
-  scopeHash: production.params.scopeHash,
-  identityDomain: production.params.identityDomain,
-  outputKind: production.params.outputKind,
-  outputDomain: production.params.outputDomain,
-  admittedProgramId: production.params.admittedProgramId,
-  weightScale: BigInt(production.params.weightScale),
-  outputPool: BigInt(production.params.outputPool),
-  sourcePolicyRoot: production.params.sourcePolicyRoot,
-  sourceCount: production.params.sourceCount,
-  policyManifestSha256: production.params.policyManifestSha256,
-  maxSources: production.params.maxSources,
-  maxEntriesPerSource: production.params.maxEntriesPerSource,
-  maxAggregateEntries: production.params.maxAggregateEntries,
-  maxUnionAccounts: production.params.maxUnionAccounts,
-  maxAggregateBlobBytes: production.params.maxAggregateBlobBytes,
-  maxSourceAgeBlocks: BigInt(production.params.maxSourceAgeBlocks),
-  accumulator: production.params.accumulator,
-  chainId: BigInt(production.params.chainId),
+  version: golden.params.version,
+  programId: golden.params.programId,
+  scopeHash: golden.params.scopeHash,
+  identityDomain: golden.params.identityDomain,
+  outputKind: golden.params.outputKind,
+  outputDomain: golden.params.outputDomain,
+  sourceCompatibilityClass: golden.params.sourceCompatibilityClass,
+  weightScale: BigInt(golden.params.weightScale),
+  outputPool: BigInt(golden.params.outputPool),
+  sourcePolicyRoot: golden.params.sourcePolicyRoot,
+  sourceCount: golden.params.sourceCount,
+  policyManifestSha256: golden.params.policyManifestSha256,
+  maxSources: golden.params.maxSources,
+  maxEntriesPerSource: golden.params.maxEntriesPerSource,
+  maxAggregateEntries: golden.params.maxAggregateEntries,
+  maxUnionAccounts: golden.params.maxUnionAccounts,
+  maxAggregateBlobBytes: golden.params.maxAggregateBlobBytes,
+  maxSourceAgeBlocks: BigInt(golden.params.maxSourceAgeBlocks),
+  accumulator: golden.params.accumulator,
+  chainId: BigInt(golden.params.chainId),
 })
 
-const sourceBlobs = [
-  trustGraph.cid.blob,
-  '{"0x0202020202020202020202020202020202020202":"50","0x0404040404040404040404040404040404040404":"30","0x0505050505050505050505050505050505050505":"20"}',
-  '{"0x0101010101010101010101010101010101010101":"1","0x0505050505050505050505050505050505050505":"1","0x0606060606060606060606060606060606060606":"2","0x0707070707070707070707070707070707070707":"3"}',
-]
+const manifest = golden.capture.manifest as Hex
 
 const preimages = () =>
-  sourceBlobs.map((blob, index) => ({
-    cid: research.sourceStates[index].cid as string,
-    blob: new TextEncoder().encode(blob),
+  golden.sourceStates.map((state: any) => ({
+    cid: state.cid as string,
+    blob: new TextEncoder().encode(state.blob as string),
   }))
-
-const manifest = production.capture.manifest as Hex
 
 const accepted = (): CompositionAcceptedState => ({
   programId: COMPOSITION_PROGRAM,
   outputDomain: COMPOSITION_OUTPUT_DOMAIN,
-  paramsHash: production.params.paramsHash,
-  captureCommitment: production.capture.manifestSha256,
-  captureCount: BigInt(production.capture.count),
-  outputRoot: production.output.root,
-  outputBlobSha256: production.output.blobSha256,
-  outputCid: production.output.cid,
-  totalValue: BigInt(production.output.totalValue),
-  acceptedRoot: production.output.root,
-  acceptedBlobSha256: production.output.blobSha256,
-  acceptedCid: production.output.cid,
-  acceptedTotalValue: BigInt(production.output.totalValue),
+  paramsHash: golden.params.paramsHash,
+  captureCommitment: golden.capture.manifestSha256,
+  captureCount: BigInt(golden.capture.count),
+  outputRoot: golden.output.root,
+  outputBlobSha256: golden.output.blobSha256,
+  outputCid: golden.output.cid,
+  totalValue: BigInt(golden.output.totalValue),
+  acceptedRoot: golden.output.root,
+  acceptedBlobSha256: golden.output.blobSha256,
+  acceptedCid: golden.output.cid,
+  acceptedTotalValue: BigInt(golden.output.totalValue),
 })
 
-test('production recompute reproduces the Rust/Solidity/TypeScript composition golden', () => {
+test('the class constant matches the frozen mixed vector', () => {
+  assert.equal(
+    COMPOSITION_SOURCE_COMPATIBILITY_CLASS,
+    golden.constants.sourceCompatibilityClass
+  )
+})
+
+test('recompute reproduces the frozen golden and both real source identities', () => {
   const result = computeComposition(params(), manifest, preimages(), 10n)
-  assert.equal(result.manifestSha256, production.capture.manifestSha256)
-  assert.equal(result.outputRoot, production.output.root)
-  assert.equal(result.outputBlobSha256, production.output.blobSha256)
-  assert.equal(result.outputCid, production.output.cid)
-  assert.equal(result.totalValue, 1_000_000n)
+  assert.equal(result.manifestSha256, golden.capture.manifestSha256)
+  assert.equal(result.outputRoot, golden.output.root)
+  assert.equal(result.outputBlobSha256, golden.output.blobSha256)
+  assert.equal(result.outputCid, golden.output.cid)
+  assert.equal(result.totalValue, 1_000n)
   assert.deepEqual(
     result.sourceAllocations.map(({ sourceId, quota }) => ({
       sourceId,
       quota: quota.toString(),
     })),
-    production.sourceQuotas
+    golden.sourceQuotas
   )
-  assert.deepEqual(result.work, {
-    sourceCount: 3,
-    aggregateEntries: 10,
-    unionAccounts: 7,
-    outputAccounts: 7,
-    aggregateBlobBytes: sourceBlobs.reduce(
-      (total, blob) => total + Buffer.byteLength(blob),
-      0
-    ),
-  })
-  assert.equal(result.metrics.overlapAccounts, 3)
+  assert.equal(result.sources[0]!.programId, TRUST_GRAPH_SOURCE_PROGRAM)
+  assert.equal(
+    result.sources[0]!.sourceOutputDomain,
+    TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN
+  )
+  assert.equal(
+    result.sources[1]!.programId,
+    WEIGHTED_TRUST_GRAPH_SOURCE_PROGRAM
+  )
+  assert.equal(
+    result.sources[1]!.sourceOutputDomain,
+    WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN
+  )
+  assert.equal(result.work.sourceCount, 2)
 })
 
 test('the acceptance verifier refuses every composition commitment boundary', () => {
@@ -161,7 +158,7 @@ test('the acceptance verifier refuses every composition commitment boundary', ()
       'capture manifest',
       () => {
         const bytes = hexToBytes(manifest)
-        bytes[132] = bytes[132]! ^ 1
+        bytes[23 + 164] = bytes[23 + 164]! ^ 1
         verifyCompositionAcceptance(
           params(),
           `0x${Buffer.from(bytes).toString('hex')}`,
@@ -189,7 +186,7 @@ test('the acceptance verifier refuses every composition commitment boundary', ()
       'source root',
       () => {
         const bytes = hexToBytes(manifest)
-        bytes[23 + 132] = bytes[23 + 132]! ^ 1
+        bytes[23 + 164] = bytes[23 + 164]! ^ 1
         const changed = `0x${Buffer.from(bytes).toString('hex')}` as Hex
         verifyCompositionAcceptance(
           params(),
@@ -197,7 +194,7 @@ test('the acceptance verifier refuses every composition commitment boundary', ()
           preimages(),
           {
             ...accepted(),
-            captureCommitment: production.capture.manifestSha256,
+            captureCommitment: golden.capture.manifestSha256,
           },
           10n
         )
@@ -232,7 +229,7 @@ test('the acceptance verifier refuses every composition commitment boundary', ()
           params(),
           manifest,
           preimages(),
-          { ...accepted(), totalValue: 999_999n },
+          { ...accepted(), totalValue: 999n },
           10n
         ),
     ],
@@ -257,6 +254,90 @@ test('the acceptance verifier refuses every composition commitment boundary', ()
           accepted(),
           10n,
           `${attribution}tampered`
+        ),
+    ],
+  ]
+  for (const [name, run] of cases) {
+    assert.throws(run, /trust-compose verification refused/, name)
+  }
+})
+
+test('admission refuses crossed pairs, foreign classes, and foreign version words', () => {
+  const mutated = (offset: number, value: Uint8Array) => {
+    const bytes = hexToBytes(manifest)
+    bytes.set(value, offset)
+    return `0x${Buffer.from(bytes).toString('hex')}` as Hex
+  }
+  const record = (position: number) => 23 + position * 293
+
+  const cases: Array<[string, () => void]> = [
+    [
+      'standard source borrowing the weighted domain',
+      () =>
+        computeComposition(
+          params(),
+          mutated(
+            record(0) + 116,
+            hexToBytes(WEIGHTED_TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN)
+          ),
+          preimages(),
+          10n
+        ),
+    ],
+    [
+      'weighted source borrowing the standard domain',
+      () =>
+        computeComposition(
+          params(),
+          mutated(
+            record(1) + 116,
+            hexToBytes(TRUST_GRAPH_SOURCE_OUTPUT_DOMAIN)
+          ),
+          preimages(),
+          10n
+        ),
+    ],
+    [
+      'unknown program copying an allowed domain',
+      () =>
+        computeComposition(
+          params(),
+          mutated(record(0) + 84, new Uint8Array(32).fill(0x77)),
+          preimages(),
+          10n
+        ),
+    ],
+    [
+      'a foreign compatibility class',
+      () =>
+        computeComposition(
+          {
+            ...params(),
+            sourceCompatibilityClass: `0x${'11'.repeat(32)}`,
+          },
+          manifest,
+          preimages(),
+          10n
+        ),
+    ],
+    [
+      'a foreign params version word',
+      () =>
+        computeComposition(
+          { ...params(), version: 2 },
+          manifest,
+          preimages(),
+          10n
+        ),
+    ],
+    [
+      'a foreign capture version word',
+      () =>
+        computeComposition(
+          params(),
+          mutated(5, Uint8Array.from([2])),
+          preimages(),
+          10n
         ),
     ],
   ]

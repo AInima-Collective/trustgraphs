@@ -427,206 +427,214 @@ pub fn uses_strict_envelope0(cfg: &Config, rpc: &Rpc, entry: &CatalogEntry) -> R
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
     let built = (|| -> Result<Built> {
         let text = std::fs::read_to_string(input_path)?;
-    if program == Program::Signer {
-        let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
-        let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::signer::elf())?;
-        return Ok(native_signer_journal(input_path, &input, parse_b256(&vk)?));
-    }
-    if program == Program::Weighted {
-        let input: weighted_prior_core::GuestInput = serde_json::from_str(&text)?;
-        let result = weighted_prior_core::compute::compute(&input)?;
-        let graph = weighted_prior_core::reconcile::build_graph(&input.edges, &input.params);
-        let live_edges =
-            graph.outgoing.values().fold(0u64, |total, row| total.saturating_add(count(row.len())));
-        let max_out_degree = graph.outgoing.values().map(|row| count(row.len())).max().unwrap_or(0);
-        let work = WorkProfile {
-            version: COST_MODEL_VERSION,
-            program,
-            raw_records: count(input.edges.len()),
-            live_edges,
-            unique_nodes: count(graph.nodes.len()),
-            max_out_degree,
-            witness_bytes: count(text.len()),
-            lane2_anchors: 0,
-            signature_checks: 0,
-            max_iterations: input.params.max_iterations,
-            iterations_run: result.iterations,
-            output_leaves: count(result.scores.len()),
-            authenticated_cycle_bound: None,
-        };
-        if result.journal.recipient != recipient {
-            bail!(
-                "input names recipient {:#x}, config says {recipient:#x}",
-                result.journal.recipient
-            );
+        if program == Program::Signer {
+            let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
+            let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::signer::elf())?;
+            return Ok(native_signer_journal(input_path, &input, parse_b256(&vk)?));
         }
-        let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::weighted::elf())?;
-        let encoded = weighted_prior_core::encode::journal_encoded(&result.journal);
-        return Ok(Built {
-            program,
-            input_path: input_path.clone(),
-            public_values_hash: keccak256(&encoded),
-            vk_hash: parse_b256(&vk)?,
-            output_root: result.journal.output_root,
-            ipfs_hash: result.journal.ipfs_hash,
-            cid: result.cid,
-            total_value: result.journal.total_value,
-            skipped_digest: result.journal.skipped_digest,
-            recipient: result.journal.recipient,
-            blob: result.blob,
-            signers: Vec::new(),
-            target_threshold: U256::ZERO,
-            activity_checkpoint_id: 0,
-            signer_activity_applied: false,
-            work,
-        });
-    }
-    if program == Program::Composition {
-        let input: composition_core::GuestInput = serde_json::from_str(&text)?;
-        let result = composition_core::compute::compute(&input)?;
-        let shape = crate::composition::work_shape(&input)?;
-        let work = WorkProfile {
-            version: COST_MODEL_VERSION,
-            program,
-            raw_records: input.capture_count,
-            live_edges: 0,
-            unique_nodes: count(result.scores.len()),
-            max_out_degree: 0,
-            witness_bytes: count(text.len()),
-            lane2_anchors: 0,
-            signature_checks: 0,
-            max_iterations: 0,
-            iterations_run: 0,
-            output_leaves: count(result.scores.len()),
-            authenticated_cycle_bound: Some(shape.measured_cycles),
-        };
-        if result.journal.recipient != recipient {
-            bail!(
-                "input names recipient {:#x}, config says {recipient:#x}",
-                result.journal.recipient
-            );
+        if program == Program::Weighted {
+            let input: weighted_prior_core::GuestInput = serde_json::from_str(&text)?;
+            let result = weighted_prior_core::compute::compute(&input)?;
+            let graph = weighted_prior_core::reconcile::build_graph(&input.edges, &input.params);
+            let live_edges = graph
+                .outgoing
+                .values()
+                .fold(0u64, |total, row| total.saturating_add(count(row.len())));
+            let max_out_degree =
+                graph.outgoing.values().map(|row| count(row.len())).max().unwrap_or(0);
+            let work = WorkProfile {
+                version: COST_MODEL_VERSION,
+                program,
+                raw_records: count(input.edges.len()),
+                live_edges,
+                unique_nodes: count(graph.nodes.len()),
+                max_out_degree,
+                witness_bytes: count(text.len()),
+                lane2_anchors: 0,
+                signature_checks: 0,
+                max_iterations: input.params.max_iterations,
+                iterations_run: result.iterations,
+                output_leaves: count(result.scores.len()),
+                authenticated_cycle_bound: None,
+            };
+            if result.journal.recipient != recipient {
+                bail!(
+                    "input names recipient {:#x}, config says {recipient:#x}",
+                    result.journal.recipient
+                );
+            }
+            let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::weighted::elf())?;
+            let encoded = weighted_prior_core::encode::journal_encoded(&result.journal);
+            return Ok(Built {
+                program,
+                input_path: input_path.clone(),
+                public_values_hash: keccak256(&encoded),
+                vk_hash: parse_b256(&vk)?,
+                output_root: result.journal.output_root,
+                ipfs_hash: result.journal.ipfs_hash,
+                cid: result.cid,
+                total_value: result.journal.total_value,
+                skipped_digest: result.journal.skipped_digest,
+                recipient: result.journal.recipient,
+                blob: result.blob,
+                signers: Vec::new(),
+                target_threshold: U256::ZERO,
+                activity_checkpoint_id: 0,
+                signer_activity_applied: false,
+                work,
+            });
         }
-        let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::composition::elf())?;
-        let encoded = composition_core::codec::journal_encoded(&result.journal);
-        return Ok(Built {
-            program,
-            input_path: input_path.clone(),
-            public_values_hash: keccak256(&encoded),
-            vk_hash: parse_b256(&vk)?,
-            output_root: result.journal.output_root,
-            ipfs_hash: result.journal.ipfs_hash,
-            cid: result.cid,
-            total_value: result.journal.total_value,
-            skipped_digest: result.journal.skipped_digest,
-            recipient: result.journal.recipient,
-            blob: result.blob,
-            signers: Vec::new(),
-            target_threshold: U256::ZERO,
-            activity_checkpoint_id: 0,
-            signer_activity_applied: false,
-            work,
-        });
-    }
-    if program == Program::NostrWorkspace {
-        let input: nostr_workspace_core::compute::GuestInput = serde_json::from_str(&text)?;
-        let result = nostr_workspace_core::compute::compute(&input)
-            .map_err(|error| anyhow!("nostr-workspace native compute: {error:?}"))?;
-        let work = WorkProfile::ranked(
-            program,
-            count(result.events.len()),
-            count(text.len()),
-            count(input.anchors.len()),
-            result.signature_checks,
-            count(result.scores.len()).saturating_add(count(result.bindings.len())),
-            result.rank,
-        );
-        if result.journal.recipient != recipient {
-            bail!(
-                "input names recipient {:#x}, config says {recipient:#x}",
-                result.journal.recipient
-            );
+        if program == Program::Composition {
+            let input: composition_core::GuestInput = serde_json::from_str(&text)?;
+            let result = composition_core::compute::compute(&input)?;
+            let shape = crate::composition::work_shape(&input)?;
+            let vk =
+                trustgraph_prover::common::vkey(trustgraph_prover::programs::composition::elf())?;
+            let encoded = composition_core::codec::journal_encoded(&result.journal);
+            let work = WorkProfile {
+                version: COST_MODEL_VERSION,
+                program,
+                raw_records: input.capture_count,
+                live_edges: 0,
+                unique_nodes: count(result.scores.len()),
+                max_out_degree: 0,
+                witness_bytes: count(text.len()),
+                lane2_anchors: 0,
+                signature_checks: 0,
+                max_iterations: 0,
+                iterations_run: 0,
+                output_leaves: count(result.scores.len()),
+                authenticated_cycle_bound: Some(shape.measured_cycles),
+            };
+            if result.journal.recipient != recipient {
+                bail!(
+                    "input names recipient {:#x}, config says {recipient:#x}",
+                    result.journal.recipient
+                );
+            }
+            return Ok(Built {
+                program,
+                input_path: input_path.clone(),
+                public_values_hash: keccak256(&encoded),
+                vk_hash: parse_b256(&vk)?,
+                output_root: result.journal.output_root,
+                ipfs_hash: result.journal.ipfs_hash,
+                cid: result.cid,
+                total_value: result.journal.total_value,
+                skipped_digest: result.journal.skipped_digest,
+                recipient: result.journal.recipient,
+                blob: result.blob,
+                signers: Vec::new(),
+                target_threshold: U256::ZERO,
+                activity_checkpoint_id: 0,
+                signer_activity_applied: false,
+                work,
+            });
         }
-        let vk =
-            trustgraph_prover::common::vkey(trustgraph_prover::programs::nostr_workspace::elf())?;
-        let encoded = pagerank_core::encode::journal_encoded(&result.journal);
-        return Ok(Built {
-            program,
-            input_path: input_path.clone(),
-            public_values_hash: keccak256(&encoded),
-            vk_hash: parse_b256(&vk)?,
-            output_root: result.journal.output_root,
-            ipfs_hash: result.journal.ipfs_hash,
-            cid: result.cid,
-            total_value: result.journal.total_value,
-            skipped_digest: result.journal.skipped_digest,
-            recipient: result.journal.recipient,
-            blob: result.blob,
-            signers: Vec::new(),
-            target_threshold: U256::ZERO,
-            activity_checkpoint_id: 0,
-            signer_activity_applied: false,
-            work,
-        });
-    }
-    let (j, cid, vk, blob, work) = match program {
-        Program::Trustgraphs => {
-            let input: trustgraph_core::GuestInput = serde_json::from_str(&text)?;
-            let r = trustgraph_core::compute::compute(&input);
-            let lane2_anchors = input.lane2.as_ref().map_or(0, |lane| count(lane.anchors.len()));
+        if program == Program::NostrWorkspace {
+            let input: nostr_workspace_core::compute::GuestInput = serde_json::from_str(&text)?;
+            let result = nostr_workspace_core::compute::compute(&input)
+                .map_err(|error| anyhow!("nostr-workspace native compute: {error:?}"))?;
             let work = WorkProfile::ranked(
                 program,
-                count(input.edges.len()).saturating_add(lane2_anchors),
+                count(result.events.len()),
                 count(text.len()),
-                lane2_anchors,
-                r.signature_checks,
-                count(r.scores.len()),
-                r.rank,
+                count(input.anchors.len()),
+                result.signature_checks,
+                count(result.scores.len()).saturating_add(count(result.bindings.len())),
+                result.rank,
             );
-            let vk =
-                trustgraph_prover::common::vkey(trustgraph_prover::programs::trust_graph::elf())?;
-            (r.journal, r.cid, vk, r.blob, work)
-        }
-        Program::Contributions => {
-            let input: contributions_core::compute::GuestInput = serde_json::from_str(&text)?;
-            let r = contributions_core::compute::compute(&input);
-            let work = WorkProfile::ranked(
+            if result.journal.recipient != recipient {
+                bail!(
+                    "input names recipient {:#x}, config says {recipient:#x}",
+                    result.journal.recipient
+                );
+            }
+            let vk = trustgraph_prover::common::vkey(
+                trustgraph_prover::programs::nostr_workspace::elf(),
+            )?;
+            let encoded = pagerank_core::encode::journal_encoded(&result.journal);
+            return Ok(Built {
                 program,
-                count(input.trust_edges.len()).saturating_add(count(input.records.len())),
-                count(text.len()),
-                0,
-                0,
-                count(r.scores.len()),
-                r.rank,
-            );
-            let vk =
-                trustgraph_prover::common::vkey(trustgraph_prover::programs::contributions::elf())?;
-            (r.journal, r.cid, vk, r.blob, work)
+                input_path: input_path.clone(),
+                public_values_hash: keccak256(&encoded),
+                vk_hash: parse_b256(&vk)?,
+                output_root: result.journal.output_root,
+                ipfs_hash: result.journal.ipfs_hash,
+                cid: result.cid,
+                total_value: result.journal.total_value,
+                skipped_digest: result.journal.skipped_digest,
+                recipient: result.journal.recipient,
+                blob: result.blob,
+                signers: Vec::new(),
+                target_threshold: U256::ZERO,
+                activity_checkpoint_id: 0,
+                signer_activity_applied: false,
+                work,
+            });
         }
-        _ => bail!("{} does not produce a root journal here", program.name()),
-    };
+        let (j, cid, vk, blob, work) = match program {
+            Program::Trustgraphs => {
+                let input: trustgraph_core::GuestInput = serde_json::from_str(&text)?;
+                let r = trustgraph_core::compute::compute(&input);
+                let lane2_anchors =
+                    input.lane2.as_ref().map_or(0, |lane| count(lane.anchors.len()));
+                let work = WorkProfile::ranked(
+                    program,
+                    count(input.edges.len()).saturating_add(lane2_anchors),
+                    count(text.len()),
+                    lane2_anchors,
+                    r.signature_checks,
+                    count(r.scores.len()),
+                    r.rank,
+                );
+                let vk = trustgraph_prover::common::vkey(
+                    trustgraph_prover::programs::trust_graph::elf(),
+                )?;
+                (r.journal, r.cid, vk, r.blob, work)
+            }
+            Program::Contributions => {
+                let input: contributions_core::compute::GuestInput = serde_json::from_str(&text)?;
+                let r = contributions_core::compute::compute(&input);
+                let work = WorkProfile::ranked(
+                    program,
+                    count(input.trust_edges.len()).saturating_add(count(input.records.len())),
+                    count(text.len()),
+                    0,
+                    0,
+                    count(r.scores.len()),
+                    r.rank,
+                );
+                let vk = trustgraph_prover::common::vkey(
+                    trustgraph_prover::programs::contributions::elf(),
+                )?;
+                (r.journal, r.cid, vk, r.blob, work)
+            }
+            _ => bail!("{} does not produce a root journal here", program.name()),
+        };
 
-    if j.recipient != recipient {
-        bail!("input names recipient {:#x}, config says {recipient:#x}", j.recipient);
-    }
+        if j.recipient != recipient {
+            bail!("input names recipient {:#x}, config says {recipient:#x}", j.recipient);
+        }
 
-    let encoded = pagerank_core::encode::journal_encoded(&j);
+        let encoded = pagerank_core::encode::journal_encoded(&j);
         Ok(Built {
-        program,
-        input_path: input_path.clone(),
-        public_values_hash: keccak256(&encoded),
-        vk_hash: parse_b256(&vk)?,
-        output_root: j.output_root,
-        ipfs_hash: j.ipfs_hash,
-        cid,
-        total_value: j.total_value,
-        skipped_digest: j.skipped_digest,
-        recipient: j.recipient,
-        blob,
-        signers: Vec::new(),
-        target_threshold: U256::ZERO,
-        activity_checkpoint_id: 0,
-        signer_activity_applied: false,
-        work,
+            program,
+            input_path: input_path.clone(),
+            public_values_hash: keccak256(&encoded),
+            vk_hash: parse_b256(&vk)?,
+            output_root: j.output_root,
+            ipfs_hash: j.ipfs_hash,
+            cid,
+            total_value: j.total_value,
+            skipped_digest: j.skipped_digest,
+            recipient: j.recipient,
+            blob,
+            signers: Vec::new(),
+            target_threshold: U256::ZERO,
+            activity_checkpoint_id: 0,
+            signer_activity_applied: false,
+            work,
         })
     })()?;
     ensure_raw_publication_blob(&built.blob)?;
@@ -822,11 +830,9 @@ fn pin_kubo(target: &PinTarget, blob: &[u8]) -> Result<String> {
 fn pin_pinata(target: &PinTarget, blob: &[u8], token: &str) -> Result<String> {
     let boundary = "----trustgraph-operator-pinata-blob";
     let mut body = Vec::new();
-    for (name, value) in [
-        ("network", "public"),
-        ("name", "trustgraph-score-blob"),
-        ("cid_version", "1"),
-    ] {
+    for (name, value) in
+        [("network", "public"), ("name", "trustgraph-score-blob"), ("cid_version", "1")]
+    {
         body.extend_from_slice(
             format!(
                 "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
@@ -1311,7 +1317,7 @@ mod readback_tests {
     #[test]
     #[ignore = "release gate: derives the real SP1 composition proving key"]
     fn composition_operator_native_journal_reproduces_the_cross_language_golden() {
-        let input = composition_core::fixture::sample_input();
+        let input = composition_core::fixture::mixed_input();
         let recipient = input.binding.recipient;
         let file = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(file.path(), serde_json::to_vec(&input).unwrap()).unwrap();
@@ -1333,7 +1339,7 @@ mod readback_tests {
     #[test]
     #[ignore = "release gate: executes the real SP1 composition guest; run with --release --ignored"]
     fn composition_operator_native_journal_byte_matches_the_isolated_guest() {
-        let input = composition_core::fixture::remainder_tie_input();
+        let input = composition_core::fixture::rotated_mixed_input();
         let recipient = input.binding.recipient;
         let file = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(file.path(), serde_json::to_vec(&input).unwrap()).unwrap();

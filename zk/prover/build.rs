@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 
 /// Pinned deliberately and separately from the `sp1-build` version, so a dependency bump cannot
 /// silently change every vkey in the system. Kept in step with `scripts/build-guests.sh`.
-const SP1_DOCKER_TAG: &str = "v6.3.1";
+const SP1_DOCKER_TAG: &str = "v6.6.0";
 
 /// The repository root, derived from this crate's own manifest directory rather than from whatever
 /// working directory a build happened to start in.
@@ -59,7 +59,7 @@ fn guest_target_dir(guest: &str) -> Option<PathBuf> {
 /// Every isolated guest workspace, and whether its lockfile is frozen.
 const GUESTS: &[(&str, bool)] = &[
     ("../program", false),
-    ("../trustgraph-program-v2", false),
+    ("../trust-graph-program", false),
     ("../weighted-program", false),
     ("../composition-program", false),
     // This one has always been built `--locked`; a guest whose dependency versions can move under

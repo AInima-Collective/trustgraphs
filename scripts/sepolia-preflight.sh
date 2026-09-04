@@ -33,7 +33,7 @@ BURNED_KEY_ADDRESS=0x3ed16f90e8ea54d9a1bae67ab2d6bdc177eadeec
 
 # The SP1 verifier gateway routes proofs by a 4-byte selector taken from the proof itself, and
 # that selector is sha256 of the Groth16 verifying key shipped with the prover's sp1 version.
-# Stable across sp1-verifier 6.1.0 through 6.3.1. Derived, not copied: see check 9.
+# Stable across sp1-verifier 6.1.0 through 6.6.0. Derived, not copied: see check 9.
 EXPECTED_SELECTOR=0x4388a21c
 
 pass=0; fail=0

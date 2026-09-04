@@ -7,6 +7,7 @@ import test from 'node:test'
 import { SepoliaEnv } from './env'
 import { resolveDeploymentSelection } from './profiles'
 import {
+  CURRENT_SP1_VERSION,
   loadReleaseManifest,
   readBroadcastDeployments,
   releaseManifestToDeploymentSummary,
@@ -50,6 +51,27 @@ test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its s
       loadReleaseManifest(MANIFEST, { requireComplete: true })
     )
   }
+})
+
+test('manifest validator accepts uniform current and historical SP1 releases', () => {
+  const historical = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  assert.doesNotThrow(() => validateReleaseManifest(historical))
+
+  const current = structuredClone(historical)
+  for (const program of Object.values<{ sp1Version: string }>(
+    current.programs
+  )) {
+    program.sp1Version = CURRENT_SP1_VERSION
+  }
+  assert.doesNotThrow(() => validateReleaseManifest(current))
+
+  const unsupported = structuredClone(current)
+  unsupported.programs.weighted.sp1Version = '6.7.0'
+  assert.throws(() => validateReleaseManifest(unsupported), /supported release/)
+
+  const mixed = structuredClone(current)
+  mixed.programs.weighted.sp1Version = '6.3.1'
+  assert.throws(() => validateReleaseManifest(mixed), /one SP1 toolchain/)
 })
 
 test('manifest validator rejects unknown fields and secret-bearing keys', () => {
@@ -97,6 +119,29 @@ test('manifest validator rejects half-recorded governed deployments', () => {
     () => validateReleaseManifest(withoutVerifier),
     /signerVerifier is required/
   )
+})
+
+test('manifest carries subnetwork infrastructure as an optional atomic pair', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  manifest.contracts.parentAuthorityModuleDeployer = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  assert.throws(
+    () => validateReleaseManifest(manifest),
+    /parentAuthorityModuleDeployer and subnetworkRegistry must be recorded together/
+  )
+
+  manifest.contracts.subnetworkRegistry = {
+    address: ADDRESS_2,
+    block: 124,
+    txHash: TX_HASH_2,
+  }
+  const validated = validateReleaseManifest(manifest)
+  const summary = releaseManifestToDeploymentSummary(validated)
+  assert.equal(summary.governedFactory?.parent_authority_deployer, ADDRESS)
+  assert.equal(summary.governedFactory?.subnetwork_registry, ADDRESS_2)
 })
 
 test('manifest validator accepts, pairs, and rejects the fast factory generation', () => {
@@ -322,8 +367,10 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         'Instance Registry',
         'Proving Vault',
         'Trustgraphs Factory',
+        'Imported EAS Factory',
         'Signer ZK Verifier',
         'Governed Factory',
+        'Governed Imported EAS Factory',
         'Weighted ZK Verifier',
         'Weighted Factory',
         'Governed Weighted Factory',
@@ -345,9 +392,11 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.instanceRegistry.address !== null,
         contracts.provingVault.address !== null,
         contracts.trustgraphsFactory.address !== null,
+        contracts.importedTrustgraphsFactory?.address != null,
         contracts.signerVerifier.address !== null,
         contracts.governedTrustgraphsFactory.address !== null &&
           contracts.signerSyncModuleDeployer.address !== null,
+        contracts.governedImportedTrustgraphsFactory?.address != null,
         contracts.weightedVerifier.address !== null,
         contracts.weightedTrustgraphsFactory.address !== null,
         contracts.governedWeightedTrustgraphsFactory.address !== null,
@@ -357,10 +406,10 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.contributionsFactory.address !== null,
       ]
     )
-    assert.equal(env.deployContracts[9]?.sig, 'run(string,string)')
-    assert.equal(env.deployContracts[12]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[11]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[14]?.sig, 'run(string,string)')
     assert.equal(
-      env.deployContracts[13]?.sig,
+      env.deployContracts[15]?.sig,
       'run(string,string,string,string,string,uint64)'
     )
     assert.doesNotMatch(JSON.stringify(env.deployContracts), /hypercert|nostr/i)

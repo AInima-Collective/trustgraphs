@@ -1,6 +1,11 @@
 export const SETTINGS_TABS = [
   { id: 'overview', label: 'Overview', description: 'Health and actions' },
   {
+    id: 'profile',
+    label: 'Profile',
+    description: 'Name, description, and links',
+  },
+  {
     id: 'proofs',
     label: 'Proofs & billing',
     description: 'Service, balance, and activity',

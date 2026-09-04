@@ -104,6 +104,37 @@ Set `FEATURED_NETWORK_ID` on the frontend host to the catalog instance id, confi
 Merkle snapshot address of the network the homepage should feature. Prefer the immutable instance
 id for Sepolia; changing it takes effect on the next deployment.
 
+The v0.1.0 frontend uses Next.js 16 on Node.js 22. Its `dev` and `build` scripts deliberately pass
+`--webpack`: the browser-compatible EAS workspace client remains CommonJS because the pinned EAS
+SDK's native-ESM entry is not usable by the Node services and tests, while Next.js 16 Turbopack
+rejects that mixed module boundary. Keep the explicit bundler flag on the deployment host and do
+not replace it with a bare `next build` until the EAS client has a tested ESM package boundary.
+
+Build the candidate from a frozen install, start that exact production output, and run the wallet
+and Sepolia browser smokes against its preview URL before promotion. The framework upgrade changes
+neither public environment variables nor persistent data. To roll back, redeploy the last reviewed
+Next.js 15 commit from a fresh install and build; discard cached `.next` and `node_modules` outputs
+rather than sharing framework artifacts across the two major versions.
+
+The repository uses the native TypeScript 7 compiler in every workspace. `@typescript/native`
+aliases `typescript@7.0.2` and supplies `tsc`; the package named `typescript` temporarily aliases
+`@typescript/typescript6@6.0.2` so Next.js and `typescript-eslint` can use the legacy JavaScript
+compiler API. That compatibility package exposes `tsc6`, not `tsc`, and therefore cannot silently
+replace the native compiler. This follows Microsoft's supported
+[side-by-side migration layout](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/).
+Keep both pins identical in all five manifests until those tools support the TypeScript 7 API,
+then remove the bridge from all workspaces in one change.
+
+Run `pnpm typecheck:all` to verify the manifest pins, the resolved compiler version, and every
+workspace. CI runs the same command after a frozen install. Package tsconfigs retain their
+pre-existing `skipLibCheck` settings for third-party Web3 declaration graphs, while Trustgraphs
+source remains under `strict` typechecking. The root peer-dependency rule explicitly accepts the
+6.0.2 bridge for transitive packages whose metadata still caps TypeScript below 6; the frozen
+install, generators, tests, and production build validate that compatibility boundary. Standalone
+frontend test builds explicitly select Node globals, ES2022/DOM libraries, and NodeNext resolution
+because TypeScript 7 no longer auto-loads ambient `@types` packages and requires `--ignoreConfig`
+for file-list compilation beside a tsconfig.
+
 After the frontend is deployed, exercise its clean-browser, read-only launch surface before using
 a funded wallet:
 

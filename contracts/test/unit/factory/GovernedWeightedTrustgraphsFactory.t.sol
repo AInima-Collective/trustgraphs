@@ -8,13 +8,14 @@ import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {MultiSend} from "@gnosis.pm/safe-contracts/libraries/MultiSend.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {MultiSend} from "@safe-global/safe-smart-account/libraries/MultiSend.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {GovernedWeightedTrustgraphsFactory} from "src/factory/GovernedWeightedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {WeightedPriorParamsController} from "src/factory/WeightedPriorParamsController.sol";
 import {WeightedPriorParamsControllerDeployer} from "src/factory/WeightedInstanceDeployers.sol";
 import {WeightedTrustgraphsFactory} from "src/factory/WeightedTrustgraphsFactory.sol";
@@ -23,12 +24,14 @@ import {
     MerkleGovModuleDeployer,
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {WeightedPriorParamsCodec} from "src/params/WeightedPriorParamsCodec.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -60,6 +63,14 @@ contract WeightedFactorySignerVerifier is IZkVerifier {
     }
 }
 
+contract WeightedSubnetworkParentController {
+    address public owner;
+
+    constructor(address owner_) {
+        owner = owner_;
+    }
+}
+
 /// @notice The `GovernedTrustgraphsFactory` battery, mirrored onto the weighted wrapper: the Safe
 ///         is the creator/admin/authority from genesis, the sealed guard + delayed recovery hold,
 ///         the vault prices the program through `bandOf` (never a literal), and the module's
@@ -86,11 +97,13 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     MockEthUsdFeed internal feed;
 
     GovernedWeightedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    ParentAuthorityModuleDeployer internal parentAuthorityDeployer;
+    SubnetworkRegistry internal subnetworkRegistry;
     WeightedFactorySignerVerifier internal signerVerifier;
 
     address internal creator = address(0xA11CE);
@@ -125,11 +138,13 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         vm.prank(REGISTRY_ADMIN);
         registry.grantRole(registrarRole, address(factory));
 
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
+        subnetworkRegistry = new SubnetworkRegistry(registry, REGISTRY_ADMIN);
         signerVerifier = new WeightedFactorySignerVerifier(SIGNER_VKEY);
         governedFactory = new GovernedWeightedTrustgraphsFactory(
             factory,
@@ -138,9 +153,14 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerVerifier,
             SIGNER_VKEY
         );
+        bytes32 subnetworkRegistrarRole = subnetworkRegistry.REGISTRAR_ROLE();
+        vm.prank(REGISTRY_ADMIN);
+        subnetworkRegistry.grantRole(subnetworkRegistrarRole, address(governedFactory));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -171,6 +191,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
             MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), safe),
             "Safe must hold constitutional authority"
         );
+        assertEq(MerkleSnapshot(snapshot).metadataURI(), args.metadataURI, "Safe-owned snapshot lost metadata");
         assertTrue(
             MerkleSnapshot(snapshot).provenanceEnabled(),
             "governed mints must open the composition-source window: the sealed Safe can never open it later"
@@ -181,17 +202,17 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         assertEq(gov.avatar(), safe, "module avatar must be Safe");
         assertEq(gov.target(), safe, "module target must be Safe");
         assertEq(gov.merkleSnapshotContract(), snapshot, "module must vote from this network");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "governance module must be enabled");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(module), "governance module must be enabled");
         assertEq(MerkleSnapshot(snapshot).hookCount(), 1, "governance hook must be installed");
         assertEq(address(MerkleSnapshot(snapshot).hooks(1)), module, "wrong governance hook");
 
-        address[] memory owners = GnosisSafe(payable(safe)).getOwners();
+        address[] memory owners = Safe(payable(safe)).getOwners();
         assertEq(owners.length, 1, "bootstrap owner must be removed");
         assertEq(owners[0], creator, "creator must remain the visible Safe owner");
-        assertEq(GnosisSafe(payable(safe)).getThreshold(), 1, "initial Safe threshold");
-        assertFalse(GnosisSafe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
+        assertEq(Safe(payable(safe)).getThreshold(), 1, "initial Safe threshold");
+        assertFalse(Safe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
 
-        GovernedWeightedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         assertEq(authority.safe, safe, "authority Safe");
         assertEq(authority.governanceModule, module, "authority governance module");
         assertEq(authority.initialRecoveryProposer, creator, "authority recovery proposer");
@@ -199,15 +220,44 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         assertTrue(SafeExecutionGuard(authority.executionGuard).isSealed(), "owner route must be sealed");
         assertEq(SafeExecutionGuard(authority.executionGuard).safe(), safe, "guard Safe");
         assertEq(address(DelayedRecoveryModule(authority.recoveryModule).safe()), safe, "recovery Safe");
-        assertTrue(
-            GnosisSafe(payable(safe)).isModuleEnabled(authority.recoveryModule), "recovery module must be enabled"
-        );
+        assertTrue(Safe(payable(safe)).isModuleEnabled(authority.recoveryModule), "recovery module must be enabled");
 
         address installedGuard = address(uint160(uint256(vm.load(safe, GUARD_STORAGE_SLOT))));
         assertEq(installedGuard, authority.executionGuard, "authority guard must be installed on Safe");
-        (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
+        (address[] memory modules, address next) = Safe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 2, "only the two delayed authority routes may be enabled");
         assertEq(next, address(0x1), "module list must be exhausted");
+    }
+
+    function test_CreateGovernedWeightedSubnetworkUsesTheSharedAtomicInstallPath() public {
+        bytes32 parentInstanceId = keccak256("weighted-parent");
+        WeightedSubnetworkParentController parentController = new WeightedSubnetworkParentController(creator);
+        vm.prank(REGISTRY_ADMIN);
+        registry.registerWithParamsAuthority(
+            parentInstanceId,
+            IInstanceRegistry.Instance({
+                program: keccak256("trust-graph"),
+                snapshot: address(0x501),
+                verifier: address(verifier),
+                registryOrAccumulator: address(0xACC),
+                paramsHash: keccak256("parent-params")
+            }),
+            address(parentController)
+        );
+
+        vm.prank(creator);
+        (bytes32 childInstanceId, address childSafe,,) = governedFactory.createGovernedSubnetwork(
+            _args("weighted child", 2),
+            _unpaidPolicy(),
+            _noSigner(),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Admin
+        );
+
+        assertEq(subnetworkRegistry.parentOf(childInstanceId), parentInstanceId);
+        address parentModule = governedFactory.parentAuthorityModuleOf(childInstanceId);
+        assertTrue(parentModule != address(0));
+        assertTrue(Safe(payable(childSafe)).isModuleEnabled(parentModule));
     }
 
     function test_PredeployedBootstrapSafeIsAdopted() public {
@@ -233,7 +283,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         (, address safe,,) = _createGoverned(args, _unpaidPolicy());
 
         assertEq(safe, frontRun, "exact weighted bootstrap Safe must be adopted");
-        assertTrue(GnosisSafe(payable(safe)).isOwner(creator), "adopted Safe must graduate normally");
+        assertTrue(Safe(payable(safe)).isOwner(creator), "adopted Safe must graduate normally");
     }
 
     function test_FactoryWrapperAndDeployersAreInertAfterCreation() public {
@@ -270,6 +320,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     function test_GovernedWeightedContractsHaveExplicitEip170Headroom() public view {
         assertLt(address(governedFactory).code.length, 24_576);
         assertLt(address(govModuleDeployer).code.length, 24_576);
+        assertLt(address(parentAuthorityDeployer).code.length, 24_576);
         assertGt(24_576 - address(governedFactory).code.length, 3_000, "wrapper runtime margin");
         assertGt(24_576 - address(govModuleDeployer).code.length, 3_000, "gov module deployer runtime margin");
     }
@@ -290,7 +341,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         for (uint256 i = 0; i < logs.length; i++) {
             if (
                 logs[i].emitter == address(governedFactory)
-                    && logs[i].topics[0] == GovernedWeightedTrustgraphsFactory.GovernedInstanceCreated.selector
+                    && logs[i].topics[0] == GovernedFactoryBase.GovernedInstanceCreated.selector
             ) discoveryIndex = i;
             if (logs[i].emitter != module) continue;
             if (logs[i].topics[0] == MerkleGovModule.MerkleSnapshotContractUpdated.selector) {
@@ -306,28 +357,26 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
-        GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
-            GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
-            });
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig =
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000});
 
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted signer sync", 2);
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) =
             governedFactory.createGovernedInstance(args, _unpaidPolicy(), signerConfig);
 
-        GovernedWeightedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
         assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
         assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
         assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
         assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
         assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
         assertEq(address(signer.zkVerifier()), address(signerVerifier), "immutable signer verifier");
 
-        (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
+        (address[] memory modules, address next) = Safe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 3, "gov, recovery and signer are the only enabled modules");
         assertEq(next, address(0x1));
 
@@ -384,10 +433,10 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         vm.prank(address(0xBEEF));
         signer.submitSignerProof(checkpointId, 0, desired, 2, hex"1234");
 
-        assertTrue(GnosisSafe(payable(safe)).isOwner(desired[0]));
-        assertTrue(GnosisSafe(payable(safe)).isOwner(desired[1]));
-        assertFalse(GnosisSafe(payable(safe)).isOwner(creator));
-        assertEq(GnosisSafe(payable(safe)).getThreshold(), 2);
+        assertTrue(Safe(payable(safe)).isOwner(desired[0]));
+        assertTrue(Safe(payable(safe)).isOwner(desired[1]));
+        assertFalse(Safe(payable(safe)).isOwner(creator));
+        assertEq(Safe(payable(safe)).getThreshold(), 2);
     }
 
     function test_ConstructorRejectsSignerVerifierProgramMismatch() public {
@@ -397,7 +446,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                GovernedWeightedTrustgraphsFactory.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
+                GovernedFactoryBase.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
             )
         );
         new GovernedWeightedTrustgraphsFactory(
@@ -407,16 +456,16 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             mismatchedVerifier,
             suppliedVKey
         );
     }
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
-        GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
-            GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
-            });
+        GovernedFactoryBase.SignerSyncConfig memory signerConfig =
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000});
 
         vm.prank(creator);
         vm.expectRevert(
@@ -434,7 +483,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        GovernedWeightedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         SafeExecutionGuard guard = SafeExecutionGuard(authority.executionGuard);
         bytes32 originalParamsHash = MerkleSnapshot(snapshot).paramsHash();
 
@@ -474,7 +523,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         );
 
         assertEq(MerkleSnapshot(snapshot).paramsHash(), originalParamsHash, "blocked paths changed scoring truth");
-        assertFalse(GnosisSafe(payable(safe)).isModuleEnabled(address(0xB0B)), "owner enabled a bypass module");
+        assertFalse(Safe(payable(safe)).isModuleEnabled(address(0xB0B)), "owner enabled a bypass module");
         assertEq(address(uint160(uint256(vm.load(safe, GUARD_STORAGE_SLOT)))), address(guard), "owner removed guard");
     }
 
@@ -565,7 +614,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) = governedFactory.createGovernedInstance{value: 3 ether}(
             args,
-            GovernedWeightedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap}),
             _noSigner()
         );
 
@@ -588,7 +637,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     function test_CreateGovernedInstanceRejectsPrepayWithoutPolicy() public {
         vm.deal(creator, 1 ether);
         vm.prank(creator);
-        vm.expectRevert(GovernedWeightedTrustgraphsFactory.PrepayRequiresPolicy.selector);
+        vm.expectRevert(GovernedFactoryBase.PrepayRequiresPolicy.selector);
         governedFactory.createGovernedInstance{value: 1 ether}(
             _args("weighted disabled prepay", 2), _unpaidPolicy(), _noSigner()
         );
@@ -597,10 +646,10 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
     function test_CreateGovernedInstanceRejectsPolicyWithoutPrepay() public {
         vm.prank(creator);
-        vm.expectRevert(GovernedWeightedTrustgraphsFactory.PolicyRequiresPrepay.selector);
+        vm.expectRevert(GovernedFactoryBase.PolicyRequiresPrepay.selector);
         governedFactory.createGovernedInstance(
             _args("weighted unfunded policy", 2),
-            GovernedWeightedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
             _noSigner()
         );
         assertEq(registry.instanceCount(), 0, "unfunded policy must create nothing");
@@ -610,13 +659,11 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         vm.deal(creator, 1 ether);
         vm.prank(creator);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                GovernedWeightedTrustgraphsFactory.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(1)
-            )
+            abi.encodeWithSelector(GovernedFactoryBase.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(1))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             _args("weighted unpriced prepay", 2),
-            GovernedWeightedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
             _noSigner()
         );
     }
@@ -629,37 +676,29 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         vm.startPrank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                GovernedWeightedTrustgraphsFactory.InitialPaidIntervalTooShort.selector, EPOCH_FLOOR - 1, EPOCH_FLOOR
+                GovernedFactoryBase.InitialPaidIntervalTooShort.selector, EPOCH_FLOOR - 1, EPOCH_FLOOR
             )
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedWeightedTrustgraphsFactory.InitialPolicy({
-                minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8
-            }),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8}),
             _noSigner()
         );
 
         uint96 maximum = governedFactory.MAX_INITIAL_MAX_PER_ROOT_USD();
-        vm.expectRevert(
-            abi.encodeWithSelector(GovernedWeightedTrustgraphsFactory.InitialCapTooHigh.selector, maximum + 1, maximum)
-        );
+        vm.expectRevert(abi.encodeWithSelector(GovernedFactoryBase.InitialCapTooHigh.selector, maximum + 1, maximum));
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedWeightedTrustgraphsFactory.InitialPolicy({
-                minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1
-            }),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1}),
             _noSigner()
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                GovernedWeightedTrustgraphsFactory.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8)
-            )
+            abi.encodeWithSelector(GovernedFactoryBase.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedWeightedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8}),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8}),
             _noSigner()
         );
         vm.stopPrank();
@@ -669,19 +708,17 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    function _unpaidPolicy() internal pure returns (GovernedWeightedTrustgraphsFactory.InitialPolicy memory) {
-        return GovernedWeightedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
+    function _unpaidPolicy() internal pure returns (GovernedFactoryBase.InitialPolicy memory) {
+        return GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
     }
 
-    function _noSigner() internal pure returns (GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-            enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
-        });
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
+        return GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0});
     }
 
     function _createGoverned(
         WeightedTrustgraphsFactory.CreateArgs memory args,
-        GovernedWeightedTrustgraphsFactory.InitialPolicy memory policy
+        GovernedFactoryBase.InitialPolicy memory policy
     ) internal returns (bytes32, address, address, address) {
         return governedFactory.createGovernedInstance(args, policy, _noSigner());
     }
@@ -742,7 +779,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     ) internal {
         vm.expectRevert(abi.encodeWithSelector(SafeExecutionGuard.OwnerExecutionLocked.selector, creator));
         vm.prank(creator);
-        GnosisSafe(payable(safe))
+        Safe(payable(safe))
             .execTransaction(
                 target, value, data, operation, 0, 0, 0, address(0), payable(address(0)), _approvedSignature(creator)
             );

@@ -7,10 +7,12 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import {
   type Address,
   type Hex,
+  encodeFunctionData,
   formatEther,
   getAddress,
   isAddress,
@@ -69,7 +71,7 @@ import {
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
   MAX_SOURCE_AGE_BLOCKS,
-  V1_COMPOSITION_BOUNDS,
+  MAX_COMPOSITION_BOUNDS,
   compositionSimplex,
   computeCompositionPreview,
   exactEqualWeights,
@@ -87,6 +89,7 @@ import {
   TRUST_COMPOSE_CONFIG,
 } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
+import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
@@ -120,21 +123,25 @@ type Mode = 'create' | 'rotate'
  * mixing generations would read the floor from one factory and create through a wrapper that
  * enforces another. Rotation stays instance-scoped, so existing compositions are untouched.
  */
-const fastFactory = (FAST_TRUST_COMPOSE_CONFIG?.factory || '') as Address
-const fastGovernedFactory = (FAST_TRUST_COMPOSE_CONFIG?.governedFactory ||
+const factoryPair = (
+  pair: { factory?: string; governedFactory?: string } | undefined
+): { factory: Address; governedFactory: Address } | null => {
+  const factory = (pair?.factory || '') as Address
+  const governedFactory = (pair?.governedFactory || '') as Address
+  return isAddress(factory, { strict: false }) &&
+    isAddress(governedFactory, { strict: false })
+    ? { factory, governedFactory }
+    : null
+}
+// New compositions prefer the fast (EPOCH_FLOOR = 1) pair, whole pairs only: mixing pairs would
+// read the floor from one factory and create through a wrapper that enforces another.
+const selectedPair =
+  factoryPair(FAST_TRUST_COMPOSE_CONFIG) ?? factoryPair(TRUST_COMPOSE_CONFIG)
+const factory = (selectedPair?.factory ??
+  TRUST_COMPOSE_CONFIG?.factory ??
   '') as Address
-const useFastGeneration =
-  isAddress(fastFactory, { strict: false }) &&
-  isAddress(fastGovernedFactory, { strict: false })
-const factory = (
-  useFastGeneration ? fastFactory : TRUST_COMPOSE_CONFIG?.factory || ''
-) as Address
 const factoryAvailable = isAddress(factory, { strict: false })
-const governedFactory = (
-  useFastGeneration
-    ? fastGovernedFactory
-    : TRUST_COMPOSE_CONFIG?.governedFactory || ''
-) as Address
+const governedFactory = (selectedPair?.governedFactory ?? '') as Address
 const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {
@@ -160,6 +167,7 @@ export const CompositionWorkspace = ({
   settingsInstanceId?: Hex
   embedded?: boolean
 } = {}) => {
+  const router = useRouter()
   const { address, isConnected } = useAccount()
   const targetChainId = getTargetChainId()
   const chainId = useChainId()
@@ -430,11 +438,9 @@ export const CompositionWorkspace = ({
       return
     }
     if (!publicClient) return setProblem('Target-chain RPC is unavailable.')
-    const switchingProgram =
-      sources.length > 0 &&
-      candidate.chainId === sources[0]!.chainId.toString() &&
-      candidate.programId.toLowerCase() !== sources[0]!.programId.toLowerCase()
-    const retainedSources = switchingProgram ? [] : sources
+    // Standard and weighted TrustGraph sources blend in one composition, so a
+    // cross-type pick keeps the current selection.
+    const retainedSources = sources
     setLoadingSource(candidate.instanceId)
     setProblem(null)
     try {
@@ -493,12 +499,7 @@ export const CompositionWorkspace = ({
         },
       })
       loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
-      setSelected(
-        rebalance([...retainedSources, loaded]),
-        switchingProgram
-          ? `Switched to ${candidate.programName} sources. Add at least one more graph of this score type.`
-          : undefined
-      )
+      setSelected(rebalance([...retainedSources, loaded]))
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -533,10 +534,8 @@ export const CompositionWorkspace = ({
         chainId: BigInt(targetChainId),
         captureBlock,
         scopeHash: DEFAULT_COMPOSITION_SCOPE,
-        admittedProgramId:
-          sources[0]?.programId ?? (`0x${'00'.repeat(32)}` as Hex),
         outputPool: BigInt(outputPool),
-        bounds: V1_COMPOSITION_BOUNDS,
+        bounds: MAX_COMPOSITION_BOUNDS,
         sources: structuredClone(sources),
       }
       const exact = computeCompositionPreview(next)
@@ -965,7 +964,7 @@ export const CompositionWorkspace = ({
           throw new Error('Cancel or activate the pending policy first.')
         const adapters = compositionSourceAdapters(previewConfig.sources)
         await publicClient.simulateContract({
-          account: address,
+          account: instance?.governance?.safe ?? address,
           address: active.controller,
           abi: trustComposeParamsControllerAbi,
           functionName: 'proposePolicy',
@@ -1011,7 +1010,7 @@ export const CompositionWorkspace = ({
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
               } as any)
-            : {
+            : ({
                 address: factory,
                 abi: trustComposeFactoryAbi,
                 functionName: 'createInstance',
@@ -1019,7 +1018,7 @@ export const CompositionWorkspace = ({
                   compositionCreateArgs(createFields, previewConfig, preview),
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
-              },
+              } as any),
           successMessage: withGovernance
             ? 'Composition created; its Safe holds it from the first block.'
             : 'Composition created.',
@@ -1075,6 +1074,32 @@ export const CompositionWorkspace = ({
       } else {
         if (!active) throw new Error('Load an active composition policy first.')
         const adapters = compositionSourceAdapters(previewConfig.sources)
+        if (instance?.governance) {
+          const fingerprint = keccak256(payload)
+          saveGovernancePrefill({
+            version: 2,
+            networkId: instance.id,
+            fingerprint,
+            title: 'Change composition source policy',
+            description:
+              'Replace the composition’s source weights and authenticated adapters with the reviewed policy. If governance executes this proposal, the controller’s separate activation delay must still elapse before activation.',
+            actions: [
+              {
+                actionKey: 'propose-composition-policy',
+                values: {
+                  manifest: preview.policyManifest,
+                  adapters,
+                  metadataDigest: compositionMetadataDigest(preview, adapters),
+                },
+              },
+            ],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+          )
+          return
+        }
         await txToast({
           tx: {
             address: active.controller,
@@ -1139,6 +1164,26 @@ export const CompositionWorkspace = ({
           successMessage: `Composition policy ${pending.version} activated.`,
         })
       } else {
+        if (instance?.governance) {
+          const data = encodeFunctionData({
+            abi: trustComposeParamsControllerAbi,
+            functionName: 'cancelPolicy',
+          })
+          const fingerprint = keccak256(data)
+          saveGovernancePrefill({
+            version: 2,
+            networkId: instance.id,
+            fingerprint,
+            title: `Cancel composition policy ${pending.version}`,
+            description: `Cancel the currently pending composition policy version ${pending.version}.`,
+            actions: [{ actionKey: 'cancel-composition-policy', values: {} }],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+          )
+          return
+        }
         await txToast({
           tx: {
             address: pending.controller,
@@ -1166,6 +1211,36 @@ export const CompositionWorkspace = ({
       const cap = parseVaultUsd(maxPerRootUsd)
       if (!cap) throw new Error('Set a nonzero maximum per refresh.')
       const interval = BigInt(instance.epochLength)
+      if (instance.governance) {
+        const data = encodeFunctionData({
+          abi: compositionVaultAbi,
+          functionName: 'setPolicy',
+          args: [settingsInstanceId, interval, cap],
+        })
+        const fingerprint = keccak256(data)
+        saveGovernancePrefill({
+          version: 2,
+          networkId: instance.id,
+          fingerprint,
+          title: 'Enable paid composition refreshes',
+          description:
+            'Set the proving-vault cadence and maximum payout for this governed composition.',
+          actions: [
+            {
+              actionKey: 'set-vault-policy',
+              values: {
+                minPaidIntervalBlocks: interval.toString(),
+                maxPerRootUsd: cap.toString(),
+              },
+            },
+          ],
+          createdAt: Date.now(),
+        })
+        router.push(
+          `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+        )
+        return
+      }
       await configurePaidRefreshes(settingsInstanceId, {
         minPaidIntervalBlocks: interval,
         maxPerRootUsd: cap,
@@ -1419,9 +1494,9 @@ export const CompositionWorkspace = ({
             1. Compatible same-chain sources
           </h2>
           <p className="text-sm text-muted-foreground">
-            Choose 2–8 graphs from the same chain and score type. Standard and
-            weighted-score graphs are both supported; V1 keeps their source
-            types in separate compositions.
+            Choose 2–8 graphs from the same chain. Standard and weighted-score
+            graphs blend in one composition; each source keeps its own program
+            and provenance.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -1432,10 +1507,6 @@ export const CompositionWorkspace = ({
             const differentChain =
               sources.length > 0 &&
               candidate.chainId !== sources[0]!.chainId.toString()
-            const differentProgram =
-              sources.length > 0 &&
-              candidate.programId.toLowerCase() !==
-                sources[0]!.programId.toLowerCase()
             const sourceEligibility =
               eligibility[candidate.snapshot.toLowerCase()]
             const ineligible =
@@ -1463,9 +1534,7 @@ export const CompositionWorkspace = ({
                     disabled={
                       !!loadingSource ||
                       (!selected &&
-                        (differentChain ||
-                          ineligible ||
-                          (!differentProgram && sources.length >= 8)))
+                        (differentChain || ineligible || sources.length >= 8))
                     }
                     onClick={() => toggleCandidate(candidate)}
                   >
@@ -1473,8 +1542,6 @@ export const CompositionWorkspace = ({
                       <LoaderCircle className="h-4 w-4 animate-spin" />
                     ) : selected ? (
                       'Remove'
-                    ) : differentProgram ? (
-                      'Use this score type'
                     ) : (
                       'Add'
                     )}
@@ -1486,14 +1553,6 @@ export const CompositionWorkspace = ({
                 {!selected && sourceEligibility?.detail && (
                   <p className="text-xs text-muted-foreground">
                     {sourceEligibility.detail}
-                  </p>
-                )}
-                {!selected && differentProgram && !differentChain && (
-                  <p className="text-xs text-muted-foreground">
-                    This graph is compatible, but it uses{' '}
-                    {candidate.programName} scores. Selecting it starts a
-                    composition of that score type and clears the current source
-                    selection.
                   </p>
                 )}
               </Card>

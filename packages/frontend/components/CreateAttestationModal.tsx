@@ -11,7 +11,7 @@ import { type Address, Hex, zeroAddress } from 'viem'
 import { useAccount } from 'wagmi'
 
 import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
-import { Button, ButtonProps } from '@/components/Button'
+import { Button } from '@/components/Button'
 import {
   Form,
   FormControl,
@@ -55,13 +55,8 @@ import { Column, Table } from './Table'
 import { Tooltip } from './Tooltip'
 
 export type CreateAttestationModalProps = {
-  trigger?: React.ReactNode
   title?: string
-  onSuccess?: () => void
-  isOpen?: boolean
-  setIsOpen?: (value: boolean) => void
   defaultRecipient?: string
-  variant?: ButtonProps['variant']
   className?: string
 }
 
@@ -77,13 +72,8 @@ const downloadJson = (name: string, content: string) => {
 }
 
 export const CreateAttestationModal = ({
-  trigger,
   title = 'Make Attestation',
-  onSuccess,
-  isOpen: externalIsOpen,
-  setIsOpen: externalSetIsOpen,
   defaultRecipient = '',
-  variant = 'default',
   className,
 }: CreateAttestationModalProps) => {
   const networkContext = useNetworkIfAvailable()
@@ -94,15 +84,7 @@ export const CreateAttestationModal = ({
     (network) => network.schemas.length > 0
   )
 
-  const [internalIsOpen, setInternalIsOpen] = useState(false)
-  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen
-  const setIsOpen = (value: boolean) => {
-    if (externalIsOpen !== undefined && externalSetIsOpen) {
-      externalSetIsOpen(value)
-    } else {
-      setInternalIsOpen(value)
-    }
-  }
+  const [isOpen, setIsOpen] = useState(false)
 
   const defaultSchemaUid =
     networkContext?.network.schemas[0]?.uid ||
@@ -180,7 +162,7 @@ export const CreateAttestationModal = ({
     error,
     hash,
     isRelayEnabled,
-  } = useAttestation()
+  } = useAttestation(undefined, currentNetwork?.importedLane)
 
   const noteText =
     totalValue > 0 && networkProfile && networkProfile.score !== '0'
@@ -256,25 +238,15 @@ export const CreateAttestationModal = ({
       if (currentSnapshot) {
         bumpPendingEcho(currentSnapshot)
       }
-      onSuccess?.()
       setIsOpen(false)
       form.reset()
     }
-  }, [
-    hash,
-    isCreated,
-    onSuccess,
-    form,
-    currentSnapshot,
-    bumpPendingEcho,
-    useStrictLane,
-  ])
+  }, [hash, isCreated, form, currentSnapshot, bumpPendingEcho, useStrictLane])
 
   useEffect(() => {
     if (!strictVouches.audit) return
     if (currentSnapshot) bumpPendingEcho(currentSnapshot)
-    onSuccess?.()
-  }, [strictVouches.audit, currentSnapshot, bumpPendingEcho, onSuccess])
+  }, [strictVouches.audit, currentSnapshot, bumpPendingEcho])
 
   // Clear transaction state when modal reopens
   useEffect(() => {
@@ -354,7 +326,6 @@ export const CreateAttestationModal = ({
       <Button
         onClick={() => setIsOpen(true)}
         disabled={!isConnected || !currentNetwork?.schemas.length}
-        variant={variant}
         className={className}
       >
         {title}
@@ -472,13 +443,7 @@ export const CreateAttestationModal = ({
 
   return (
     <>
-      {trigger ? (
-        <div onClick={() => setIsOpen(true)} className="cursor-pointer">
-          {trigger}
-        </div>
-      ) : (
-        defaultTrigger
-      )}
+      {defaultTrigger}
 
       <Modal
         isOpen={isOpen}

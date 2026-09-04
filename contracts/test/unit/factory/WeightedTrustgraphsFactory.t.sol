@@ -14,6 +14,7 @@ import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
 import {WeightedPriorParamsController} from "src/factory/WeightedPriorParamsController.sol";
 import {WeightedPriorParamsControllerDeployer} from "src/factory/WeightedInstanceDeployers.sol";
 import {WeightedTrustgraphsFactory} from "src/factory/WeightedTrustgraphsFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
@@ -124,6 +125,9 @@ contract WeightedTrustgraphsFactoryTest is Test {
         assertEq(EASIndexerResolver(payable(created.resolver)).boundSchema(), created.schemaUid);
         assertEq(EASIndexerResolver(payable(created.resolver)).snapshot(), created.snapshot);
         assertEq(MerkleSnapshot(created.snapshot).epochLength(), EPOCH_FLOOR);
+        assertEq(MerkleSnapshot(created.snapshot).metadataURI(), args.metadataURI);
+        assertEq(MerkleSnapshot(created.snapshot).metadataURIHash(), keccak256(bytes(args.metadataURI)));
+        assertEq(MerkleSnapshot(created.snapshot).metadataRevision(), 0);
         assertTrue(
             MerkleSnapshot(created.snapshot).provenanceEnabled(),
             "factory mints must open the composition-source window before the first root"
@@ -138,6 +142,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
         assertEq(v1.manifestSha256, sha256(args.manifest));
         assertEq(v1.paramsHash, record.paramsHash);
         assertEq(eventData.name, args.name);
+        assertEq(eventData.metadataURI, args.metadataURI);
         assertEq(eventData.metadataDigest, args.metadataDigest);
         assertEq(eventData.resolver, created.resolver);
         assertEq(eventData.snapshot, created.snapshot);
@@ -233,7 +238,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                WeightedTrustgraphsFactory.DistributorAlreadyAttached.selector, created.instanceId, distributor
+                DistributorAttaching.DistributorAlreadyAttached.selector, created.instanceId, distributor
             )
         );
         factory.attachDistributor(created.instanceId, args.admin, address(0));
@@ -243,7 +248,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
         Created memory again = _create(second);
         vm.expectRevert(
             abi.encodeWithSelector(
-                WeightedTrustgraphsFactory.NotInstanceAuthority.selector, again.instanceId, address(0x57AA)
+                DistributorAttaching.NotInstanceAuthority.selector, again.instanceId, address(0x57AA)
             )
         );
         factory.attachDistributor(again.instanceId, address(0x57AA), address(0));
@@ -254,13 +259,13 @@ contract WeightedTrustgraphsFactoryTest is Test {
         WeightedTrustgraphsFactory.CreateArgs memory funded = _args("unsafe weighted", 2);
         funded.admin = eoa;
         funded.withDistributor = true;
-        vm.expectRevert(abi.encodeWithSelector(WeightedTrustgraphsFactory.InvalidDistributorSafe.selector, eoa));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, eoa));
         factory.createInstance(funded);
 
         WeightedTrustgraphsFactory.CreateArgs memory fundless = _args("unsafe weighted attach", 2);
         fundless.admin = eoa;
         Created memory created = _create(fundless);
-        vm.expectRevert(abi.encodeWithSelector(WeightedTrustgraphsFactory.InvalidDistributorSafe.selector, eoa));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, eoa));
         factory.attachDistributor(created.instanceId, eoa, address(0));
     }
 

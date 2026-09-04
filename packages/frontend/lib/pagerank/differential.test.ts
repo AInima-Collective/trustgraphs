@@ -136,7 +136,7 @@ const rust = spawnSync(
     '-p',
     'pagerank-core',
     '--example',
-    'm1_differential_runner',
+    'differential_runner',
   ],
   {
     cwd: resolve(process.cwd(), '../..'),

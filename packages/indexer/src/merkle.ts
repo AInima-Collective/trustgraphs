@@ -4,14 +4,17 @@ import { ponder } from 'ponder:registry'
 import {
   compositionInstance,
   compositionPolicyVersion,
+  contributionsInstance,
   instance,
   merkleFundDistribution,
   merkleFundDistributionClaim,
   merkleFundDistributor,
   merkleSnapshot,
+  networkMetadataRevision,
   parameterVersion,
   proofSubmission,
   snapshotTrigger,
+  weightedPriorInstance,
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
@@ -25,6 +28,7 @@ import {
 } from './composition-ingest'
 import { compositionCheckpointForEvent } from './composition-receipt'
 import { ingestContributionsScores } from './contributions'
+import { fetchNetworkMetadata } from './factory'
 import { ingestNostrWorkspaceScores } from './nostr-workspace'
 import type {
   ScoreProgramDefinition,
@@ -178,26 +182,9 @@ ponder.on('programSnapshot:setup', async ({ context }) => {
   )
 })
 
-ponder.on('weightedMerkleSnapshot:setup', async ({ context }) => {
-  await backfillSnapshotStates(
-    context,
-    staticAddresses(context.contracts.weightedMerkleSnapshot.address)
-  )
-})
-
-ponder.on('compositionMerkleSnapshot:setup', async ({ context }) => {
-  await backfillSnapshotStates(
-    context,
-    staticAddresses(context.contracts.compositionMerkleSnapshot.address)
-  )
-})
-
-ponder.on('contributionsMerkleSnapshot:setup', async ({ context }) => {
-  await backfillSnapshotStates(
-    context,
-    staticAddresses(context.contracts.contributionsMerkleSnapshot.address)
-  )
-})
+// The factory-discovered snapshot sources (weighted, composition, contributions) have no setup
+// handler: their `address` is a factory() wrapper, so there are no static addresses to backfill —
+// each instance's rows are created by its creation event instead.
 
 type RootRecovery = {
   program: ScoreProgramDefinition
@@ -389,12 +376,22 @@ const onMerkleRootUpdated = async (
         .update(metadataTable)
         .set({
           ...discriminators.primary,
+          // Metadata is keyed by (snapshot, root), so a later checkpoint may
+          // legitimately return to an already-ingested root. Advance the
+          // collapsed row's chain cursor or an intervening root remains
+          // incorrectly visible as current.
+          blockNumber: event.block.number,
+          timestamp: event.block.timestamp,
           programProvenance: provenance,
         })
         .where(rootWhere)
       await offchainDb
         .update(entryTable)
-        .set(discriminators.primary)
+        .set({
+          ...discriminators.primary,
+          blockNumber: event.block.number,
+          timestamp: event.block.timestamp,
+        })
         .where(
           and(
             eq(entryTable.merkleSnapshotContract, event.log.address),
@@ -776,6 +773,103 @@ ponder.on('weightedMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('compositionMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('contributionsMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 
+/** Materialize the latest profile while preserving every constitutional pointer revision. */
+const onMetadataURIUpdated = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:MetadataURIUpdated'>) => {
+  const [standard] = await context.db.sql
+    .select()
+    .from(instance)
+    .where(eq(instance.snapshot, event.log.address))
+    .limit(1)
+  const [weighted] = standard
+    ? [undefined]
+    : await context.db.sql
+        .select()
+        .from(weightedPriorInstance)
+        .where(eq(weightedPriorInstance.snapshot, event.log.address))
+        .limit(1)
+  const [composition] =
+    standard || weighted
+      ? [undefined]
+      : await context.db.sql
+          .select()
+          .from(compositionInstance)
+          .where(eq(compositionInstance.snapshot, event.log.address))
+          .limit(1)
+  const [contributions] =
+    standard || weighted || composition
+      ? [undefined]
+      : await context.db.sql
+          .select()
+          .from(contributionsInstance)
+          .where(eq(contributionsInstance.snapshot, event.log.address))
+          .limit(1)
+  const catalog = standard ?? weighted ?? composition ?? contributions
+  if (!catalog) {
+    console.warn(
+      `merkle: MetadataURIUpdated from unknown snapshot ${event.log.address}`
+    )
+    return
+  }
+
+  const { metadata, status } = await fetchNetworkMetadata(
+    event.args.metadataURI
+  )
+  const update = {
+    metadataURI: event.args.metadataURI,
+    metadataURIHash: event.args.metadataURIHash,
+    metadataRevision: event.args.revision,
+    metadataStatus: status,
+    metadataUpdatedBlock: event.block.number,
+    metadataUpdatedTimestamp: event.block.timestamp,
+    metadataUpdatedTxHash: event.transaction.hash,
+    metadata,
+  }
+  if (standard) {
+    await context.db.update(instance, { id: standard.id }).set(update)
+  } else if (weighted) {
+    await context.db
+      .update(weightedPriorInstance, { id: weighted.id })
+      .set(update)
+  } else if (composition) {
+    await context.db
+      .update(compositionInstance, { id: composition.id })
+      .set(update)
+  } else {
+    await context.db
+      .update(contributionsInstance, { id: contributions!.id })
+      .set(update)
+  }
+
+  await context.db.insert(networkMetadataRevision).values({
+    id: `${event.log.address.toLowerCase()}-${event.args.revision}`,
+    instanceId: catalog.id,
+    snapshot: event.log.address,
+    revision: event.args.revision,
+    authority: event.args.authority,
+    metadataURI: event.args.metadataURI,
+    metadataURIHash: event.args.metadataURIHash,
+    previousMetadataURIHash: event.args.previousMetadataURIHash,
+    metadata,
+    status,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    txHash: event.transaction.hash,
+  })
+
+  await revalidateNetwork(catalog.id)
+}
+
+ponder.on('merkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
+ponder.on('weightedMerkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
+ponder.on('compositionMerkleSnapshot:MetadataURIUpdated', onMetadataURIUpdated)
+ponder.on(
+  'contributionsMerkleSnapshot:MetadataURIUpdated',
+  onMetadataURIUpdated
+)
+
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('weightedMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
@@ -1045,22 +1139,17 @@ ponder.on('programFundDistributor:setup', async ({ context }) => {
 })
 
 // Factory-discovered round distributors get their row at birth from the creation event
-// (src/contributions-factory.ts); this setup is the same static-list no-op the other factory
-// sources have, kept for shape parity.
-ponder.on('contributionsFundDistributor:setup', async ({ context }) => {
-  for (const address of staticAddresses(
-    context.contracts.contributionsFundDistributor.address
-  )) {
-    await insertDistributorConfig(context, address)
-  }
-})
+// (src/contributions-factory.ts), so they need no setup handler.
 
 const onOwnershipTransferStarted = async ({
   event,
   context,
 }: SharedArgs<'merkleFundDistributor:OwnershipTransferStarted'>) => {
-  const { pendingOwner } = event.args
-  await updateDistributorConfig(context, event.log.address, { pendingOwner })
+  // OpenZeppelin Ownable2Step's event: `newOwner` is the pending owner until acceptance.
+  const { newOwner } = event.args
+  await updateDistributorConfig(context, event.log.address, {
+    pendingOwner: newOwner,
+  })
 }
 
 const onOwnershipTransferred = async ({
@@ -1247,7 +1336,7 @@ const onDistributed = async ({
   })
 }
 
-// M6 expiry + sweep: the funder reclaimed the unclaimed remainder after the claim deadline.
+// Round expiry: the funder reclaimed the unclaimed remainder after the claim deadline.
 const onSwept = async ({
   event,
   context,

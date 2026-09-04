@@ -34,7 +34,7 @@ import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
 
 /// @title TrustgraphsFactoryBase
-/// @notice Shared rig for the M1 factory battery: a real EAS + `SchemaRegistry` (so created
+/// @notice Shared rig for the factory battery: a real EAS + `SchemaRegistry` (so created
 ///         instances can actually be attested against), a real `InstanceRegistry` with the factory
 ///         holding `REGISTRAR_ROLE`, and a mock verifier standing in for the shared
 ///         `SP1JournalVerifier`.
@@ -319,6 +319,9 @@ abstract contract TrustgraphsFactoryBase is Test {
         // Constitutional authority stays with the community admin. Operational authority belongs
         // only to the typed controller, which the same admin owns through a two-step handoff.
         assertTrue(snapshot.hasRole(constitutional, c.admin), "admin must hold CONSTITUTIONAL_ROLE");
+        assertEq(snapshot.metadataURI(), c.evt.metadataURI, "snapshot must retain revision-zero metadata");
+        assertEq(snapshot.metadataURIHash(), keccak256(bytes(c.evt.metadataURI)), "metadata hash mismatch");
+        assertEq(snapshot.metadataRevision(), 0, "factory metadata must begin at revision zero");
         assertFalse(snapshot.hasRole(operational, c.admin), "admin must not retain the raw-hash path");
         assertTrue(snapshot.hasRole(operational, c.controller), "controller must hold OPERATIONAL_ROLE");
         TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);

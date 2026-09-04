@@ -36,11 +36,11 @@ export interface WeightedApiInstance {
   id: Hex
   name: string
   metadata?: {
-    name?: string
-    description?: string
-    criteria?: string
-    image?: string
-    applicationUrl?: string
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
   } | null
 }
 
@@ -52,6 +52,14 @@ export interface WeightedApiInstanceDetail extends WeightedApiInstance {
   creator: Hex
   admin: Hex
   metadataURI: string
+  metadataURIHash: Hex
+  metadataRevision: string
+  metadataStatus: string
+  metadataUpdated: {
+    block: string
+    timestamp: string
+    txHash: Hex
+  }
   resolver: Hex
   schemaUid: Hex
   snapshot: Hex
@@ -60,6 +68,8 @@ export interface WeightedApiInstanceDetail extends WeightedApiInstance {
   governance: {
     module: Hex
     safe: Hex
+    recoveryModule?: Hex | null
+    executionGuard?: Hex | null
   } | null
   epochLength: string
   currentVersion: string

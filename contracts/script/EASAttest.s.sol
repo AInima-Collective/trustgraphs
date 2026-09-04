@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 import {
     IEAS,
@@ -124,7 +124,7 @@ contract EASAttest is Common {
     /// @param value The ETH value to send (in wei)
     /// @dev Creates a revocable attestation with no expiration time and specified payment.
     ///      The payment is sent along with the attestation transaction and can be used
-    ///      by payment-enabled resolvers like PayableEASIndexerResolver.
+    ///      by payment-enabled resolvers.
     ///      Uses the private key from FUNDED_KEY environment variable for signing.
     function attestWithPayment(
         string calldata easAddr,

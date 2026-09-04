@@ -79,7 +79,7 @@ contract VerifyVaultC4 is Test {
         _createSource(1);
 
         accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
-        snapshot = new MerkleSnapshot(composeVerifier, COMPOSE_PARAMS, accumulator, address(this), address(this));
+        snapshot = new MerkleSnapshot(composeVerifier, COMPOSE_PARAMS, accumulator, address(this), address(this), "");
         // Exactly what TrustComposeFactory.createInstance does, in order.
         snapshot.enableStateProvenance();
         snapshot.setEpochLength(EPOCH);
@@ -249,7 +249,7 @@ contract VerifyVaultC4 is Test {
 
     function test_V4_TrustGraphLaneOneCannotProduceEqualLeafCountsAcrossCheckpoints() public {
         RealLaneOne lane = new RealLaneOne();
-        MerkleSnapshot snap = new MerkleSnapshot(sourceVerifier, keccak256("p"), lane, address(this), address(this));
+        MerkleSnapshot snap = new MerkleSnapshot(sourceVerifier, keccak256("p"), lane, address(this), address(this), "");
         lane.bindSnapshot(address(snap));
 
         vm.roll(2_000);
@@ -313,7 +313,7 @@ contract VerifyVaultC4 is Test {
         MockAccumulator sourceAccumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256(abi.encode("source params", index));
         MerkleSnapshot sourceSnapshot =
-            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this));
+            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this), "");
         sourceSnapshot.enableStateProvenance();
         bytes32 instanceId = bytes32(index + 1);
         registry.registerWithParamsAuthority(
@@ -357,6 +357,7 @@ contract VerifyVaultC4 is Test {
                     adapter.snapshot(),
                     adapter.familyId(),
                     SOURCE_PROGRAM,
+                    keccak256("trustgraphs.output.trust-graph-account.v1"),
                     uint64(5e17),
                     uint64(5_000),
                     uint8(1)

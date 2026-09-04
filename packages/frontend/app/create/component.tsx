@@ -10,6 +10,7 @@ import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
+import { SUBNETWORK_CONFIG } from '@/lib/config'
 import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
 import { cn } from '@/lib/utils'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
@@ -21,7 +22,6 @@ import {
   WizardData,
   buildCreateArgs,
   fundTokenProblem,
-  isFactoryAvailable,
   metadataFingerprint,
   metadataFrom,
   nameProblem,
@@ -41,7 +41,13 @@ import { SuccessStep } from './steps/SuccessStep'
 import { TuningStep } from './steps/TuningStep'
 import { Note } from './ui'
 
-export const CreateNetworkWizard = () => {
+export const CreateNetworkWizard = ({
+  parentInstanceId,
+  parentNetworkId,
+}: {
+  parentInstanceId?: Hex
+  parentNetworkId?: string
+}) => {
   const { isConnected } = useAccount()
   const chainId = useChainId()
   const { switchToTarget, switchingTarget } = useWalletConnectionContext()
@@ -59,19 +65,22 @@ export const CreateNetworkWizard = () => {
   } | null>(null)
 
   const [salt] = useState<Hex>(() => randomSalt())
+  const creationFactoryAddress = ((parentInstanceId
+    ? SUBNETWORK_CONFIG?.factory
+    : FACTORY_ADDRESS) || '') as Hex
 
   const { data: epochFloorRead } = useReadContract({
-    address: FACTORY_ADDRESS,
+    address: creationFactoryAddress,
     abi: trustgraphsFactoryAbi,
     functionName: 'EPOCH_FLOOR',
-    query: { enabled: isFactoryAvailable() },
+    query: { enabled: creationFactoryAddress?.length === 42 },
   })
   const epochFloor = (epochFloorRead as bigint | undefined) ?? 0n
   const { data: vaultRead } = useReadContract({
-    address: FACTORY_ADDRESS,
+    address: creationFactoryAddress,
     abi: trustgraphsFactoryAbi,
     functionName: 'VAULT',
-    query: { enabled: isFactoryAvailable() },
+    query: { enabled: creationFactoryAddress?.length === 42 },
   })
   const vaultAvailable =
     typeof vaultRead === 'string' &&
@@ -182,13 +191,26 @@ export const CreateNetworkWizard = () => {
     <div className="space-y-8 max-w-3xl">
       <div className="space-y-4">
         <div className="space-y-1">
-          <h1 className="text-2xl">Create a standard network</h1>
-          <Link
-            href="/create"
-            className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-          >
-            Choose a different kind of network
-          </Link>
+          <h1 className="text-2xl">
+            {parentInstanceId
+              ? 'Create a standard sub-network'
+              : 'Create a standard network'}
+          </h1>
+          {parentInstanceId ? (
+            <Link
+              href={`/networks/${parentNetworkId ?? parentInstanceId}/subnetworks`}
+              className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            >
+              Back to parent network
+            </Link>
+          ) : (
+            <Link
+              href="/create"
+              className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            >
+              Choose a different kind of network
+            </Link>
+          )}
         </div>
 
         <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
@@ -220,10 +242,9 @@ export const CreateNetworkWizard = () => {
       {!isConnected && (
         <Card type="outline" size="md" className="space-y-3">
           <p className="text-sm">
-            Connect the wallet that will create this network and become the DAO
-            Safe&apos;s visible owner and delayed recovery proposer. A sealed
-            guard disables owner-signed execution; members govern the Safe, and
-            the Safe, not this wallet, owns the network contracts.
+            {parentInstanceId
+              ? 'Connect a wallet to prepare the creation action. The parent network’s members decide whether to pass it through their governance process.'
+              : 'Connect the wallet that will create this network and become the DAO Safe’s visible owner and delayed recovery proposer. A sealed guard disables owner-signed execution; members govern the Safe, and the Safe, not this wallet, owns the network contracts.'}
           </p>
           <WalletConnectionButton />
         </Card>
@@ -263,7 +284,12 @@ export const CreateNetworkWizard = () => {
         />
       )}
       {stepId === 'extras' && (
-        <AddOnsStep data={data} onChange={onChange} showErrors={showErrors} />
+        <AddOnsStep
+          data={data}
+          onChange={onChange}
+          showErrors={showErrors}
+          parentInstanceId={parentInstanceId}
+        />
       )}
       {stepId === 'review' && (
         <ReviewStep
@@ -271,6 +297,8 @@ export const CreateNetworkWizard = () => {
           args={args}
           epochFloor={epochFloor}
           metadataUri={metadataUri}
+          parentInstanceId={parentInstanceId}
+          parentNetworkId={parentNetworkId}
           onCreated={setCreated}
           onSeedsChanged={(seeds, seedNames) => onChange({ seeds, seedNames })}
           onJumpTo={(id) => {

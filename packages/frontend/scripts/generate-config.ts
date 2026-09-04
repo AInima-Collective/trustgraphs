@@ -103,16 +103,36 @@ const factoryDeployFile = path.join(
   __dirname,
   '../../../.docker/factory_deploy.json'
 )
-const localFactoryAddress = fs.existsSync(factoryDeployFile)
-  ? (JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8')).factory ?? '')
+const localFactoryDeployment = fs.existsSync(factoryDeployFile)
+  ? JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8'))
+  : {}
+const localFactoryAddress = localFactoryDeployment.factory ?? ''
+const importedFactoryDeployFile = path.join(
+  __dirname,
+  '../../../.docker/imported_factory_deploy.json'
+)
+const localImportedFactoryAddress = fs.existsSync(importedFactoryDeployFile)
+  ? (JSON.parse(fs.readFileSync(importedFactoryDeployFile, 'utf8'))
+      .imported_factory ?? '')
   : ''
 const governedFactoryDeployFile = path.join(
   __dirname,
   '../../../.docker/governed_factory_deploy.json'
 )
-const localGovernedFactoryAddress = fs.existsSync(governedFactoryDeployFile)
-  ? (JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
-      .governed_factory ?? '')
+const localGovernedFactoryDeployment = fs.existsSync(governedFactoryDeployFile)
+  ? JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
+  : {}
+const localGovernedFactoryAddress =
+  localGovernedFactoryDeployment.governed_factory ?? ''
+const governedImportedFactoryDeployFile = path.join(
+  __dirname,
+  '../../../.docker/governed_imported_factory_deploy.json'
+)
+const localGovernedImportedFactoryAddress = fs.existsSync(
+  governedImportedFactoryDeployFile
+)
+  ? (JSON.parse(fs.readFileSync(governedImportedFactoryDeployFile, 'utf8'))
+      .governed_imported_factory ?? '')
   : ''
 const signerVerifierDeployFile = path.join(
   __dirname,
@@ -140,6 +160,12 @@ try {
   const governedFactoryAddress = isSepolia
     ? deployment.governedFactory?.governed_factory || ''
     : localGovernedFactoryAddress
+  const importedFactoryAddress = isSepolia
+    ? deployment.importedFactory?.imported_factory || ''
+    : localImportedFactoryAddress
+  const governedImportedFactoryAddress = isSepolia
+    ? deployment.governedImportedFactory?.governed_imported_factory || ''
+    : localGovernedImportedFactoryAddress
 
   console.log('📋 Found deployment data')
 
@@ -158,6 +184,14 @@ try {
   configOutput.signerSync = {
     verifier: signerVerifierDeployment.zk_verifier ?? '',
     programVKey: signerVerifierDeployment.program_vkey ?? '',
+  }
+  configOutput.importedFactory = {
+    factory:
+      importedFactoryAddress || process.env.IMPORTED_FACTORY_ADDRESS || '',
+    governedFactory:
+      governedImportedFactoryAddress ||
+      process.env.GOVERNED_IMPORTED_FACTORY_ADDRESS ||
+      '',
   }
   // The weighted lane uses an isolated hand-audited ABI in its workspace. Keeping this address
   // outside the generated binary contract map also lets older deployments offer import/export
@@ -242,6 +276,28 @@ try {
       process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS ||
       '',
   }
+  configOutput.subnetworks = {
+    factory:
+      deployment.factory?.factory ||
+      localFactoryAddress ||
+      process.env.SUBNETWORK_TRUSTGRAPHS_FACTORY_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedFactory?.governed_factory ||
+      localGovernedFactoryDeployment.governed_factory ||
+      process.env.SUBNETWORK_GOVERNED_FACTORY_ADDRESS ||
+      '',
+    registry:
+      deployment.governedFactory?.subnetwork_registry ||
+      localGovernedFactoryDeployment.subnetwork_registry ||
+      process.env.SUBNETWORK_REGISTRY_ADDRESS ||
+      '',
+    parentModuleDeployer:
+      deployment.governedFactory?.parent_authority_deployer ||
+      localGovernedFactoryDeployment.parent_authority_deployer ||
+      process.env.PARENT_AUTHORITY_MODULE_DEPLOYER_ADDRESS ||
+      '',
+  }
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {
@@ -262,10 +318,9 @@ try {
     // views + AnchorsCheckpointed/HeadAnchored events for journal-v2 verification.
     AnchorRegistry: '',
     // Contributions program (per-instance addresses live in networks.json): the three-schema
-    // resolver + accumulator, the trust-accumulator mirror, and the local pool token (6dp).
+    // resolver + accumulator and the trust-accumulator mirror.
     ContributionResolver: '',
     TrustAccumulatorMirror: '',
-    TestUSDC: '',
 
     // One per chain: communities fund this tank to pay whoever proves their next root. The
     // deployment summary carries it as a bare address rather than under `networks` because every

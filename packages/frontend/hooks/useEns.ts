@@ -33,8 +33,6 @@ export type EnsResolutionStatus =
 export interface EnsData {
   address: string
   name: string | null
-  /** Avatars are intentionally out of scope for the first ENS milestone. */
-  avatar: null
   isLoading: boolean
   status: EnsResolutionStatus
   error: Error | null
@@ -42,8 +40,6 @@ export interface EnsData {
 
 interface UseEnsOptions {
   enableName?: boolean
-  /** Retained for call-site compatibility; avatars are not fetched. */
-  enableAvatar?: boolean
   cacheDuration?: number
   /** The chain whose address record should be read (Sepolia on the public testnet). */
   targetChainId?: number
@@ -98,7 +94,6 @@ export function useEns(
   return {
     address: validAddress ? address! : '',
     name: query.data ?? null,
-    avatar: null,
     isLoading,
     status,
     error: query.error,
@@ -159,7 +154,6 @@ export function useResolveEnsName(
   return {
     address: query.data ?? '',
     name: query.data ? normalizedName : null,
-    avatar: null,
     isLoading,
     status,
     error: query.error,
@@ -254,7 +248,6 @@ export function useBatchEnsQuery(
             const data: EnsData = {
               address,
               name: name ?? null,
-              avatar: null,
               isLoading: false,
               status: name ? 'resolved' : 'not-found',
               error: null,
@@ -268,7 +261,6 @@ export function useBatchEnsQuery(
             const data: EnsData = {
               address,
               name: null,
-              avatar: null,
               isLoading: false,
               status: 'error',
               error,
@@ -292,16 +284,4 @@ export function useBatchEnsQuery(
     staleTime: cacheDuration,
     gcTime: ENS_DISPLAY_GC_TIME,
   })
-}
-
-export function useEnsUtils() {
-  const queryClient = useQueryClient()
-  return {
-    clearCache: () => {
-      void queryClient.invalidateQueries({ queryKey: ['ensName'] })
-      void queryClient.invalidateQueries({ queryKey: ['ensAddress'] })
-      void queryClient.invalidateQueries({ queryKey: ['batch-ens'] })
-    },
-    isValidAddress: (address: string) => isAddress(address, { strict: false }),
-  }
 }

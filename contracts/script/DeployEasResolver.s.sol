@@ -28,15 +28,14 @@ contract AcceptAllVerifier is IZkVerifier {
 /// @notice The minimal deploy the input-exporter e2e needs: EAS + the `EASIndexerResolver` (which
 ///         is the AttestationAccumulator) + a `(string comment, uint256 confidence)` schema wired
 ///         to it + the `MerkleSnapshot` that owns its epochs.
-/// @dev    The snapshot is no longer optional here. `checkpoint()` used to be permissionless on the
-///         resolver (issue #10), so an exporter e2e could freeze inputs with one `cast send` and
-///         never deploy a snapshot at all. Now the accumulator is bound to exactly one snapshot and
+/// @dev    The snapshot is no longer optional here. an unbound accumulator would let an exporter e2e freeze
+///         inputs with one `cast send` and never deploy a snapshot at all. The accumulator is bound to exactly one snapshot and
 ///         only that snapshot's `trigger()` may mint — which is also what pins the checkpoint's
-///         `paramsHash`, without which no proof can be submitted. So the e2e deploys the same
-///         resolver → schema → paramsHash → snapshot → bind chain that `DeployNetwork` does.
+///         `paramsHash`, without which no proof can be submitted. So the e2e deploys the full
+///         resolver → schema → paramsHash → snapshot → bind chain.
 contract DeployEasResolver is Script {
-    /// The e2e's governance params (`schema_uid` is patched in by the caller; the v2 domain
-    /// separators come from this deploy, exactly as in `DeployNetwork`).
+    /// The e2e's governance params (`schema_uid` is patched in by the caller; the domain
+    /// separators come from this deploy).
     string constant PARAMS_TEMPLATE = "tests/e2e/params.template.json";
 
     function run() external {
@@ -61,7 +60,8 @@ contract DeployEasResolver is Script {
             paramsHash,
             IAttestationAccumulator(address(resolver)),
             msg.sender, // constitutional: the e2e re-points the verifier for the on-chain half
-            msg.sender // operational
+            msg.sender, // operational
+            ""
         );
 
         resolver.bindSchema(schemaUid);

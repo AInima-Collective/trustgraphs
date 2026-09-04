@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {Guard} from "@gnosis.pm/safe-contracts/base/GuardManager.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {BaseTransactionGuard, ITransactionGuard} from "@safe-global/safe-smart-account/base/GuardManager.sol";
 
 /// @title SafeExecutionGuard
 /// @notice Permanently closes a governed Safe's owner-signature execution path after atomic factory
@@ -12,7 +12,7 @@ import {Guard} from "@gnosis.pm/safe-contracts/base/GuardManager.sol";
 ///      factory enables exactly the Merkle governance and delayed-recovery modules before sealing.
 ///      Once sealed, owner calls cannot remove this guard, enable another module, delegatecall,
 ///      batch, transfer funds, or reach any external target through `execTransaction`.
-contract SafeExecutionGuard is Guard {
+contract SafeExecutionGuard is BaseTransactionGuard {
     address public immutable safe;
     address public immutable bootstrapper;
     bool public isSealed;
@@ -39,7 +39,7 @@ contract SafeExecutionGuard is Guard {
         emit GuardSealed(safe, bootstrapper);
     }
 
-    /// @inheritdoc Guard
+    /// @inheritdoc ITransactionGuard
     function checkTransaction(
         address,
         uint256,
@@ -58,7 +58,7 @@ contract SafeExecutionGuard is Guard {
         revert OwnerExecutionLocked(msgSender);
     }
 
-    /// @inheritdoc Guard
+    /// @inheritdoc ITransactionGuard
     function checkAfterExecution(bytes32, bool) external view override {
         if (msg.sender != safe) revert OnlySafe(msg.sender);
     }

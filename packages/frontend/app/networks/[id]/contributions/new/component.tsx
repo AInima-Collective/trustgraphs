@@ -2,8 +2,17 @@
 
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { type Address, type Hex, isAddress, parseEventLogs, toHex } from 'viem'
+import {
+  type Address,
+  type Hex,
+  encodeFunctionData,
+  isAddress,
+  keccak256,
+  parseEventLogs,
+  toHex,
+} from 'viem'
 import { useAccount, usePublicClient, useReadContract } from 'wagmi'
 
 import { Button, ButtonLink } from '@/components/Button'
@@ -23,6 +32,7 @@ import {
   contributionsFactoryAbi,
 } from '@/lib/contributions-factory'
 import { parseErrorMessage } from '@/lib/error'
+import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { txToast } from '@/lib/tx'
 import { Network } from '@/lib/types'
 
@@ -62,6 +72,7 @@ const defaultWindow = () => {
 }
 
 export const NewContributionRoundPage = ({ network }: { network: Network }) => {
+  const router = useRouter()
   const { address: connectedAddress, isConnected } = useAccount()
   const publicClient = usePublicClient()
 
@@ -78,6 +89,8 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<{ instanceId: Hex } | null>(null)
+  const governed =
+    !!network.contracts.merkleGovModule && !!network.contracts.safe?.proxy
 
   // The gate the factory enforces: only a holder of this network's constitutional role can hang
   // a round on it. Checked here so the page can say so before asking for a signature.
@@ -89,7 +102,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
       connectedAddress !== undefined
         ? [PARENT_AUTHORITY_ROLE, connectedAddress]
         : undefined,
-    query: { enabled: !!connectedAddress },
+    query: { enabled: !!connectedAddress && !governed },
   })
 
   // The parent's exact live scoring params: the round re-runs this network's trust algorithm
@@ -141,7 +154,6 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
 
   const handleCreate = async () => {
     if (
-      !publicClient ||
       !connectedAddress ||
       !network.instanceId ||
       !parent ||
@@ -170,6 +182,44 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
           salt,
         }
       )
+      if (governed) {
+        const data = encodeFunctionData({
+          abi: contributionsFactoryAbi,
+          functionName: 'createInstance',
+          args: [args],
+        })
+        const fingerprint = keccak256(data)
+        saveGovernancePrefill({
+          version: 2,
+          networkId: network.id,
+          fingerprint,
+          title: `Create contribution round: ${name.trim()}`,
+          description:
+            'Create a contribution-funding round governed by this network. The round copies the parent network’s exact live scoring tuple and its Safe becomes the round authority.',
+          actions: [
+            {
+              actionKey: 'create-contribution-round',
+              values: {
+                parentParams: parent.params,
+                parentEpochLength: parent.epochLength,
+                name: name.trim(),
+                roundStart: startSeconds!.toString(),
+                roundEnd: endSeconds!.toString(),
+                totalPool: poolValue!.toString(),
+                evaluatorCarveoutBps: carveoutBps!.toString(),
+                distributorToken: args.distributorToken,
+                salt,
+              },
+            },
+          ],
+          createdAt: Date.now(),
+        })
+        router.push(
+          `/networks/${network.id}/governance?new=1&actionDraft=${fingerprint}`
+        )
+        return
+      }
+      if (!publicClient) throw new Error('Connect to the target network first.')
       const gasEstimate = await publicClient.estimateContractGas({
         address: ROUND_FACTORY as Address,
         abi: contributionsFactoryAbi,
@@ -268,11 +318,10 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
                 authority (the holder of its constitutional role) can start a
                 round.
               </p>
-            ) : isAuthority === false ? (
+            ) : !governed && isAuthority === false ? (
               <p className="text-sm text-warn">
                 Only this network&apos;s authority can start a round, and the
-                connected wallet does not hold its constitutional role. For a
-                governed network that means going through a proposal.
+                connected wallet does not hold its constitutional role.
               </p>
             ) : null}
 
@@ -378,11 +427,17 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
                 isCreating ||
                 problem !== null ||
                 !isConnected ||
-                isAuthority !== true ||
+                (!governed && isAuthority !== true) ||
                 !parent
               }
             >
-              {isCreating ? 'Starting the round…' : 'Start the round'}
+              {isCreating
+                ? governed
+                  ? 'Preparing proposal…'
+                  : 'Starting the round…'
+                : governed
+                  ? 'Review as governance proposal'
+                  : 'Start the round'}
             </Button>
             {network.instanceId && parentQuery.isError && (
               <p className="text-sm text-warn">

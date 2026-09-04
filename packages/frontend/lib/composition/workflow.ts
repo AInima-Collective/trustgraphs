@@ -1,6 +1,5 @@
 import { type Address, type Hex, encodeAbiParameters, keccak256 } from 'viem'
 
-import type { CompositionApiUnavailableError } from './api'
 import {
   type CompositionPreview,
   type LandedCompositionCommitments,
@@ -197,14 +196,6 @@ export const compositionDeploymentAvailability = ({
       'Composition preview, creation, and governed rotation are available.',
   }
 }
-
-export const isCompositionApiUnavailable = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  'status' in error &&
-  ([404, 405] as unknown[]).includes(
-    (error as CompositionApiUnavailableError).status
-  )
 
 export type CompositionHistoryEvent = {
   id: string

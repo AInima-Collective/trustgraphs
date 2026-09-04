@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
 
 /// @title DelayedRecoveryModule
 /// @notice A visible, cancellable break-glass route for a module-only governed Safe. The recovery
@@ -15,7 +15,7 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 contract DelayedRecoveryModule {
     uint48 public constant MIN_DELAY = 14 days;
 
-    GnosisSafe public immutable safe;
+    Safe public immutable safe;
     uint48 public immutable delay;
     address public proposer;
     uint256 public nextNonce;
@@ -48,7 +48,7 @@ contract DelayedRecoveryModule {
     constructor(address safe_, address proposer_, uint48 delay_) {
         if (safe_ == address(0) || proposer_ == address(0)) revert ZeroAddress();
         if (delay_ < MIN_DELAY) revert DelayTooShort(delay_, MIN_DELAY);
-        safe = GnosisSafe(payable(safe_));
+        safe = Safe(payable(safe_));
         proposer = proposer_;
         delay = delay_;
     }

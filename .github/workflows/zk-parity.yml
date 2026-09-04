@@ -33,15 +33,15 @@ jobs:
           cache-on-failure: true
           workspaces: |
             zk/program -> target
-            zk/trustgraph-program-v2 -> target
+            zk/trust-graph-program -> target
             zk/weighted-program -> target
             zk/composition-program -> target
             zk/nostr-program -> target
 
-      - name: Install SP1 toolchain (pinned 6.3.1)
+      - name: Install SP1 toolchain (pinned 6.6.0)
         run: |
           curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up --version v6.3.1
+          ~/.sp1/bin/sp1up --version v6.6.0
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       - name: Build all isolated guest families
@@ -108,9 +108,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install Task
         uses: go-task/setup-task@v1
@@ -128,3 +126,60 @@ jobs:
 
       - name: ZK parity (${{ matrix.program }})
         run: task --yes zk:parity PROGRAM=${{ matrix.program }}
+
+  host-lint:
+    name: Host lint + tests (prover, operator)
+    needs: guest-elfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "27.3"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: |
+            zk/prover -> target
+            zk/operator -> target
+
+      - name: Download pinned guest ELFs
+        uses: actions/download-artifact@v4
+        with:
+          name: sp1-guest-elfs
+
+      - name: Restore guest ELF paths
+        run: tar -xzf sp1-guest-elfs.tar.gz
+
+      # zk/prover and zk/operator are detached workspaces: the root workspace's
+      # clippy/fmt/test jobs never compile them, so they get their own pass here,
+      # against the same pinned guest ELFs the parity jobs use.
+      - name: clippy (prover)
+        run: cargo clippy --manifest-path zk/prover/Cargo.toml --all-targets -- -D warnings
+        env:
+          SP1_SKIP_PROGRAM_BUILD: "true"
+
+      - name: clippy (operator)
+        run: cargo clippy --manifest-path zk/operator/Cargo.toml --all-targets -- -D warnings
+        env:
+          SP1_SKIP_PROGRAM_BUILD: "true"
+
+      - name: fmt --check (prover + operator)
+        run: |
+          cargo fmt --manifest-path zk/prover/Cargo.toml --all --check
+          cargo fmt --manifest-path zk/operator/Cargo.toml --all --check
+
+      - name: cargo test (operator)
+        run: cargo test --manifest-path zk/operator/Cargo.toml
+        env:
+          SP1_SKIP_PROGRAM_BUILD: "true"

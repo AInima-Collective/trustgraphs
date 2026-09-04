@@ -20,6 +20,12 @@ import {
 } from '@/lib/composition/api'
 import type { CompositionPreviewAnchor } from '@/lib/composition/workflow'
 import { APIS } from '@/lib/config'
+import { SCORE_PROGRAM_IDS } from '@/lib/score-program'
+
+const scoreProgramLabel = (programId: string) =>
+  Object.entries(SCORE_PROGRAM_IDS).find(
+    ([, id]) => id.toLowerCase() === programId.toLowerCase()
+  )?.[0] ?? `${programId.slice(0, 10)}…`
 
 const download = (name: string, value: unknown) => {
   const url = URL.createObjectURL(
@@ -239,6 +245,7 @@ export const CompositionEpochView = ({
                 <thead>
                   <tr>
                     <th>Source</th>
+                    <th>Program</th>
                     <th>Checkpoint / freeze</th>
                     <th>Quota / entries</th>
                     <th>Binding</th>
@@ -249,6 +256,14 @@ export const CompositionEpochView = ({
                     <tr key={source.sourceId}>
                       <td className="font-mono">
                         {source.sourceId.slice(0, 14)}…
+                      </td>
+                      {/* Each source keeps its real program and output domain in the committed
+                          bytes; a mixed composition shows both types here, never the class. */}
+                      <td
+                        className="font-mono"
+                        title={source.sourceOutputDomain ?? undefined}
+                      >
+                        {scoreProgramLabel(source.programId)}
                       </td>
                       <td>
                         {source.sourceCheckpointId} / {source.freezeBlock}

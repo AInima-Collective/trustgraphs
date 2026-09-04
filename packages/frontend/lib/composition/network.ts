@@ -1,4 +1,4 @@
-import { zeroAddress } from 'viem'
+import { type Hex, zeroAddress } from 'viem'
 
 import type { Network } from '../types'
 import type { CompositionInstance } from './api'
@@ -11,7 +11,11 @@ const text = (value: string | undefined) => value?.trim() ?? ''
  * snapshot, rewards, and navigation data.
  */
 export const compositionAsNetwork = (
-  instance: CompositionInstance
+  instance: CompositionInstance,
+  infrastructure: {
+    provingVault?: Hex
+    contributionsFactory?: Hex
+  } = {}
 ): Network => ({
   program: 'trust-compose',
   id: instance.id,
@@ -20,6 +24,14 @@ export const compositionAsNetwork = (
   epochLength: instance.epochLength,
   createdTimestamp: instance.createdTimestamp,
   name: text(instance.metadata?.name) || instance.name,
+  ...(text(instance.metadata?.image)
+    ? { image: text(instance.metadata?.image) }
+    : {}),
+  metadataURI: instance.metadataURI,
+  metadataURIHash: instance.metadataURIHash,
+  metadataRevision: instance.metadataRevision,
+  metadataStatus: instance.metadataStatus,
+  ...(instance.metadata ? { profile: instance.metadata } : {}),
   about: text(instance.metadata?.description),
   criteria: text(instance.metadata?.criteria),
   applicationUrl: text(instance.metadata?.applicationUrl) || undefined,
@@ -37,6 +49,29 @@ export const compositionAsNetwork = (
     // Compositions have no EAS vouch resolver. The accumulator is retained here as the closest
     // common provenance field; composition screens never invoke the vouching workflow.
     easIndexerResolver: instance.accumulator || zeroAddress,
+    ...(infrastructure.provingVault
+      ? { provingVault: infrastructure.provingVault }
+      : {}),
+    ...(infrastructure.contributionsFactory
+      ? { contributionsFactory: infrastructure.contributionsFactory }
+      : {}),
+    ...(instance.controller
+      ? { trustgraphsParamsController: instance.controller }
+      : {}),
+    ...(instance.governance
+      ? {
+          merkleGovModule: instance.governance.module,
+          safe: {
+            proxy: instance.governance.safe,
+            ...(instance.governance.recoveryModule
+              ? { recoveryModule: instance.governance.recoveryModule }
+              : {}),
+            ...(instance.governance.executionGuard
+              ? { executionGuard: instance.governance.executionGuard }
+              : {}),
+          },
+        }
+      : {}),
     ...(instance.distributor
       ? { merkleFundDistributor: instance.distributor }
       : {}),

@@ -20,9 +20,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install Task
         uses: go-task/setup-task@v1

@@ -3,7 +3,7 @@ import { Chain } from 'viem'
 import { sepolia } from 'viem/chains'
 import { createConfig, fallback, http, mock, webSocket } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
-import { injected } from 'wagmi/connectors'
+import { injected } from 'wagmi/connectors/injected'
 
 import { CHAIN } from './config'
 import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'

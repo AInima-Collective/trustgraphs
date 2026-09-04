@@ -1,4 +1,8 @@
-//! Frozen `TGCP` policy, `TGCM` capture, params, and journal encodings.
+//! Frozen `TGCP`/`TGCM`, params, and journal encodings.
+//!
+//! Each source record carries a 32-byte `sourceOutputDomain` field after
+//! `programId`; the parser accepts exactly manifest version 1 and never
+//! guesses a layout from byte length.
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 
@@ -8,9 +12,9 @@ use crate::{
 };
 
 pub const CAPTURE_HEADER_LENGTH: usize = 23;
-pub const CAPTURE_RECORD_LENGTH: usize = 261;
+pub const CAPTURE_RECORD_LENGTH: usize = 293;
 pub const POLICY_HEADER_LENGTH: usize = 15;
-pub const POLICY_RECORD_LENGTH: usize = 133;
+pub const POLICY_RECORD_LENGTH: usize = 165;
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_be_bytes(bytes[offset..offset + 2].try_into().expect("checked manifest length"))
@@ -70,17 +74,18 @@ pub fn parse_capture_manifest(
             snapshot: read_address(bytes, base + 32),
             family_id: read_b256(bytes, base + 52),
             program_id: read_b256(bytes, base + 84),
-            state_index: read_u64(bytes, base + 116),
-            freeze_block: read_u64(bytes, base + 124),
-            output_root: read_b256(bytes, base + 132),
-            blob_sha256: read_b256(bytes, base + 164),
-            cid_digest: read_b256(bytes, base + 196),
-            total_value: read_u128(bytes, base + 228),
-            weight: read_u64(bytes, base + 244),
-            max_age_blocks: read_u64(bytes, base + 252),
-            required: bytes[base + 260] == 1,
+            source_output_domain: read_b256(bytes, base + 116),
+            state_index: read_u64(bytes, base + 148),
+            freeze_block: read_u64(bytes, base + 156),
+            output_root: read_b256(bytes, base + 164),
+            blob_sha256: read_b256(bytes, base + 196),
+            cid_digest: read_b256(bytes, base + 228),
+            total_value: read_u128(bytes, base + 260),
+            weight: read_u64(bytes, base + 276),
+            max_age_blocks: read_u64(bytes, base + 284),
+            required: bytes[base + 292] == 1,
         });
-        if bytes[base + 260] > 1 {
+        if bytes[base + 292] > 1 {
             return Err(CompositionError::OptionalSourceUnsupported);
         }
     }
@@ -101,6 +106,7 @@ pub fn capture_manifest_encoded(manifest: &CapturedManifest) -> Vec<u8> {
         out.extend_from_slice(source.snapshot.as_slice());
         out.extend_from_slice(source.family_id.as_slice());
         out.extend_from_slice(source.program_id.as_slice());
+        out.extend_from_slice(source.source_output_domain.as_slice());
         out.extend_from_slice(&source.state_index.to_be_bytes());
         out.extend_from_slice(&source.freeze_block.to_be_bytes());
         out.extend_from_slice(source.output_root.as_slice());
@@ -118,13 +124,15 @@ pub fn manifest_digest(bytes: &[u8]) -> B256 {
     B256::from(zk_core::cid::sha256(bytes))
 }
 
-/// `keccak256(abi.encode(sourceId, snapshot, familyId, programId, weight, maxAge, required))`.
+/// `keccak256(abi.encode(sourceId, snapshot, familyId, programId,
+/// sourceOutputDomain, weight, maxAge, required))`.
 pub fn source_policy_leaf(source: &CapturedSource) -> B256 {
-    let mut encoded = Vec::with_capacity(32 * 7);
+    let mut encoded = Vec::with_capacity(32 * 8);
     encoded.extend_from_slice(source.source_id.as_slice());
     encoded.extend_from_slice(&zk_core::words::word_addr(source.snapshot));
     encoded.extend_from_slice(source.family_id.as_slice());
     encoded.extend_from_slice(source.program_id.as_slice());
+    encoded.extend_from_slice(source.source_output_domain.as_slice());
     encoded.extend_from_slice(&zk_core::words::word_u64(source.weight));
     encoded.extend_from_slice(&zk_core::words::word_u64(source.max_age_blocks));
     encoded.extend_from_slice(&zk_core::words::word_u8(u8::from(source.required)));
@@ -171,6 +179,7 @@ pub fn policy_manifest_encoded(chain_id: u64, sources: &[CapturedSource]) -> Vec
         out.extend_from_slice(source.snapshot.as_slice());
         out.extend_from_slice(source.family_id.as_slice());
         out.extend_from_slice(source.program_id.as_slice());
+        out.extend_from_slice(source.source_output_domain.as_slice());
         out.extend_from_slice(&source.weight.to_be_bytes());
         out.extend_from_slice(&source.max_age_blocks.to_be_bytes());
         out.push(u8::from(source.required));
@@ -178,7 +187,9 @@ pub fn policy_manifest_encoded(chain_id: u64, sources: &[CapturedSource]) -> Vec
     out
 }
 
-/// Frozen 20-word `trust-compose` V1 parameter tuple.
+/// Frozen 20-word `trust-compose` parameter tuple. Word 6 is the source
+/// compatibility class; it must never be exposed under the V1 field name after
+/// version dispatch.
 pub fn params_encoded(params: &Params) -> Vec<u8> {
     let mut out = Vec::with_capacity(32 * 20);
     out.extend_from_slice(&zk_core::words::word_u32(params.version));
@@ -187,7 +198,7 @@ pub fn params_encoded(params: &Params) -> Vec<u8> {
     out.extend_from_slice(params.identity_domain.as_slice());
     out.extend_from_slice(params.output_kind.as_slice());
     out.extend_from_slice(params.output_domain.as_slice());
-    out.extend_from_slice(params.admitted_program_id.as_slice());
+    out.extend_from_slice(params.source_compatibility_class.as_slice());
     out.extend_from_slice(&zk_core::words::word_u64(params.weight_scale));
     out.extend_from_slice(&zk_core::words::word_u256(U256::from(params.output_pool)));
     out.extend_from_slice(params.source_policy_root.as_slice());

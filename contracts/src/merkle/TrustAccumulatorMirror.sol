@@ -94,7 +94,7 @@ contract TrustAccumulatorMirror is IAttestationAccumulator {
     /// @inheritdoc IAttestationAccumulator
     /// @dev Freezes the trust accumulator's CURRENT state into a local checkpoint. Never reverts
     ///      on an unchanged accumulator (see the contract-level dev note on the missing
-    ///      `NoNewInputs` guard). Only the bound snapshot may mint (M6-1): both lanes must be
+    ///      `NoNewInputs` guard). Only the bound snapshot may mint: both lanes must be
     ///      frozen under one id by `trigger()`, or the unset lane-2 freeze reads `(0, 0)`.
     function checkpoint() external returns (uint256 id) {
         if (msg.sender != snapshot || snapshot == address(0)) {

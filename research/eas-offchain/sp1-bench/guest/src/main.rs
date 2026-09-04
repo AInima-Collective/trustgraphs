@@ -2,7 +2,7 @@
 sp1_zkvm::entrypoint!(main);
 
 use alloy_primitives::{Address, B256};
-use eas_offchain_v2::payload_v1::{
+use eas_offchain::payload::{
     eip712_domain_separator, verify, AnchorMessage, VerificationContext,
 };
 

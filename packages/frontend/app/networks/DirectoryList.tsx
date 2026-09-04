@@ -116,11 +116,9 @@ const NetworkRow = ({
         className="hidden text-right text-sm tabular-nums text-text lg:block"
       >
         <span className="sr-only">{figure.label}: </span>
-        {/* A missing number is never rendered as 0. It used to be left visually blank with the
-         * reason exposed to screen readers only, which made the wide table less honest than the
-         * phone sentence beside it: a sighted reader saw a labelled column full of holes and no
-         * reason given. The reason is visible now, in the muted tone so it reads as an absence
-         * rather than as data.
+        {/* A missing number is never rendered as 0, and the reason is visible to sighted
+         * readers too (not sr-only): a labelled column full of holes with no reason given
+         * reads as broken. The muted tone makes it read as an absence rather than as data.
          *
          * `--text-muted`, not `--text-subtle`, for the same reason the compact line below is:
          * this sits inside the row, which paints `--surface-2` on hover AND on focus-visible.

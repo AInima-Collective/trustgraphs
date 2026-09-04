@@ -1,4 +1,4 @@
-import { isHex } from 'viem'
+import { type Hex, isHex } from 'viem'
 
 import type { Network } from '../types'
 import { fetchWeightedEntries, fetchWeightedInstance } from './api'
@@ -6,7 +6,11 @@ import { weightedInstanceToNetwork } from './network'
 
 export const getWeightedNetwork = async (
   id: string,
-  api: string
+  api: string,
+  infrastructure: {
+    provingVault?: Hex
+    contributionsFactory?: Hex
+  } = {}
 ): Promise<{ network?: Network; error: string | null }> => {
   if (!isHex(id) || id.length !== 66) return { error: null }
 
@@ -18,7 +22,7 @@ export const getWeightedNetwork = async (
       instance.currentVersion
     )
     return {
-      network: weightedInstanceToNetwork(instance, entries),
+      network: weightedInstanceToNetwork(instance, entries, infrastructure),
       error: null,
     }
   } catch (error) {

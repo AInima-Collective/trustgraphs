@@ -199,7 +199,7 @@ export const signerJournalDigest = (j: SignerJournal): Hex =>
 
 /**
  * Decode the confidence (weight) uint256 from ABI-encoded attestation `data` at head slot `index`.
- * Returns `null` if the data is too short — mirroring the legacy "decode failed ⇒ weight 0".
+ * Returns `null` if the data is too short — the consensus rule is "decode failed ⇒ weight 0".
  */
 export const decodeWeight = (data: Hex, index: number): bigint | null => {
   const bytes = hexToBytes(data)

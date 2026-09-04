@@ -69,7 +69,7 @@ export const WalletConnectionButton = ({
     return () => clearTimeout(timeout)
   }, [copied])
   const CopyIcon = copied ? Check : Copy
-  const { name: ensName } = useEns(address, { enableAvatar: false })
+  const { name: ensName } = useEns(address)
   const accountLabel = ensName || (address ? formatAddress(address) : '')
 
   const setOpenRef = useRef<Dispatch<SetStateAction<boolean>> | null>(null)

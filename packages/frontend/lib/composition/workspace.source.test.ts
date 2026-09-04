@@ -9,6 +9,12 @@ const networkDirectory = read('app/networks/page.tsx')
 const directoryServer = read('lib/directory.server.ts')
 const instance = read('app/compositions/[instanceId]/instance.tsx')
 const governance = read('app/compositions/[instanceId]/governance.tsx')
+const governanceLayout = read('app/networks/[id]/governance/layout.tsx')
+const settings = read('app/networks/[id]/settings/page.tsx')
+const profileSettings = read('app/networks/[id]/settings/profile.tsx')
+const contributionsPage = read('app/networks/[id]/contributions.tsx')
+const contributionsCatalog = read('lib/contributions-catalog.ts')
+const compositionNetwork = read('lib/composition/network.ts')
 const epoch = read(
   'app/compositions/[instanceId]/epochs/[checkpointId]/epoch.tsx'
 )
@@ -104,7 +110,22 @@ assert.match(workspace, /Approve the second transaction/)
 assert.match(workspace, /Enable paid score refreshes/)
 assert.match(workspace, /funded, but paid refreshes are disabled/)
 assert.match(contracts, /function setPolicy\(bytes32 instanceId/)
-assert.match(workspace, /Use this score type/)
+// Mixed admission: standard and weighted sources blend in one composition, so
+// a cross-type pick keeps the current selection and the picker never offers a
+// clearing "switch score type" action.
+assert.match(
+  workspace,
+  /Standard and weighted-score\s+graphs blend in one composition/
+)
+assert.match(workspace, /cross-type pick keeps the current selection/)
+assert.doesNotMatch(workspace, /Use this score type/)
+assert.doesNotMatch(workspace, /clears the current source/)
+// One generation only: no version dispatch anywhere in the creation path, and the
+// frozen tuple's word 6 is the closed compatibility class.
+assert.doesNotMatch(workspace, /paramsVersion/)
+assert.doesNotMatch(workspace, /V2Abi/)
+assert.match(contracts, /sourceCompatibilityClass/)
+assert.doesNotMatch(contracts, /admittedProgramId/)
 assert.doesNotMatch(workspace, /I explicitly acknowledge/)
 assert.match(workspace, /DISABLED_SIGNER_SYNC/)
 
@@ -114,6 +135,20 @@ assert.match(workspace, /<NetworkProfileFields/)
 assert.match(workspace, /hasNetworkProfile\(profile\)/)
 assert.match(workspace, /await pinMetadata\(metadata\)/)
 assert.match(workspace, /metadataURI: await ensureMetadataURI\(\)/)
+assert.match(settings, /NetworkProfileSettings/)
+assert.match(settings, /SnapshotProfileSettings/)
+assert.match(settings, /governanceNetworkId: parentId/)
+assert.match(profileSettings, /target\.governanceNetworkId \?\? target\.id/)
+assert.match(governanceLayout, /compositionAsNetwork/)
+assert.match(governanceLayout, /NetworkProvider network=\{compositionNetwork\}/)
+assert.match(contributionsPage, /Manage round profile/)
+assert.match(contributionsCatalog, /BigInt\(row\.metadataRevision\) > 0n/)
+assert.match(contributionsCatalog, /governance: row\.governance/)
+assert.match(compositionNetwork, /metadataRevision: instance\.metadataRevision/)
+assert.match(
+  compositionNetwork,
+  /merkleGovModule: instance\.governance\.module/
+)
 
 // Receipt scanning is topic-keyed (parseEventLogs), never filtered by emitting address: under
 // the governed wrapper the base factory emits the creation event and the Safe is the creator.

@@ -5,9 +5,9 @@ import test from 'node:test'
 
 import { rpcUpstreamUrl } from './rpc-upstream'
 
-test('numbered browser RPC endpoints take precedence over the legacy primary', () => {
+test('numbered browser RPC endpoints take precedence over the unsuffixed primary', () => {
   const environment = {
-    RPC_URL_11155111: 'https://legacy.example',
+    RPC_URL_11155111: 'https://unsuffixed.example',
     RPC_URL_11155111_0: 'https://primary.example',
     RPC_URL_11155111_1: 'https://failover.example',
   }
@@ -22,12 +22,12 @@ test('numbered browser RPC endpoints take precedence over the legacy primary', (
   )
 })
 
-test('endpoint zero retains the legacy unsuffixed fallback', () => {
+test('endpoint zero retains the unsuffixed fallback', () => {
   assert.equal(
     rpcUpstreamUrl('11155111', 0, {
-      RPC_URL_11155111: 'https://legacy.example',
+      RPC_URL_11155111: 'https://unsuffixed.example',
     }),
-    'https://legacy.example'
+    'https://unsuffixed.example'
   )
   assert.equal(rpcUpstreamUrl('11155111', 1, {}), undefined)
 })

@@ -67,6 +67,30 @@ The Railway services follow the `main` branch. Push one reviewed, locally green 
 after the checks above; applying before that push would make Railway build an older tree without
 the Railway files.
 
+### Rehearse and roll out an indexer upgrade
+
+Treat any Ponder, schema, config, ABI, or indexing-function change as a new application build. Bump
+`PONDER_DATABASE_SCHEMA` in `.railway/railway.ts` and leave `PONDER_VIEWS_SCHEMA` stable. For the
+Ponder 0.17 upgrade, `trustgraph_sepolia_v5` is the new writer and `trust-graph` remains the public
+views schema. Do not reuse or delete `trustgraph_sepolia_v4`; it is the rollback source.
+
+Before the production deploy, run the candidate image in a disposable Railway environment against
+a fresh Postgres database, the production release manifest, and the production start blocks. Wait
+for `/ready` to return 200, then compare `/status`, representative SQL/API responses, catalog
+counts, pagination, and provenance fields with the current deployment. Restart the candidate once
+and confirm that it resumes from its checkpoint without moving the finalized block backwards.
+
+Deploy the indexer before any frontend that depends on new response fields. `/health` proves only
+that the process is listening; do not treat the new writer as ready until `/ready` returns 200 and
+the response comparisons pass. Ponder leaves the stable views schema pointed at the previous writer
+through backfill and repoints it only after historical indexing completes. The Ponder 0.17 upgrade
+does not intentionally change Trustgraphs response shapes, so the current frontend may remain live
+during this rehearsal. Deploy the frontend only after the indexer checks pass.
+
+To roll back, redeploy the last reviewed commit with its prior writer schema. Keep both writer
+schemas until the release has completed its soak; never run `ponder db prune` as part of deployment
+or rollback.
+
 ## 2. Select the project and set a spending ceiling
 
 Create an empty `trustgraphs-sepolia` project with a `production` environment. Authenticate and

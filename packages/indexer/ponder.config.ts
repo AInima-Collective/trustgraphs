@@ -4,7 +4,7 @@ import path from 'path'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
-import { anchorRegistryAbi } from './abis/anchorRegistry'
+import { canonicalEasAbi, schemaRegistryAbi } from './abis/canonicalEas'
 import {
   compositionAccumulatorAbi,
   trustComposeFactoryAbi,
@@ -16,7 +16,15 @@ import { easOffchainAnchorRegistryAbi } from './abis/easOffchainAnchorRegistry'
 import { erc8004IdentityRegistryAbi } from './abis/erc8004IdentityRegistry'
 import { erc8004ReputationRegistryAbi } from './abis/erc8004ReputationRegistry'
 import { graphLineageRegistryAbi } from './abis/graphLineage'
+import { onchainAttestationImporterAbi } from './abis/onchainAttestationImporter'
 import { provingVaultAbi } from './abis/provingVault'
+import {
+  delayedRecoveryModuleAbi,
+  paramsAuthorityOwnerAbi,
+  parentAuthorityModuleAbi,
+  parentAuthorityModuleDeployerAbi,
+  subnetworkRegistryAbi,
+} from './abis/subnetwork'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
   instanceRegistryAbi,
@@ -33,6 +41,7 @@ import {
 } from '../../contracts/deploy/release-manifest'
 import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
 import {
+  anchorRegistryAbi,
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
@@ -70,10 +79,14 @@ type DeploymentSummary = {
   eas?: { eas?: string; schema_registry?: string; schema_registrar?: string }
   /** `.docker/factory_deploy.json`, present once `DeployFactory` has run on this box. */
   factory?: { factory?: string; instance_registry?: string }
+  importedFactory?: { imported_factory?: string }
   governedFactory?: {
     governed_factory?: string
     signer_sync_deployer?: string
+    parent_authority_deployer?: string
+    subnetwork_registry?: string
   }
+  governedImportedFactory?: { governed_imported_factory?: string }
   /** The fast (EPOCH_FLOOR = 1) factory generation. Same contracts and event surface as
    *  `factory` / `governedFactory`, so both generations ride the same sources as address
    *  arrays; only present once the fast pair is recorded in the release manifest. */
@@ -224,6 +237,12 @@ const SEPOLIA_START_BLOCK = blockNumberEnv(
   releaseManifest?.firstDeploymentBlock ?? 0
 )
 const CORE_START_BLOCK = IS_SEPOLIA ? SEPOLIA_START_BLOCK : DEV_START_BLOCK
+// Legacy schemas predate Trustgraphs. Starting at the core deployment block would make the pending
+// set look complete while silently omitting their history, so EAS owns an explicit genesis-capable
+// cursor. Fork/local operators can raise the local start with the ordinary PONDER_START_BLOCK.
+const EAS_START_BLOCK = IS_SEPOLIA
+  ? blockNumberEnv('PONDER_EAS_START_BLOCK_11155111', 0)
+  : DEV_START_BLOCK
 
 /**
  * ERC-8004 is a local research fixture. Public deployment profiles do not accept an arbitrary
@@ -261,6 +280,8 @@ const PROVING_VAULT = (deploymentSummary as { provingVault?: string })
 const TRUSTGRAPHS_FACTORY = deploymentSummary.factory?.factory as
   | Hex
   | undefined
+const IMPORTED_TRUSTGRAPHS_FACTORY = deploymentSummary.importedFactory
+  ?.imported_factory as Hex | undefined
 const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
   | Hex
   | undefined
@@ -272,11 +293,14 @@ const TRUSTGRAPHS_FACTORY_FAST = deploymentSummary.factoryFast?.factory as
  *  array so networks minted by either generation are indexed identically. */
 const TRUSTGRAPHS_FACTORIES = [
   TRUSTGRAPHS_FACTORY,
+  IMPORTED_TRUSTGRAPHS_FACTORY,
   TRUSTGRAPHS_FACTORY_FAST,
 ].filter((address): address is Hex => address !== undefined)
 const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | Hex
   | undefined
+const GOVERNED_IMPORTED_FACTORY = deploymentSummary.governedImportedFactory
+  ?.governed_imported_factory as Hex | undefined
 const GOVERNED_FACTORY_FAST = deploymentSummary.governedFactoryFast
   ?.governed_factory as Hex | undefined
 const GOVERNED_WEIGHTED_FACTORY = deploymentSummary.governedWeightedFactory
@@ -295,6 +319,7 @@ const GOVERNED_COMPOSE_FACTORY_FAST = deploymentSummary
  */
 const GOVERNED_WRAPPERS = [
   GOVERNED_FACTORY,
+  GOVERNED_IMPORTED_FACTORY,
   GOVERNED_FACTORY_FAST,
   GOVERNED_WEIGHTED_FACTORY,
   GOVERNED_WEIGHTED_FACTORY_FAST,
@@ -304,11 +329,20 @@ const GOVERNED_WRAPPERS = [
 /** Both governed trust-graph wrapper generations, one source: same ABI, same handlers. */
 const GOVERNED_TRUSTGRAPHS_FACTORIES = [
   GOVERNED_FACTORY,
+  GOVERNED_IMPORTED_FACTORY,
   GOVERNED_FACTORY_FAST,
 ].filter((address): address is Hex => address !== undefined)
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
+const PARENT_AUTHORITY_DEPLOYER = deploymentSummary.governedFactory
+  ?.parent_authority_deployer as Hex | undefined
+const SUBNETWORK_REGISTRY = deploymentSummary.governedFactory
+  ?.subnetwork_registry as Hex | undefined
 const CHAIN_ID = IS_SEPOLIA ? 11155111 : 31337
+const EAS_ADDRESS = deploymentSummary.eas?.eas as Hex | undefined
+const SCHEMA_REGISTRY_ADDRESS = deploymentSummary.eas?.schema_registry as
+  | Hex
+  | undefined
 const WEIGHTED_FACTORY =
   (process.env[`WEIGHTED_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
     | Hex
@@ -358,7 +392,7 @@ const GRAPH_LINEAGE_REGISTRY =
  * A box whose deploy chain never ran `DeployFactory` (for example a lane-2-only hypercerts box)
  * still falls back to the static lists.
  */
-const FACTORY_DISCOVERY = TRUSTGRAPHS_FACTORY !== undefined
+const FACTORY_DISCOVERY = TRUSTGRAPHS_FACTORIES.length > 0
 
 /** The frozen discovery event. Every child address below is one of its arguments. */
 const INSTANCE_CREATED = getAbiItem({
@@ -385,6 +419,14 @@ const SIGNER_SYNC_MODULE_CONFIGURED = getAbiItem({
   abi: signerSyncModuleDeployerAbi,
   name: 'SignerSyncModuleConfigured',
 })
+const GOVERNED_AUTHORITY_INSTALLED = getAbiItem({
+  abi: governedTrustgraphsFactoryAbi,
+  name: 'GovernedAuthorityInstalled',
+})
+const PARENT_AUTHORITY_MODULE_CONFIGURED = getAbiItem({
+  abi: parentAuthorityModuleDeployerAbi,
+  name: 'ParentAuthorityModuleConfigured',
+})
 const WEIGHTED_PARAMS_CONTROLLER_CREATED = getAbiItem({
   abi: weightedTrustgraphsFactoryAbi,
   name: 'WeightedParamsControllerCreated',
@@ -404,6 +446,10 @@ const COMPOSITION_INSTANCE_CREATED = getAbiItem({
 const CONTRIBUTIONS_INSTANCE_CREATED = getAbiItem({
   abi: contributionsFactoryAbi,
   name: 'ContributionsInstanceCreated',
+})
+const CONTRIBUTIONS_CONTROLLER_CREATED = getAbiItem({
+  abi: contributionsFactoryAbi,
+  name: 'ContributionsParamsControllerCreated',
 })
 
 /**
@@ -460,6 +506,22 @@ const governedSignerModules = () =>
     address: SIGNER_SYNC_DEPLOYER!,
     event: SIGNER_SYNC_MODULE_CONFIGURED,
     parameter: 'signerSyncModule',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const parentAuthorityModules = () =>
+  factory({
+    address: PARENT_AUTHORITY_DEPLOYER!,
+    event: PARENT_AUTHORITY_MODULE_CONFIGURED,
+    parameter: 'parentAuthorityModule',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const governedRecoveryModules = () =>
+  factory({
+    address: GOVERNED_WRAPPERS,
+    event: GOVERNED_AUTHORITY_INSTALLED,
+    parameter: 'recoveryModule',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -527,6 +589,14 @@ const contributionsChildren = (
     address: CONTRIBUTIONS_FACTORIES,
     event: CONTRIBUTIONS_INSTANCE_CREATED,
     parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const contributionsControllers = () =>
+  factory({
+    address: CONTRIBUTIONS_FACTORIES,
+    event: CONTRIBUTIONS_CONTROLLER_CREATED,
+    parameter: 'controller',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -604,8 +674,27 @@ export default createConfig({
       startBlock: CORE_START_BLOCK,
       interval: 5,
     },
+    easImportHead: {
+      chain: CORE_CHAIN,
+      // This is only a cursor heartbeat; replaying one row per pre-Trustgraphs block would add no
+      // history. Canonical EAS contract sources above still begin at EAS_START_BLOCK.
+      startBlock: CORE_START_BLOCK,
+      interval: 1,
+    },
   },
   contracts: {
+    canonicalEas: {
+      abi: canonicalEasAbi,
+      startBlock: EAS_START_BLOCK,
+      chain: EAS_ADDRESS ? { [CORE_CHAIN]: { address: EAS_ADDRESS } } : {},
+    },
+    easSchemaRegistry: {
+      abi: schemaRegistryAbi,
+      startBlock: EAS_START_BLOCK,
+      chain: SCHEMA_REGISTRY_ADDRESS
+        ? { [CORE_CHAIN]: { address: SCHEMA_REGISTRY_ADDRESS } }
+        : {},
+    },
     graphLineageRegistry: {
       abi: graphLineageRegistryAbi,
       startBlock: CORE_START_BLOCK,
@@ -621,6 +710,35 @@ export default createConfig({
       chain: INSTANCE_REGISTRY
         ? { [CORE_CHAIN]: { address: INSTANCE_REGISTRY } }
         : {},
+    },
+    subnetworkRegistry: {
+      abi: subnetworkRegistryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: SUBNETWORK_REGISTRY
+        ? { [CORE_CHAIN]: { address: SUBNETWORK_REGISTRY } }
+        : {},
+    },
+    parentAuthorityModuleDeployer: {
+      abi: parentAuthorityModuleDeployerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: PARENT_AUTHORITY_DEPLOYER
+        ? { [CORE_CHAIN]: { address: PARENT_AUTHORITY_DEPLOYER } }
+        : {},
+    },
+    parentAuthorityModule: {
+      abi: parentAuthorityModuleAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: PARENT_AUTHORITY_DEPLOYER
+        ? { [CORE_CHAIN]: { address: parentAuthorityModules() } }
+        : {},
+    },
+    delayedRecoveryModule: {
+      abi: delayedRecoveryModuleAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        GOVERNED_WRAPPERS.length > 0
+          ? { [CORE_CHAIN]: { address: governedRecoveryModules() } }
+          : {},
     },
     erc8004IdentityRegistry: {
       abi: erc8004IdentityRegistryAbi,
@@ -782,16 +900,69 @@ export default createConfig({
         ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
         : {},
     },
+    // Authority-only sources cover both factory-born controllers and later registry migrations.
+    // They stay separate because each program has its own controller-discovery event.
+    paramsAuthorityTrustgraphsController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: paramsControllers() } }
+        : {},
+    },
+    paramsAuthorityWeightedController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedParamsControllers() } }
+          : {},
+    },
+    paramsAuthorityCompositionController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: compositionControllers() } }
+          : {},
+    },
+    paramsAuthorityContributionsController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: contributionsControllers() } }
+          : {},
+    },
+    paramsAuthorityMigratedController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: INSTANCE_REGISTRY
+        ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
+        : {},
+    },
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
       startBlock: CORE_START_BLOCK,
-      chain: {
-        [CORE_CHAIN]: {
-          address: FACTORY_DISCOVERY
-            ? instanceChildren('resolver')
-            : deployedAddresses('easIndexerResolver'),
-        },
-      },
+      // In factory mode the importer source below deliberately watches the superset ABI for every
+      // resolver child. This keeps native and imported accumulators on one source without indexing
+      // native events twice. Static pre-factory deployments retain the original source.
+      chain: FACTORY_DISCOVERY
+        ? {}
+        : {
+            [CORE_CHAIN]: {
+              address: deployedAddresses('easIndexerResolver'),
+            },
+          },
+    },
+    // The factory/deploy slice for #117 will replace this empty source with factory-discovered
+    // importer addresses. Declaring the event surface now keeps expiry folds and ordinary markers
+    // on the same typed handler path without claiming any undeployed instance is live.
+    onchainAttestationImporter: {
+      abi: onchainAttestationImporterAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: instanceChildren('resolver') } }
+        : {},
     },
     merkleSnapshot: {
       abi: merkleSnapshotAbi,
@@ -826,7 +997,7 @@ export default createConfig({
             }
           : {},
     },
-    // The weighted / compose programs' creation-time fund distributors (M5: the create paths
+    // The weighted / compose programs' creation-time fund distributors (the create paths
     // expose `withDistributor`), plus the funds attached to any instance later through
     // `attachDistributor`. Same ABI and the same merkle.ts handlers as `merkleFundDistributor`;
     // separate sources only because each parent factory event names the child differently.
@@ -877,7 +1048,7 @@ export default createConfig({
           ? { [CORE_CHAIN]: { address: programFundDistributors } }
           : {},
     },
-    // Lane-2 anchor registry (M2). Discovered from deployment_summary.json under
+    // Lane-2 anchor registry. Discovered from deployment_summary.json under
     // `network.contracts.anchorRegistry` — single instance for now; only present once a lane-2
     // instance is deployed, so gate on its presence exactly like merkleGovModule/safe. Backfills like
     // merkleSnapshot (it emits HeadAnchored/NodeRegistered that may predate the indexer start).
@@ -905,7 +1076,7 @@ export default createConfig({
         ? { [CORE_CHAIN]: { address: easOffchainRegistries() } }
         : {},
     },
-    // Contributions-program resolver + accumulator (M3). Discovered from deployment_summary.json
+    // Contributions-program resolver + accumulator. Discovered from deployment_summary.json
     // under `network.contracts.contributionResolver` — only present once a contributions instance is
     // deployed, so gate on its presence exactly like anchorRegistry. Backfills like the EAS resolver
     // (attestations may predate the indexer start; the fold log must be complete for the derived

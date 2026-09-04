@@ -77,6 +77,7 @@ export const weightedPriorParamsControllerAbi = parseAbi([
   'event PriorProposed(bytes32 indexed instanceId,uint64 indexed version,bytes32 indexed proposalId,bytes32 priorRoot,uint32 priorCount,bytes32 manifestSha256,bytes32 metadataDigest,bytes32 paramsHash,uint48 readyAt)',
   `event PriorActivated(bytes32 indexed instanceId,uint64 indexed version,bytes32 indexed paramsHash,bytes32 previousParamsHash,bytes32 proposalId,bytes32 metadataDigest,${PARAMS} params)`,
   'function proposePrior(bytes manifest,bytes32 metadataDigest) returns (uint64 pendingVersion,bytes32 proposalId,uint48 readyAt)',
+  'function cancelPrior()',
   'function activatePrior(uint64 expectedVersion) returns (bytes32 paramsHash)',
   'function version() view returns (uint64)',
   'function latestVersion() view returns (uint64)',

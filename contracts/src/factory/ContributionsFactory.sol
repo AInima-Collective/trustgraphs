@@ -39,7 +39,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 ///         create a trust network; nobody can decorate someone else's.
 ///      2. **The mirror and resolver are CREATE'd inline.** `TrustAccumulatorMirror.binder` is
 ///         `msg.sender` — not a constructor argument — so the factory must be the deployer to
-///         perform the one-shot `bindSnapshot` (the M6-1 fix: `trigger()` stays the only
+///         perform the one-shot `bindSnapshot` (research/audits/2026-07-M6.md M6-1: `trigger()` stays the only
 ///         checkpoint mint, so a contributions-blind checkpoint id can never exist). The resolver
 ///         is inline for the same one-frame reason: its schema allowlist (`setSchemas`) and the
 ///         three registrations happen before anything could attest against a half-wired round.
@@ -303,7 +303,7 @@ contract ContributionsFactory {
         //        `setAnchorRegistry` / `setEpochLength` are constitutional-only and not
         //        constructor arguments, and the controller's constructor needs this address.
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
-            VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this)
+            VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this), args.metadataURI
         );
         snapshot = address(merkleSnapshot);
 
@@ -336,7 +336,7 @@ contract ContributionsFactory {
         merkleSnapshot.renounceRole(merkleSnapshot.CONSTITUTIONAL_ROLE(), address(this));
 
         // --- 7. The payout distributor, owned outright by the admin. --------------------------
-        //        Factory convention, not the legacy script's: no fee, and `feeRecipient` is the
+        //        Factory convention: no fee, and `feeRecipient` is the
         //        admin so that turning a fee on later never routes value to a stranger.
         distributor = address(DISTRIBUTOR_DEPLOYER.deploy(admin, snapshot, admin, 0, false));
 
@@ -383,9 +383,8 @@ contract ContributionsFactory {
     }
 
     /// @notice The directory key for a would-be round. Mixing the creator in makes label squatting
-    ///         pointless and `salt` lets one creator reuse a name — and unlike the legacy script's
-    ///         snapshot-address-mixing derivation, it is PRE-computable, so a wizard can show the
-    ///         id (and link to it) before the transaction is signed.
+    ///         pointless and `salt` lets one creator reuse a name. The id is PRE-computable, so a
+    ///         wizard can show it (and link to it) before the transaction is signed.
     function computeInstanceId(address creator, string calldata name, bytes32 salt) public pure returns (bytes32) {
         return keccak256(abi.encode(creator, name, salt));
     }

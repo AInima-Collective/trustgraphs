@@ -7,6 +7,7 @@ import {
   useContext,
   useState,
 } from 'react'
+import type { EIP1193Provider } from 'viem'
 import { useSwitchChain } from 'wagmi'
 
 import {
@@ -34,8 +35,6 @@ const WalletConnectionContext = createContext<{
 
 export const useWalletConnectionContext = () =>
   useContext(WalletConnectionContext)
-export const useOpenWalletConnector = () =>
-  useWalletConnectionContext().openConnectWallet
 
 export const WalletConnectionProvider = ({
   children,
@@ -70,7 +69,10 @@ export const WalletConnectionProvider = ({
       const chainConfig = getTargetChainConfig()
       const networkParams = createNetworkAddParams(chainConfig)
 
-      await window.ethereum?.request({
+      const { ethereum } = window as typeof window & {
+        ethereum?: EIP1193Provider
+      }
+      await ethereum?.request({
         method: 'wallet_addEthereumChain',
         params: [networkParams],
       })

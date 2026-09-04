@@ -20,7 +20,7 @@ contract EmptyLaneAccumulator is IAttestationAccumulator {
 
     /// @notice The only address allowed to mint checkpoints (the instance's `MerkleSnapshot`).
     /// @dev Same one-time binding as `AttestationAccumulator` and `TrustAccumulatorMirror`, and
-    ///      needed for the same reason (issue #10): an id minted outside `trigger()` has no
+    ///      needed for the same reason: an id minted outside `trigger()` has no
     ///      pinned `paramsHash` and no paired lane-2 freeze. It matters MORE here than anywhere
     ///      else, because on a lane-2-only instance lane 1 is constant `(0, 0)` — so the id is
     ///      the ONLY thing distinguishing one epoch's inputs from another's.

@@ -150,34 +150,9 @@ pub struct ComputeResult {
     pub rank: pagerank_core::RankTelemetry,
 }
 
-/// The canonical hypercerts blob: `{"0x<nodeId>":"<decimal>",...}` sorted ascending —
-/// same shape as v1's blob with 32-byte node ids in place of addresses.
-fn canonical_blob(scores: &[(B256, U256)]) -> Vec<u8> {
-    let mut s = String::from("{");
-    for (i, (id, value)) in scores.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
-        }
-        s.push('"');
-        s.push_str("0x");
-        s.push_str(&alloy_primitives::hex::encode(id.as_slice()));
-        s.push_str("\":\"");
-        s.push_str(&value.to_string());
-        s.push('"');
-    }
-    s.push('}');
-    s.into_bytes()
-}
+use zk_core::cid::canonical_node_blob as canonical_blob;
 
-/// The unified output leaf: `keccak256(bytes.concat(keccak256(abi.encode(bytes32 nodeId,
-/// uint256 value))))` — the nodeId twin of `merkle::output_leaf` (OFFCHAIN §5).
-pub fn node_output_leaf(node_id: B256, value: U256) -> B256 {
-    let mut buf = [0u8; 64];
-    buf[..32].copy_from_slice(node_id.as_slice());
-    buf[32..].copy_from_slice(&word_u256(value));
-    let inner = keccak256(buf);
-    keccak256(inner.as_slice())
-}
+pub use zk_core::merkle::node_output_leaf;
 
 /// Run the full hypercerts pipeline. Deterministic and float-free.
 pub fn compute(input: &GuestInput) -> ComputeResult {

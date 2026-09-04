@@ -176,7 +176,7 @@ contract PashovInv_VaultAndSnapshot is Test {
     function setUp() public {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();

@@ -2,7 +2,9 @@ use alloy_primitives::{Address, B256, U256};
 use composition_core::{
     codec,
     compute::compute,
-    fixture::{post_trigger_input, remainder_tie_input, reproduction_input, sample_input},
+    fixture::{mixed_input, reversed_mixed_input, rotated_mixed_input},
+    source_compatibility_class_v1, trust_graph_output_domain, trust_graph_program_id,
+    weighted_trust_graph_output_domain, weighted_trust_graph_program_id,
 };
 use serde_json::Value;
 
@@ -10,14 +12,6 @@ fn production_golden() -> Value {
     serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/golden/trust-compose.json"
-    )))
-    .unwrap()
-}
-
-fn research_golden() -> Value {
-    serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../research/composition/golden.json"
     )))
     .unwrap()
 }
@@ -31,39 +25,48 @@ fn address(value: &Value) -> Address {
 }
 
 #[test]
-fn rust_reproduces_every_research_quota_attribution_output_and_update() {
-    let golden = research_golden();
-    let result = compute(&sample_input()).unwrap();
-    assert_eq!(result.journal.acc, b256(&golden["manifestSha256"]));
-    for source in &result.source_allocations {
-        let source_id = format!("{:#x}", source.source_id);
-        assert_eq!(source.quota.to_string(), golden["sourceQuotas"][&source_id].as_str().unwrap());
-        for entry in &source.allocations {
-            let account = format!("{:#x}", entry.account);
-            assert_eq!(
-                entry.value.to_string(),
-                golden["sourceAllocations"][&source_id][&account].as_str().unwrap()
-            );
-        }
-    }
-    assert_eq!(result.scores.len(), golden["output"].as_object().unwrap().len());
-    for (account, value) in &result.scores {
-        assert_eq!(value.to_string(), golden["output"][format!("{account:#x}")].as_str().unwrap());
-    }
-    assert_eq!(result.journal.ipfs_hash, b256(&golden["outputBlobSha256"]));
-    assert_eq!(result.cid, golden["outputCid"]);
-    assert_eq!(result.journal.output_root, b256(&golden["outputRoot"]));
-    assert_eq!(result.journal.total_value, U256::from(1_000_000));
-
-    let next = compute(&post_trigger_input()).unwrap();
-    assert_eq!(next.journal.output_root, b256(&golden["postTriggerUpdate"]["outputRoot"]));
-    assert_eq!(next.journal.acc, b256(&golden["postTriggerUpdate"]["manifestSha256"]));
+fn class_constant_and_admitted_pairs_match_the_decision_record() {
+    assert_eq!(
+        source_compatibility_class_v1(),
+        "0x5426d501d31705b306bf65d6260a564441ff6b3b98a4375766c76348b7cca9e2"
+            .parse::<B256>()
+            .unwrap()
+    );
+    assert_eq!(
+        trust_graph_program_id(),
+        "0xdb036dae12e8641d1e58d416eec22090955469d8da1c292e2b6b02ecb9e8d380"
+            .parse::<B256>()
+            .unwrap()
+    );
+    assert_eq!(
+        weighted_trust_graph_program_id(),
+        "0xbab333b5932d7fa8073fe8ed541c0d2aef9667198b0417f43ee5c920071af2b2"
+            .parse::<B256>()
+            .unwrap()
+    );
+    assert_eq!(
+        trust_graph_output_domain(),
+        "0xa8ba97693d080750d9a6972406e8f5488842c338c94b402e5f02dad3d9e9eea5"
+            .parse::<B256>()
+            .unwrap()
+    );
+    assert_eq!(
+        weighted_trust_graph_output_domain(),
+        "0x0509c32608494c9065912b6e03f10cfe54d31c433ffe3547fc729474342c293f"
+            .parse::<B256>()
+            .unwrap()
+    );
+    let golden = production_golden();
+    assert_eq!(
+        source_compatibility_class_v1(),
+        b256(&golden["constants"]["sourceCompatibilityClass"])
+    );
 }
 
 #[test]
 fn rust_reproduces_type_script_policy_params_capture_journal_and_proof_vector() {
     let golden = production_golden();
-    let input = sample_input();
+    let input = mixed_input();
     let result = compute(&input).unwrap();
 
     assert_eq!(
@@ -96,13 +99,30 @@ fn rust_reproduces_type_script_policy_params_capture_journal_and_proof_vector() 
         golden["journal"]["encoded"].as_str().unwrap().trim_start_matches("0x")
     );
     assert_eq!(codec::journal_digest(&result.journal), b256(&golden["journal"]["digest"]));
-    assert_eq!(
-        result.blob,
-        alloy_primitives::hex::decode(
-            golden["output"]["blob"].as_str().unwrap().trim_start_matches("0x")
-        )
-        .unwrap()
-    );
+    assert_eq!(result.blob, golden["output"]["blob"].as_str().unwrap().as_bytes());
+    assert_eq!(result.cid, golden["output"]["cid"]);
+
+    for (index, expected) in golden["sourceQuotas"].as_array().unwrap().iter().enumerate() {
+        let actual = &result.source_allocations[index];
+        assert_eq!(actual.source_id, b256(&expected["sourceId"]));
+        assert_eq!(actual.quota.to_string(), expected["quota"].as_str().unwrap());
+    }
+    for (index, expected) in golden["sourceAllocations"].as_array().unwrap().iter().enumerate() {
+        let actual = &result.source_allocations[index];
+        let entries = expected["allocations"].as_array().unwrap();
+        assert_eq!(actual.allocations.len(), entries.len());
+        for (entry, expected_entry) in actual.allocations.iter().zip(entries) {
+            assert_eq!(entry.account, address(&expected_entry["account"]));
+            assert_eq!(entry.value.to_string(), expected_entry["value"].as_str().unwrap());
+        }
+    }
+    let expected_output = golden["output"]["entries"].as_array().unwrap();
+    assert_eq!(result.scores.len(), expected_output.len());
+    for ((account, value), expected_entry) in result.scores.iter().zip(expected_output) {
+        assert_eq!(*account, address(&expected_entry["account"]));
+        assert_eq!(value.to_string(), expected_entry["value"].as_str().unwrap());
+    }
+    assert_eq!(result.journal.total_value, U256::from(1_000));
 
     let sample_account = address(&golden["output"]["sampleAccount"]);
     let sample_value =
@@ -123,45 +143,30 @@ fn rust_reproduces_type_script_policy_params_capture_journal_and_proof_vector() 
 
 #[test]
 fn source_builder_enumeration_order_is_canonical() {
-    let forward = sample_input();
-    let reversed = composition_core::fixture::reversed_sample_input();
+    let forward = mixed_input();
+    let reversed = reversed_mixed_input();
     assert_eq!(forward.manifest, reversed.manifest);
     assert_eq!(forward.capture_commitment, reversed.capture_commitment);
     assert_eq!(compute(&forward).unwrap().journal, compute(&reversed).unwrap().journal);
 }
 
 #[test]
-fn exact_source_reproduction_and_address_remainder_ties_are_pinned() {
-    let reproduced = compute(&reproduction_input()).unwrap();
-    assert_eq!(reproduced.source_allocations[0].quota, 3);
-    assert_eq!(reproduced.source_allocations[1].quota, 2);
+fn rotated_policy_reproduces_the_frozen_rotation_vector() {
+    let golden = production_golden();
+    let rotated = rotated_mixed_input();
+    let result = compute(&rotated).unwrap();
     assert_eq!(
-        reproduced
-            .scores
-            .iter()
-            .map(|(account, value)| (*account, value.to::<u128>()))
-            .collect::<Vec<_>>(),
-        vec![
-            (Address::from([0x01; 20]), 1),
-            (Address::from([0x02; 20]), 2),
-            (Address::from([0x03; 20]), 1),
-            (Address::from([0x04; 20]), 1),
-        ]
+        rotated.params.policy_manifest_sha256,
+        b256(&golden["rotation"]["policyManifestSha256"])
     );
-
-    let tie = compute(&remainder_tie_input()).unwrap();
-    assert_eq!(tie.source_allocations[0].quota, 2);
-    assert_eq!(tie.source_allocations[1].quota, 2);
-    assert_eq!(
-        tie.scores
-            .iter()
-            .map(|(account, value)| (*account, value.to::<u128>()))
-            .collect::<Vec<_>>(),
-        vec![
-            (Address::from([0x01; 20]), 1),
-            (Address::from([0x02; 20]), 1),
-            (Address::from([0x04; 20]), 1),
-            (Address::from([0x05; 20]), 1),
-        ]
-    );
+    assert_eq!(rotated.params.source_policy_root, b256(&golden["rotation"]["sourcePolicyRoot"]));
+    assert_eq!(codec::params_hash(&rotated.params), b256(&golden["rotation"]["paramsHash"]));
+    assert_eq!(result.journal.output_root, b256(&golden["rotation"]["outputRoot"]));
+    for (index, expected) in
+        golden["rotation"]["sourceQuotas"].as_array().unwrap().iter().enumerate()
+    {
+        let actual = &result.source_allocations[index];
+        assert_eq!(actual.source_id, b256(&expected["sourceId"]));
+        assert_eq!(actual.quota.to_string(), expected["quota"].as_str().unwrap());
+    }
 }
