@@ -102,7 +102,7 @@ overflow.
 
 ```sh
 node --import tsx --test research/composition/reference.test.ts
-pnpm exec tsc research/composition/*.ts --noEmit \
+pnpm exec tsc --ignoreConfig research/composition/*.ts --noEmit \
   --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --strict \
   --types node --typeRoots packages/indexer/node_modules/@types
 pnpm exec tsx research/composition/simulate.ts

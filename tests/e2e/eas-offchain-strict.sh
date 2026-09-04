@@ -280,7 +280,7 @@ if [ "$BROWSER_MODE" = 1 ]; then
     NEXT_PUBLIC_EAS_OFFCHAIN_RELAYER_ADDRESSES="$PUBLIC_RELAYER_ADDRESSES" \
     NEXT_PUBLIC_EAS_OFFCHAIN_RELAY_URLS="$PUBLIC_RELAYS" \
     NEXT_PUBLIC_EAS_OFFCHAIN_GATEWAYS="$GATEWAYS" \
-    pnpm --dir packages/frontend exec next build >"$WORK/frontend-build.log" 2>&1 \
+    pnpm --dir packages/frontend exec next build --webpack >"$WORK/frontend-build.log" 2>&1 \
     || die "frontend build failed: $(tail -80 "$WORK/frontend-build.log")"
   env NEXT_TELEMETRY_DISABLED=1 NEXT_DIST_DIR="$FRONTEND_DIST_NAME" \
     NEXT_TSCONFIG_PATH="$FRONTEND_TSCONFIG_NAME" \

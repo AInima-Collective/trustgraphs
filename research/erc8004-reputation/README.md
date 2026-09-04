@@ -9,7 +9,7 @@ universal ERC-8004 score.
 
 ```sh
 node --import tsx --test research/erc8004-reputation/*.test.ts
-pnpm exec tsc research/erc8004-reputation/*.ts --noEmit \
+pnpm exec tsc --ignoreConfig research/erc8004-reputation/*.ts --noEmit \
   --module esnext --moduleResolution bundler --target es2022 \
   --skipLibCheck --strict --types node --typeRoots packages/indexer/node_modules/@types
 pnpm exec tsx research/erc8004-reputation/simulate.ts
