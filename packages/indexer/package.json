@@ -28,16 +28,16 @@
   },
   "dependencies": {
     "@notionhq/client": "^5.26.0",
-    "@ponder/client": "^0.16.10",
+    "@ponder/client": "^0.17.9",
     "@trustgraphs/eas-offchain-client": "workspace:*",
     "drizzle-orm": "^0.41.0",
     "hono": "^4.13.5",
     "pg": "^8.23.0",
-    "ponder": "^0.16.10",
+    "ponder": "^0.17.9",
     "viem": "^2.56.3"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^22.20.1",
     "@types/pg": "^8.23.1",
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",
@@ -52,6 +52,6 @@
     "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=18.14"
+    "node": ">=22"
   }
 }

@@ -173,11 +173,11 @@ importers:
         specifier: ^1.0.2
         version: 1.0.2
       '@ponder/client':
-        specifier: ^0.16.10
-        version: 0.16.10(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)
+        specifier: ^0.17.9
+        version: 0.17.9(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)
       '@ponder/react':
-        specifier: ^0.16.10
-        version: 0.16.10(@ponder/client@0.16.10(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3))(@tanstack/react-query@5.102.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
+        specifier: ^0.17.9
+        version: 0.17.9(@ponder/client@0.17.9(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3))(@tanstack/react-query@5.102.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
       '@radix-ui/react-accordion':
         specifier: 1.2.20
         version: 1.2.20(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -377,8 +377,8 @@ importers:
         specifier: ^13.1.3
         version: 13.1.3
       ponder:
-        specifier: ^0.16.10
-        version: 0.16.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))(yaml@2.9.0)(zod@3.25.67)
+        specifier: ^0.17.9
+        version: 0.17.9(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))(yaml@2.9.0)(zod@3.25.67)
       porto:
         specifier: ^0.2.37
         version: 0.2.37(0cedc9b0067663d7bf80af938600e65e)
@@ -516,8 +516,8 @@ importers:
         specifier: ^5.26.0
         version: 5.26.0
       '@ponder/client':
-        specifier: ^0.16.10
-        version: 0.16.10(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)
+        specifier: ^0.17.9
+        version: 0.17.9(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)
       '@trustgraphs/eas-offchain-client':
         specifier: workspace:*
         version: link:../eas-offchain-client
@@ -531,15 +531,15 @@ importers:
         specifier: ^8.23.0
         version: 8.23.0
       ponder:
-        specifier: ^0.16.10
-        version: 0.16.10(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))(yaml@2.9.0)(zod@3.25.76)
+        specifier: ^0.17.9
+        version: 0.17.9(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))(yaml@2.9.0)(zod@3.25.76)
       viem:
         specifier: ^2.56.3
         version: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
     devDependencies:
       '@types/node':
-        specifier: ^20.19.43
-        version: 20.19.43
+        specifier: ^22.20.1
+        version: 22.20.1
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
@@ -2430,30 +2430,30 @@ packages:
     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  '@ponder/client@0.16.10':
-    resolution: {integrity: sha512-I4dyR/hJKje1qYjJtW7cfg/WtXy+QcFvgmftCa4l6WILZTdSNjGw0Y/DxSW26dh5t8So3oBU7fTYKsvIDy/ONA==}
+  '@ponder/client@0.17.9':
+    resolution: {integrity: sha512-RU8iHoGZsZV++5W3ZDvoCVB3uqTkoltRlhqGQh7AxVZpy5Tq84j2gaWQ48gJsCZrq+R56d+rFTLNIvAY+U7tWQ==}
     peerDependencies:
-      typescript: '>=5.0.4'
+      typescript: '>=5.4.0'
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  '@ponder/react@0.16.10':
-    resolution: {integrity: sha512-+uKH5mV3Obl0v00Tx4vJbZHmrVpMxRPm8vBdpLZzsC9bmJhBnP6hoS3tOTjhUd70GSaAiR5K673mn3BQsZOoCA==}
+  '@ponder/react@0.17.9':
+    resolution: {integrity: sha512-hHrswOsA0GQzzxfNEakUZJnGjqvTAjXYILbiNfHpqZIBA0tTNZ7ImNnw3szEsnFfETZG8ZX7hloa92mpnPWWxw==}
     peerDependencies:
-      '@ponder/client': '>=0.16.10'
+      '@ponder/client': '>=0.17.9'
       '@tanstack/react-query': '>=5.0.0'
       react: '>=18'
-      typescript: '>=5.0.4'
+      typescript: '>=5.4.0'
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  '@ponder/utils@0.2.18':
-    resolution: {integrity: sha512-pWacQuohfKlKO440zC39C1l6AH+Vx18mca0cPkxM0YnrB70px5hEwLKrc3fU4DMu72j4pljy/Mvfm95FBouYjw==}
+  '@ponder/utils@0.3.0':
+    resolution: {integrity: sha512-7FmIHAKG1mfHA9ptaqN0h9bfYRnqBGAFDfEgXsXS4rxAg513gVR8hGsp1AZon+OPUtIpNRrmhx7bsEk8auiqow==}
     peerDependencies:
-      typescript: '>=5.0.4'
-      viem: '>=2'
+      typescript: '>=5.4.0'
+      viem: '>=2.35'
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -3954,9 +3954,6 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
-
-  '@types/node@20.19.43':
-    resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
 
   '@types/node@22.20.1':
     resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
@@ -7844,14 +7841,14 @@ packages:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
 
-  ponder@0.16.10:
-    resolution: {integrity: sha512-fq71xPU7phJ3z2Is6n1X76leHSWuDCKEk1u/vNQmQrX+BmhtkEdWBhArox+2SdvOTwiU0xfplKFwptdUlymH3g==}
-    engines: {node: '>=18.14'}
+  ponder@0.17.9:
+    resolution: {integrity: sha512-xLdFZkzj9XDQ9RbaK/uw3QYmguiiibAO86YcIRJQiiZBgbCIwenYlSJJ2ODFeDqAt9wd49gnAiJ9Mi2II4lkAA==}
+    engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
       hono: '>=4.5'
-      typescript: '>=5.0.4'
-      viem: '>=2'
+      typescript: '>=5.4.0'
+      viem: '>=2.35'
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -11831,7 +11828,7 @@ snapshots:
 
   '@pkgr/core@0.3.6': {}
 
-  '@ponder/client@0.16.10(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)':
+  '@ponder/client@0.17.9(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)':
     dependencies:
       drizzle-orm: 0.45.2(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)
       eventsource: 3.0.7
@@ -11869,22 +11866,22 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@ponder/react@0.16.10(@ponder/client@0.16.10(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3))(@tanstack/react-query@5.102.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)':
+  '@ponder/react@0.17.9(@ponder/client@0.17.9(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3))(@tanstack/react-query@5.102.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)':
     dependencies:
-      '@ponder/client': 0.16.10(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)
+      '@ponder/client': 0.17.9(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.28.17)(pg@8.23.0)(typescript@5.9.3)
       '@tanstack/react-query': 5.102.8(react@19.2.8)
       react: 19.2.8
       superjson: 2.2.6
     optionalDependencies:
       typescript: 5.9.3
 
-  '@ponder/utils@0.2.18(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))':
+  '@ponder/utils@0.3.0(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))':
     dependencies:
       viem: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67)
     optionalDependencies:
       typescript: 5.9.3
 
-  '@ponder/utils@0.2.18(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))':
+  '@ponder/utils@0.3.0(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))':
     dependencies:
       viem: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
     optionalDependencies:
@@ -13737,10 +13734,6 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/node@20.19.43':
-    dependencies:
-      undici-types: 6.21.0
-
   '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
@@ -14717,10 +14710,20 @@ snapshots:
       typescript: 5.9.3
       zod: 4.5.4
 
+  abitype@1.3.0(typescript@5.9.3)(zod@3.22.4):
+    optionalDependencies:
+      typescript: 5.9.3
+      zod: 3.22.4
+
   abitype@1.3.0(typescript@5.9.3)(zod@3.25.67):
     optionalDependencies:
       typescript: 5.9.3
       zod: 3.25.67
+
+  abitype@1.3.0(typescript@5.9.3)(zod@3.25.76):
+    optionalDependencies:
+      typescript: 5.9.3
+      zod: 3.25.76
 
   abitype@1.3.0(typescript@5.9.3)(zod@4.5.4):
     optionalDependencies:
@@ -18562,7 +18565,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.22.4)
+      abitype: 1.3.0(typescript@5.9.3)(zod@3.22.4)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -18577,7 +18580,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.67)
+      abitype: 1.3.0(typescript@5.9.3)(zod@3.25.67)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -18592,7 +18595,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
+      abitype: 1.3.0(typescript@5.9.3)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -18607,7 +18610,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.5.4)
+      abitype: 1.3.0(typescript@5.9.3)(zod@4.5.4)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -18927,7 +18930,7 @@ snapshots:
 
   pngjs@5.0.0: {}
 
-  ponder@0.16.10(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))(yaml@2.9.0)(zod@3.25.76):
+  ponder@0.17.9(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))(yaml@2.9.0)(zod@3.25.67):
     dependencies:
       '@babel/code-frame': 7.29.7
       '@commander-js/extra-typings': 12.1.0(commander@12.1.0)
@@ -18936,8 +18939,8 @@ snapshots:
       '@escape.tech/graphql-armor-max-depth': 2.4.2
       '@escape.tech/graphql-armor-max-tokens': 2.5.1
       '@hono/node-server': 1.19.15(hono@4.13.5)
-      '@ponder/utils': 0.2.18(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))
-      abitype: 0.10.3(typescript@5.9.3)(zod@3.25.76)
+      '@ponder/utils': 0.3.0(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))
+      abitype: 0.10.3(typescript@5.9.3)(zod@3.25.67)
       ansi-escapes: 7.3.0
       commander: 12.1.0
       conf: 12.0.0
@@ -18962,10 +18965,10 @@ snapshots:
       stacktrace-parser: 0.1.11
       superjson: 2.2.6
       terminal-size: 4.0.1
-      viem: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
-      vite: 6.4.3(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
-      vite-node: 1.0.2(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
-      vite-tsconfig-paths: 4.3.1(typescript@5.9.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      viem: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67)
+      vite: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
+      vite-node: 1.0.2(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
+      vite-tsconfig-paths: 4.3.1(typescript@5.9.3)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     optionalDependencies:
       typescript: 5.9.3
@@ -19013,7 +19016,7 @@ snapshots:
       - yaml
       - zod
 
-  ponder@0.16.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))(yaml@2.9.0)(zod@3.25.67):
+  ponder@0.17.9(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@types/pg@8.23.1)(bufferutil@4.1.0)(hono@4.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))(yaml@2.9.0)(zod@3.25.76):
     dependencies:
       '@babel/code-frame': 7.29.7
       '@commander-js/extra-typings': 12.1.0(commander@12.1.0)
@@ -19022,8 +19025,8 @@ snapshots:
       '@escape.tech/graphql-armor-max-depth': 2.4.2
       '@escape.tech/graphql-armor-max-tokens': 2.5.1
       '@hono/node-server': 1.19.15(hono@4.13.5)
-      '@ponder/utils': 0.2.18(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67))
-      abitype: 0.10.3(typescript@5.9.3)(zod@3.25.67)
+      '@ponder/utils': 0.3.0(typescript@5.9.3)(viem@2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76))
+      abitype: 0.10.3(typescript@5.9.3)(zod@3.25.76)
       ansi-escapes: 7.3.0
       commander: 12.1.0
       conf: 12.0.0
@@ -19048,7 +19051,7 @@ snapshots:
       stacktrace-parser: 0.1.11
       superjson: 2.2.6
       terminal-size: 4.0.1
-      viem: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.67)
+      viem: 2.56.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
       vite: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
       vite-node: 1.0.2(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
       vite-tsconfig-paths: 4.3.1(typescript@5.9.3)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
@@ -20633,27 +20636,6 @@ snapshots:
       - utf-8-validate
       - zod
 
-  vite-node@1.0.2(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0):
-    dependencies:
-      cac: 6.7.14
-      debug: 4.4.3(supports-color@8.1.1)
-      pathe: 1.1.2
-      picocolors: 1.1.1
-      vite: 6.4.3(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - '@types/node'
-      - jiti
-      - less
-      - lightningcss
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - supports-color
-      - terser
-      - tsx
-      - yaml
-
   vite-node@1.0.2(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
@@ -20675,17 +20657,6 @@ snapshots:
       - tsx
       - yaml
 
-  vite-tsconfig-paths@4.3.1(typescript@5.9.3)(vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)):
-    dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
-      globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@5.9.3)
-    optionalDependencies:
-      vite: 6.4.3(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
-
   vite-tsconfig-paths@4.3.1(typescript@5.9.3)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)):
     dependencies:
       debug: 4.4.3(supports-color@8.1.1)
@@ -20696,23 +20667,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
       - typescript
-
-  vite@6.4.3(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0):
-    dependencies:
-      esbuild: 0.25.12
-      fdir: 6.5.0(picomatch@4.0.7)
-      picomatch: 4.0.7
-      postcss: 8.5.28
-      rollup: 4.63.1
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 20.19.43
-      fsevents: 2.3.3
-      jiti: 2.7.0
-      lightningcss: 1.32.0
-      terser: 5.51.2
-      tsx: 4.23.13
-      yaml: 2.9.0
 
   vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0):
     dependencies:
