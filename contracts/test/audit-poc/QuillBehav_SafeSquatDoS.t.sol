@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
 import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
@@ -27,16 +27,16 @@ contract QuillBootstrapSignerVerifier is IZkVerifier {
 ///         Safe is adopted and graduated, so occupying it cannot brick governed creation.
 contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
 
     address internal victim = address(0xA11CE);
     address internal squatter = address(0x5D0A7);
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         QuillBootstrapSignerVerifier signerVerifier = new QuillBootstrapSignerVerifier();
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
@@ -101,7 +101,7 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
         assertEq(safe, squatted, "the exact bootstrap Safe is reusable, not a collision");
 
         // 4. Atomic graduation still replaces the wrapper with the intended creator.
-        address[] memory owners = GnosisSafe(payable(squatted)).getOwners();
+        address[] memory owners = Safe(payable(squatted)).getOwners();
         assertEq(owners.length, 1);
         assertEq(owners[0], victim, "adopted Safe must graduate to the intended creator");
     }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
@@ -39,7 +39,7 @@ abstract contract DeployGovernedWrapper is Common {
     /// @dev Construct the concrete wrapper around `baseFactory`.
     function _newWrapper(
         address baseFactory,
-        GnosisSafeProxyFactory safeFactory,
+        SafeProxyFactory safeFactory,
         address safeSingleton,
         GovernedAuthorityDeployer authorityDeployer,
         SignerSyncModuleDeployer signerSyncDeployer,
@@ -103,7 +103,7 @@ abstract contract DeployGovernedWrapper is Common {
         _startBroadcast();
         GovernedFactoryBase governed = _newWrapper(
             vm.parseAddress(baseFactoryAddr),
-            GnosisSafeProxyFactory(safeFactory),
+            SafeProxyFactory(safeFactory),
             safeSingleton,
             GovernedAuthorityDeployer(authorityDeployer),
             SignerSyncModuleDeployer(signerSyncDeployer),
@@ -143,7 +143,7 @@ contract DeployGovernedWeightedTrustgraphsFactory is DeployGovernedWrapper {
 
     function _newWrapper(
         address baseFactory,
-        GnosisSafeProxyFactory safeFactory,
+        SafeProxyFactory safeFactory,
         address safeSingleton,
         GovernedAuthorityDeployer authorityDeployer,
         SignerSyncModuleDeployer signerSyncDeployer,
@@ -175,7 +175,7 @@ contract DeployGovernedTrustComposeFactory is DeployGovernedWrapper {
 
     function _newWrapper(
         address baseFactory,
-        GnosisSafeProxyFactory safeFactory,
+        SafeProxyFactory safeFactory,
         address safeSingleton,
         GovernedAuthorityDeployer authorityDeployer,
         SignerSyncModuleDeployer signerSyncDeployer,

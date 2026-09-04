@@ -6,8 +6,8 @@ pragma solidity ^0.8.22;
 
 import {Test, Vm} from "forge-std/Test.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -48,9 +48,9 @@ contract StorageWriter {
 }
 
 contract GovVerify is Test {
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
-    GnosisSafe internal safe;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
+    Safe internal safe;
     MerkleGovModule internal gov;
     VerifySnapshotStub internal snap;
 
@@ -80,8 +80,8 @@ contract GovVerify is Test {
     }
 
     function setUp() public {
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         address[] memory owners = new address[](1);
         owners[0] = creator;
         bytes memory setupData = abi.encodeWithSignature(
@@ -95,9 +95,7 @@ contract GovVerify is Test {
             uint256(0),
             address(0)
         );
-        safe = GnosisSafe(
-            payable(address(safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(7))))
-        );
+        safe = Safe(payable(address(safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(7)))));
 
         leafAlice = _leaf(alice, 100e18);
         leafBob = _leaf(bob, 200e18);

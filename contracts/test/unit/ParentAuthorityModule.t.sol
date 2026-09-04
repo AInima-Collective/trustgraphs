@@ -2,9 +2,9 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
@@ -39,7 +39,7 @@ contract ParentAuthorityModuleTest is Test {
     bytes32 internal constant PARENT = keccak256("parent");
 
     InstanceRegistry internal instances;
-    GnosisSafe internal safe;
+    Safe internal safe;
     ParentModuleController internal childController;
     ParentModuleController internal parentController;
     ParentModuleTarget internal target;
@@ -47,14 +47,14 @@ contract ParentAuthorityModuleTest is Test {
 
     function setUp() public {
         instances = new InstanceRegistry(admin);
-        GnosisSafe singleton = new GnosisSafe();
-        GnosisSafeProxyFactory safeFactory = new GnosisSafeProxyFactory();
+        Safe singleton = new Safe();
+        SafeProxyFactory safeFactory = new SafeProxyFactory();
         address[] memory owners = new address[](1);
         owners[0] = address(this);
         bytes memory initializer = abi.encodeCall(
-            GnosisSafe.setup, (owners, 1, address(0), bytes(""), address(0), address(0), 0, payable(address(0)))
+            Safe.setup, (owners, 1, address(0), bytes(""), address(0), address(0), 0, payable(address(0)))
         );
-        safe = GnosisSafe(payable(address(safeFactory.createProxyWithNonce(address(singleton), initializer, 1))));
+        safe = Safe(payable(address(safeFactory.createProxyWithNonce(address(singleton), initializer, 1))));
 
         childController = new ParentModuleController(address(safe));
         parentController = new ParentModuleController(parentAuthority);

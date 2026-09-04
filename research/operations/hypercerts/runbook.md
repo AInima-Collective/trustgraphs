@@ -50,18 +50,19 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 ## Toolchain + the vkey reproducibility caveat
 
 ```bash
-curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1   # SDK pinned =6.3.1 in zk/prover/Cargo.toml
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.6.0   # SDK pinned =6.6.0 in zk/prover/Cargo.toml
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
 > **The vkey is toolchain-reproducible, not machine-portable** ([`networks-and-programs.md`](../../../docs/concepts/networks-and-programs.md),
-> measured). The hypercerts guest vkey is
-> **`0x00226e75ae5db0e60a63045b161bb8f1f48aad68a0307f8bb82add90f1d6eabe`** (journal v3, SP1 6.3.1). But the value
-> depends on the exact `succinct` toolchain build — a reinstall shifted sibling vkeys with zero source
-> change. **Derive the deployment vkey on the pinned toolchain recorded here, not an arbitrary box**,
-> and diff it against the table in [`networks-and-programs.md`](../../../docs/concepts/networks-and-programs.md) before trusting it:
+> measured). The previous hypercerts guest vkey was
+> **`0x00226e75ae5db0e60a63045b161bb8f1f48aad68a0307f8bb82add90f1d6eabe`** (journal v3, SP1 6.3.1).
+> It is historical evidence, not a valid SP1 6.6.0 deployment value. The vkey depends on the exact
+> `succinct` toolchain build — a reinstall shifted sibling vkeys with zero source change. **Derive and
+> independently reproduce the deployment vkey on the pinned toolchain recorded here**, then add the
+> SP1 6.6.0 value to the release manifest before trusting it:
 > ```bash
-> cd zk/prover && cargo run --release -- hypercerts vkey   # must equal the value above
+> cd zk/prover && cargo run --release -- hypercerts vkey
 > ```
 > Any guest change (or a `[patch.crates-io]` crypto bump that recompiles the ELF) **rotates this vkey
 > and the sibling trust-graph/signer vkeys**; batch rotations through the constitutional timelock —
@@ -97,7 +98,7 @@ cd zk/prover
 export HC_VKEY=$(cargo run -q --release -- hypercerts vkey)          # must equal the networks-and-programs.md value
 export HC_PARAMS_HASH=$(cargo run -q --release -- hypercerts paramshash ../../.trustgraph/hypercerts/hypercerts_input.json)  # keccak of the 17-word Params (§6.1)
 cd ../..
-export GATEWAY=0x...    # Succinct SP1 verifier gateway for the target chain (docs.succinct.xyz); must carry the v6.3.1 verifier
+export GATEWAY=0x...    # Succinct SP1 verifier gateway for the target chain (docs.succinct.xyz); must carry the v6.6.0 verifier
 export DEPLOYER=$(cast wallet address --private-key "$PK")
 ```
 

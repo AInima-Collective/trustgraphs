@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@trustgraphs/eas-offchain-client": "workspace:*",
-    "tsx": "^4.20.6",
-    "viem": "^2.39.0"
+    "tsx": "^4.23.13",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
-    "@types/node": "22.15.3",
-    "typescript": "5.5.4"
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
   }
 }

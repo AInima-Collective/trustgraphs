@@ -30,11 +30,11 @@ program index in [`networks-and-programs.md`](../../../docs/concepts/networks-an
 
 ```bash
 # SP1 (installs cargo-prove + the `succinct` rust toolchain)
-curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.6.0
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
-Pin the version. The SP1 _SDK_ is pinned to `=6.3.1` in `zk/prover/Cargo.toml`, and the vkey depends
+Pin the version. The SP1 _SDK_ is pinned to `=6.6.0` in `zk/prover/Cargo.toml`, and the vkey depends
 on the exact toolchain build — read the reproducibility caveat in [`networks-and-programs.md`](../../../docs/concepts/networks-and-programs.md)
 before deriving any value you intend to deploy against. Full install walkthrough, including the
 other toolchains: [`../setup.md`](../../../docs/build/setup.md).
@@ -288,7 +288,7 @@ export SP1_PROVER=cpu                                    # local: needs ~16-32 G
 ```
 
 The gateway routes a proof to the version-specific verifier by the 4-byte selector prefixed on the
-proof, so it must be a gateway that has the verifier for the SDK version this repo pins (v6.3.1).
+proof, so it must be a gateway that has the verifier for the SDK version this repo pins (v6.6.0).
 
 ### Two programs, two verifiers
 

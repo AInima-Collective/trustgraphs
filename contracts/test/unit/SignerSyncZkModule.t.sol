@@ -3,8 +3,8 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {
     SignerSyncZkModule,
@@ -41,9 +41,9 @@ contract MockSignerActivitySource is ISignerActivitySource {
 }
 
 contract SignerSyncZkModuleTest is Test {
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
-    GnosisSafe internal safe;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
+    Safe internal safe;
 
     SignerSyncZkModule internal module;
     MockZkVerifier internal verifier;
@@ -66,8 +66,8 @@ contract SignerSyncZkModuleTest is Test {
     bytes internal constant PROOF = hex"1234";
 
     function setUp() public {
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
 
         // Safe with initial owners {A,B,C}, threshold 2.
         address[] memory initial = new address[](3);
@@ -85,7 +85,7 @@ contract SignerSyncZkModuleTest is Test {
             0,
             address(0)
         );
-        safe = GnosisSafe(
+        safe = Safe(
             payable(address(
                     safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(keccak256("salt")))
                 ))

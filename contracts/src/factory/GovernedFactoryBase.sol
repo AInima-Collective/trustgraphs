@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {SafeProxy} from "@safe-global/safe-smart-account/proxies/SafeProxy.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {
     GovernedAuthorityDeployer,
@@ -105,7 +106,7 @@ abstract contract GovernedFactoryBase {
 
     /// @notice The wrapped base factory. Concrete wrappers cast this to their typed factory.
     address public immutable FACTORY;
-    GnosisSafeProxyFactory public immutable SAFE_FACTORY;
+    SafeProxyFactory public immutable SAFE_FACTORY;
     address public immutable SAFE_SINGLETON;
     GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
     SignerSyncModuleDeployer public immutable SIGNER_SYNC_DEPLOYER;
@@ -165,7 +166,7 @@ abstract contract GovernedFactoryBase {
 
     constructor(
         address factory_,
-        GnosisSafeProxyFactory safeFactory_,
+        SafeProxyFactory safeFactory_,
         address safeSingleton_,
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
@@ -208,7 +209,7 @@ abstract contract GovernedFactoryBase {
         SIGNER_SYNC_PROGRAM_VKEY = signerSyncProgramVKey_;
         SAFE_PROXY_DEPLOYMENT_CODE_HASH =
             keccak256(abi.encodePacked(safeFactory_.proxyCreationCode(), uint256(uint160(safeSingleton_))));
-        SAFE_PROXY_RUNTIME_CODE_HASH = keccak256(safeFactory_.proxyRuntimeCode());
+        SAFE_PROXY_RUNTIME_CODE_HASH = keccak256(type(SafeProxy).runtimeCode);
     }
 
     function authorityOf(bytes32 instanceId) external view returns (Authority memory) {
@@ -251,7 +252,7 @@ abstract contract GovernedFactoryBase {
     ///      policy, deploy and enable the governance/recovery/signer modules, seal the guard,
     ///      hand ownership to the creator, and announce.
     function _installGovernedInstance(
-        GnosisSafe safe,
+        Safe safe,
         string calldata name,
         bytes32 salt,
         bytes memory createCall,
@@ -266,7 +267,7 @@ abstract contract GovernedFactoryBase {
     ///      records the relationship. The current parent authority is checked before any external
     ///      creation effect and again by each ParentAuthorityModule action after creation.
     function _installGovernedSubnetwork(
-        GnosisSafe safe,
+        Safe safe,
         string calldata name,
         bytes32 salt,
         bytes memory createCall,
@@ -288,7 +289,7 @@ abstract contract GovernedFactoryBase {
     }
 
     function _installGovernedInstance(
-        GnosisSafe safe,
+        Safe safe,
         string calldata name,
         bytes32 salt,
         bytes memory createCall,
@@ -432,10 +433,7 @@ abstract contract GovernedFactoryBase {
         module.publishInitialSnapshotBinding();
     }
 
-    function _createBootstrapSafe(address creator, string calldata name, bytes32 salt)
-        internal
-        returns (GnosisSafe safe)
-    {
+    function _createBootstrapSafe(address creator, string calldata name, bytes32 salt) internal returns (Safe safe) {
         address[] memory owners = new address[](1);
         owners[0] = address(this);
         bytes memory initializer = abi.encodeWithSignature(
@@ -454,10 +452,10 @@ abstract contract GovernedFactoryBase {
             uint256 nonce = bump == 0 ? baseNonce : uint256(keccak256(abi.encode(baseNonce, bump)));
             address candidate = _bootstrapSafeAddress(initializer, nonce);
             if (candidate.code.length != 0) {
-                if (_isAdoptableBootstrapSafe(candidate)) return GnosisSafe(payable(candidate));
+                if (_isAdoptableBootstrapSafe(candidate)) return Safe(payable(candidate));
                 continue;
             }
-            return GnosisSafe(payable(SAFE_FACTORY.createProxyWithNonce(SAFE_SINGLETON, initializer, nonce)));
+            return Safe(payable(SAFE_FACTORY.createProxyWithNonce(SAFE_SINGLETON, initializer, nonce)));
         }
         revert BootstrapSafeUnavailable(baseNonce);
     }
@@ -516,7 +514,7 @@ abstract contract GovernedFactoryBase {
         }
     }
 
-    function _execSafe(GnosisSafe safe, address target, uint256 value, bytes memory data) internal {
+    function _execSafe(Safe safe, address target, uint256 value, bytes memory data) internal {
         bool success = safe.execTransaction(
             target,
             value,

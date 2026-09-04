@@ -5,8 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 
 // Safe contracts
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 // Zodiac
 import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
@@ -19,9 +19,9 @@ import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 
 contract MerkleGovModuleTest is Test {
     // Core contracts
-    GnosisSafe public safeSingleton;
-    GnosisSafeProxyFactory public safeFactory;
-    GnosisSafe public safe;
+    Safe public safeSingleton;
+    SafeProxyFactory public safeFactory;
+    Safe public safe;
     MerkleGovModule public govModule;
     MerkleTreeHelper public merkleHelper;
     MockMerkleSnapshot public merkleSnapshot;
@@ -79,8 +79,8 @@ contract MerkleGovModuleTest is Test {
 
     function setUp() public {
         // Deploy Safe infrastructure
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
 
         // Setup initial signers for Safe
         address[] memory signers = new address[](3);
@@ -109,7 +109,7 @@ contract MerkleGovModuleTest is Test {
             )
         );
 
-        safe = GnosisSafe(payable(safeProxy));
+        safe = Safe(payable(safeProxy));
 
         // Deploy merkle helper
         merkleHelper = new MerkleTreeHelper();
@@ -1097,7 +1097,7 @@ contract MerkleGovModuleTest is Test {
         freshGov.publishInitialSnapshotBinding();
         assertTrue(freshGov.initialBindingPublished());
 
-        vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
+        vm.expectRevert(MerkleGovModule.InitialBindingAlreadyPublished.selector);
         freshGov.publishInitialSnapshotBinding();
     }
 
@@ -1111,7 +1111,7 @@ contract MerkleGovModuleTest is Test {
         freshGov.setMerkleSnapshotContract(address(emptySnapshot));
 
         // A later "initial" announcement would be stale and out of order; rotation consumed it.
-        vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
+        vm.expectRevert(MerkleGovModule.InitialBindingAlreadyPublished.selector);
         freshGov.publishInitialSnapshotBinding();
     }
 

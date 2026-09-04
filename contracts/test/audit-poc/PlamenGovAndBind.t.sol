@@ -6,9 +6,9 @@ pragma solidity ^0.8.22;
 
 import {Test, Vm} from "forge-std/Test.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
 import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -70,9 +70,9 @@ contract PlamenAcceptAllVerifier is IZkVerifier {
 //////////////////////////////////////////////////////////////*/
 
 contract PlamenGovAndBind is Test {
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
-    GnosisSafe internal safe;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
+    Safe internal safe;
     MerkleGovModule internal gov;
     PlamenMockSnapshot internal snap;
 
@@ -95,8 +95,8 @@ contract PlamenGovAndBind is Test {
     }
 
     function setUp() public {
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
 
         address[] memory owners = new address[](1);
         owners[0] = creator;
@@ -111,9 +111,7 @@ contract PlamenGovAndBind is Test {
             uint256(0),
             address(0)
         );
-        safe = GnosisSafe(
-            payable(address(safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(1))))
-        );
+        safe = Safe(payable(address(safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(1)))));
 
         leafAlice = _leaf(alice, 100e18);
         leafBob = _leaf(bob, 200e18);
@@ -214,7 +212,7 @@ contract PlamenGovAndBind is Test {
 
         address[] memory owners = new address[](1);
         owners[0] = creator;
-        GnosisSafe s2 = GnosisSafe(
+        Safe s2 = Safe(
             payable(address(
                     safeFactory.createProxyWithNonce(
                         address(safeSingleton),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 // AUDIT POC (disposable) — zk-soundness pass, 2026-08-22.
 // Demonstrates that `EASIndexerResolver.bindSchema` is permissionless and one-shot, so on any

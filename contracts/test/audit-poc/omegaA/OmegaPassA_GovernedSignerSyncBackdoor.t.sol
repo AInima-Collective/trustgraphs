@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
 import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
@@ -33,16 +33,16 @@ contract CreatorControlledVerifier is IZkVerifier {
 ///         every signer module receives the wrapper's constructor-validated immutable pair.
 contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     CreatorControlledVerifier internal canonicalVerifier;
 
     address internal creator = address(0xA11CE);
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         canonicalVerifier = new CreatorControlledVerifier(keccak256("canonical-signer-guest"));
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
@@ -74,7 +74,7 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
         GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         address module = authority.signerSyncModule;
         assertTrue(module != address(0), "module not installed");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "canonical signer module is live on the Safe");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(module), "canonical signer module is live on the Safe");
         assertEq(
             address(SignerSyncZkModule(module).zkVerifier()),
             address(canonicalVerifier),

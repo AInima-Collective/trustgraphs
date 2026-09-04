@@ -20,7 +20,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    error AlreadyInitialized();
+    error InitialBindingAlreadyPublished();
     error ProxyDeploymentUnsupported();
     error NoMerkleRootSet();
     error InvalidProposalData();
@@ -272,7 +272,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     ///         already materialized this module's row when the announcement arrives. A snapshot
     ///         rotation supersedes it (rotation makes its own announcement).
     function publishInitialSnapshotBinding() external {
-        if (initialBindingPublished) revert AlreadyInitialized();
+        if (initialBindingPublished) revert InitialBindingAlreadyPublished();
         initialBindingPublished = true;
         emit MerkleSnapshotContractUpdated(address(0), merkleSnapshotContract);
     }
@@ -445,7 +445,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         }
 
         Proposal storage proposal = proposals[proposalId];
-        if (msg.sender != owner() && msg.sender != avatar) {
+        if (msg.sender != owner && msg.sender != avatar) {
             revert NotAuthorized();
         }
         if (proposal.executed) revert ProposalAlreadyExecuted();

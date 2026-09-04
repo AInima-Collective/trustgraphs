@@ -22,7 +22,7 @@ The implementation deliberately isolates the new program from every legacy guest
   source blobs and their CID/SHA-256/Merkle/total commitments, validates the frozen capture and
   static policy, performs two-stage uint128 Hamilton allocation with uint256 products, and emits
   the canonical output blob/CID/root plus per-source attribution.
-- `zk/composition-program` is the dedicated SP1 6.3.1 guest. `zk/prover/src/programs/composition.rs`
+- `zk/composition-program` is the dedicated SP1 6.6.0 guest. `zk/prover/src/programs/composition.rs`
   is its native adapter and refuses any guest/native journal difference.
 - `contracts/src/params/TrustComposeParamsCodec.sol` and `TrustComposeValidator.sol` freeze the
   policy/params boundary.

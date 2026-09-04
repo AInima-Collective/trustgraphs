@@ -225,7 +225,7 @@ jobs:
       - name: Install pinned SP1 toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up --version v6.3.1
+          ~/.sp1/bin/sp1up --version v6.6.0
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       - name: Build pinned guest ELFs

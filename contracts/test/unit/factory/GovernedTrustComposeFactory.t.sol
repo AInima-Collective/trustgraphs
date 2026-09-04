@@ -4,8 +4,8 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {GovernedTrustComposeFactory} from "src/factory/GovernedTrustComposeFactory.sol";
@@ -68,8 +68,8 @@ contract GovernedTrustComposeFactoryTest is Test {
     ComposeProgramVerifier internal signerVerifier;
     TrustComposeFactory internal factory;
     GovernedTrustComposeFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     MerkleGovModuleDeployer internal govModuleDeployer;
     ParentAuthorityModuleDeployer internal parentAuthorityDeployer;
     SubnetworkRegistry internal subnetworkRegistry;
@@ -105,8 +105,8 @@ contract GovernedTrustComposeFactoryTest is Test {
         registry.grantRole(registrarRole, address(this));
         vm.stopPrank();
 
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         govModuleDeployer = new MerkleGovModuleDeployer();
         parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
         subnetworkRegistry = new SubnetworkRegistry(registry, REGISTRY_ADMIN);
@@ -162,12 +162,12 @@ contract GovernedTrustComposeFactoryTest is Test {
         MerkleGovModule gov = MerkleGovModule(module);
         assertEq(gov.owner(), safe, "Safe must own governance settings");
         assertEq(gov.merkleSnapshotContract(), snapshot, "module must vote from this network");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "governance module must be enabled");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(module), "governance module must be enabled");
 
-        address[] memory owners = GnosisSafe(payable(safe)).getOwners();
+        address[] memory owners = Safe(payable(safe)).getOwners();
         assertEq(owners.length, 1, "bootstrap owner must be removed");
         assertEq(owners[0], creator, "creator must remain the visible Safe owner");
-        assertFalse(GnosisSafe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
+        assertFalse(Safe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
     }
 
     function test_GovernedComposeV2ContractsHaveExplicitEip170Headroom() public view {
@@ -189,7 +189,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         assertEq(subnetworkRegistry.parentOf(childInstanceId), parentInstanceId);
         address parentModule = governedFactory.parentAuthorityModuleOf(childInstanceId);
         assertTrue(parentModule != address(0));
-        assertTrue(GnosisSafe(payable(childSafe)).isModuleEnabled(parentModule));
+        assertTrue(Safe(payable(childSafe)).isModuleEnabled(parentModule));
     }
 
     function _decodeCreated(Vm.Log[] memory logs, bytes32 instanceId)

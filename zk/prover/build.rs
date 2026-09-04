@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 
 /// Pinned deliberately and separately from the `sp1-build` version, so a dependency bump cannot
 /// silently change every vkey in the system. Kept in step with `scripts/build-guests.sh`.
-const SP1_DOCKER_TAG: &str = "v6.3.1";
+const SP1_DOCKER_TAG: &str = "v6.6.0";
 
 /// The repository root, derived from this crate's own manifest directory rather than from whatever
 /// working directory a build happened to start in.

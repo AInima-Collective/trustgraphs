@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
@@ -69,9 +69,9 @@ contract DeployGovernedTrustgraphsFactory is Common {
         );
 
         _startBroadcast();
-        GnosisSafe singleton = reuseSafe ? GnosisSafe(payable(vm.parseAddress(safeSingletonAddr))) : new GnosisSafe();
-        GnosisSafeProxyFactory proxyFactory =
-            reuseSafe ? GnosisSafeProxyFactory(vm.parseAddress(safeFactoryAddr)) : new GnosisSafeProxyFactory();
+        Safe singleton = reuseSafe ? Safe(payable(vm.parseAddress(safeSingletonAddr))) : new Safe();
+        SafeProxyFactory proxyFactory =
+            reuseSafe ? SafeProxyFactory(vm.parseAddress(safeFactoryAddr)) : new SafeProxyFactory();
         require(address(singleton).code.length != 0, "DeployGoverned: Safe singleton has no code");
         require(address(proxyFactory).code.length != 0, "DeployGoverned: Safe factory has no code");
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();

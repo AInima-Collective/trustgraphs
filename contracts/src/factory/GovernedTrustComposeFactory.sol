@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
@@ -23,7 +23,7 @@ import {ISubnetworkRegistry} from "interfaces/registry/ISubnetworkRegistry.sol";
 contract GovernedTrustComposeFactory is GovernedFactoryBase {
     constructor(
         TrustComposeFactory factory_,
-        GnosisSafeProxyFactory safeFactory_,
+        SafeProxyFactory safeFactory_,
         address safeSingleton_,
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
@@ -57,7 +57,7 @@ contract GovernedTrustComposeFactory is GovernedFactoryBase {
     ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         _requirePrepayTerms(policy, requested.epochLength);
         _requireParentAuthority(parentInstanceId);
-        GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
+        Safe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
 
         TrustComposeFactory.CreateArgs memory args = requested;
         args.admin = address(safe);
@@ -84,7 +84,7 @@ contract GovernedTrustComposeFactory is GovernedFactoryBase {
         SignerSyncConfig calldata signerSync
     ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         _requirePrepayTerms(policy, requested.epochLength);
-        GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
+        Safe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
 
         TrustComposeFactory.CreateArgs memory args = requested;
         args.admin = address(safe);

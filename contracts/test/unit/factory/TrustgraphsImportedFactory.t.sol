@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 import {Vm} from "forge-std/Vm.sol";
 
@@ -16,8 +16,8 @@ import {
     Signature
 } from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {EASAttestAndImportRouter} from "src/eas/EASAttestAndImportRouter.sol";
 import {OnchainAttestationImporter} from "src/eas/OnchainAttestationImporter.sol";
@@ -250,8 +250,8 @@ contract TrustgraphsImportedFactoryTest is TrustgraphsFactoryBase {
         bytes32 signerVkey = keccak256("imported factory signer guest");
         GovernedImportedTrustgraphsFactory governed = new GovernedImportedTrustgraphsFactory(
             importedFactory,
-            new GnosisSafeProxyFactory(),
-            address(new GnosisSafe()),
+            new SafeProxyFactory(),
+            address(new Safe()),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),

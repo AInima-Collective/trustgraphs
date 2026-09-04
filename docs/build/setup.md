@@ -15,8 +15,8 @@ Install:
 - `jq`;
 - Node.js 21 or newer and pnpm;
 - Foundry, including Anvil;
-- Rust 1.87 or newer; and
-- SP1 6.3.1.
+- Rust 1.88 or newer; and
+- SP1 6.6.0.
 
 On Linux, install a compiler toolchain first:
 
@@ -53,7 +53,7 @@ SP1 builds and proves the guest programs:
 
 ```bash
 curl -L https://sp1up.succinct.xyz | bash
-~/.sp1/bin/sp1up --version v6.3.1
+~/.sp1/bin/sp1up --version v6.6.0
 export PATH="$HOME/.sp1/bin:$PATH"
 cargo prove --version
 ```

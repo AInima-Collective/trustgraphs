@@ -68,7 +68,7 @@ tasks:
         # Check the SP1 toolchain — the guests can't be built without it, and every proving
         # path in the repo needs the guests. See docs/build/setup.md.
         if ! command -v cargo-prove >/dev/null 2>&1; then
-          echo "❌ cargo-prove not found. Install with: curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1"
+          echo "❌ cargo-prove not found. Install with: curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.6.0"
           echo "💡 then add it to PATH: export PATH=\"\$HOME/.sp1/bin:\$PATH\""
           exit 1
         fi

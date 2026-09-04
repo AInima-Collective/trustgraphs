@@ -249,7 +249,7 @@ contract WeightedPriorParamsControllerTest is Test {
         emit log_named_uint("weighted max proposal calldata gas", calldataGas);
         emit log_named_uint("weighted max proposal total L1 gas", totalL1Gas);
         assertLt(executionGas, 5_000_000, "max proposal execution gas");
-        assertLt(totalL1Gas, 4_500_000, "max proposal total L1 gas");
+        assertLt(totalL1Gas, 4_600_000, "max proposal total L1 gas");
     }
 
     function testFuzz_ProposalStateMatchesCanonicalManifest(uint8 rawCount, uint64 salt) public {

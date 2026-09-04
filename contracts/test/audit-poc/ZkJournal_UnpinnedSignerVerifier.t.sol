@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
 import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
@@ -41,8 +41,8 @@ contract CanonicalRejectingSignerVerifier is IZkVerifier {
 /// wrapper's immutable canonical verifier/vkey pair.
 contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     CanonicalRejectingSignerVerifier internal canonicalVerifier;
 
     address internal creator = address(0xA11CE);
@@ -50,8 +50,8 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         canonicalVerifier = new CanonicalRejectingSignerVerifier();
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
@@ -88,7 +88,7 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
         assertTrue(
             address(signer.zkVerifier()) != address(fake), "caller-controlled verifier must be ignored by design"
         );
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "module is live on the Safe");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(address(signer)), "module is live on the Safe");
         // The Safe holds the snapshot's constitutional authority.
         assertTrue(
             MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), safe),
@@ -124,7 +124,7 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
         vm.expectRevert(bytes("canonical verifier rejected proof"));
         signer.submitSignerProof(checkpointId, 0, desired, 1, hex"00");
 
-        assertFalse(GnosisSafe(payable(safe)).isOwner(stranger), "attacker proof must not alter owners");
-        assertTrue(GnosisSafe(payable(safe)).isOwner(creator), "the real member remains owner");
+        assertFalse(Safe(payable(safe)).isOwner(stranger), "attacker proof must not alter owners");
+        assertTrue(Safe(payable(safe)).isOwner(creator), "the real member remains owner");
     }
 }

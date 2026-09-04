@@ -73,10 +73,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install SP1 toolchain (pinned 6.3.1)
+      - name: Install SP1 toolchain (pinned 6.6.0)
         run: |
           curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up --version v6.3.1
+          ~/.sp1/bin/sp1up --version v6.6.0
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       # No rust-cache here on purpose. A warm `target/` is the most likely way for a build to

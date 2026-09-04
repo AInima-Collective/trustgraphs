@@ -9,7 +9,7 @@ pilot remains an S5 gate. Before its first production anchor, record and indepen
   reciprocal bindings, node registrations, role holders, timelocks, capacity, and epoch schedule;
 - Buzz upstream SHA plus compatibility-patch digest, migration digest, relay key, community UUID,
   audit health, archive ACL/storage redundancy, and authorized reproduction holders;
-- exact program/output ids, SP1 6.3.1 guest vkey, params preimage/hash, all work caps and measured 2×
+- exact program/output ids, SP1 6.6.0 guest vkey, params preimage/hash, all work caps and measured 2×
   operating margin, vault top-band policy, prover backend, recipient, and publication quorum;
 - indexer score-program binding, deployment start block, sidecar path/ACL, API pagination limits,
   frontend domain/proof checks, monitoring destinations, and rollback/disable contacts.

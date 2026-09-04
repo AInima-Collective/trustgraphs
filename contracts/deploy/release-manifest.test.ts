@@ -7,6 +7,7 @@ import test from 'node:test'
 import { SepoliaEnv } from './env'
 import { resolveDeploymentSelection } from './profiles'
 import {
+  CURRENT_SP1_VERSION,
   loadReleaseManifest,
   readBroadcastDeployments,
   releaseManifestToDeploymentSummary,
@@ -50,6 +51,27 @@ test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its s
       loadReleaseManifest(MANIFEST, { requireComplete: true })
     )
   }
+})
+
+test('manifest validator accepts uniform current and historical SP1 releases', () => {
+  const historical = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  assert.doesNotThrow(() => validateReleaseManifest(historical))
+
+  const current = structuredClone(historical)
+  for (const program of Object.values<{ sp1Version: string }>(
+    current.programs
+  )) {
+    program.sp1Version = CURRENT_SP1_VERSION
+  }
+  assert.doesNotThrow(() => validateReleaseManifest(current))
+
+  const unsupported = structuredClone(current)
+  unsupported.programs.weighted.sp1Version = '6.7.0'
+  assert.throws(() => validateReleaseManifest(unsupported), /supported release/)
+
+  const mixed = structuredClone(current)
+  mixed.programs.weighted.sp1Version = '6.3.1'
+  assert.throws(() => validateReleaseManifest(mixed), /one SP1 toolchain/)
 })
 
 test('manifest validator rejects unknown fields and secret-bearing keys', () => {

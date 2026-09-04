@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 /// @notice Emitted when an attestation is attested.
 /// @param eas The EAS contract instance.

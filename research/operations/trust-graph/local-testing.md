@@ -269,7 +269,7 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
   default). Prefix executor-only commands with `SP1_PROVER=mock` — identical executor + byte-assert,
   no ~5 GiB prover allocation. `taskfile/zk.yml` and `tests/e2e/run.sh` already pin this.
 - **Gateway version.** `SP1_VERIFIER_GATEWAY` must be a gateway that has the verifier for the SP1 SDK
-  version this repo pins (v6.3.1); it routes by the proof's 4-byte selector.
+  version this repo pins (v6.6.0); it routes by the proof's 4-byte selector.
 - **Local Groth16** (`SP1_PROVER=cpu`) needs `--features native-gnark` and a gnark/Go toolchain; the
   network backend (`SP1_PROVER=network`) does not.
 - **Frontend shows nothing?** It reads `.docker/deployment_summary.json` at `predev` — re-run

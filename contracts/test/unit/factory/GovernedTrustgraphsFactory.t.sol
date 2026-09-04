@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {MultiSend} from "@gnosis.pm/safe-contracts/libraries/MultiSend.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {MultiSend} from "@safe-global/safe-smart-account/libraries/MultiSend.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -85,8 +85,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     bytes32 internal constant SIGNER_VKEY = keccak256("factory signer guest");
 
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
@@ -127,8 +127,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
@@ -188,15 +188,15 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(gov.avatar(), safe, "module avatar must be Safe");
         assertEq(gov.target(), safe, "module target must be Safe");
         assertEq(gov.merkleSnapshotContract(), snapshot, "module must vote from this network");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "governance module must be enabled");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(module), "governance module must be enabled");
         assertEq(MerkleSnapshot(snapshot).hookCount(), 1, "governance hook must be installed");
         assertEq(address(MerkleSnapshot(snapshot).hooks(1)), module, "wrong governance hook");
 
-        address[] memory owners = GnosisSafe(payable(safe)).getOwners();
+        address[] memory owners = Safe(payable(safe)).getOwners();
         assertEq(owners.length, 1, "bootstrap owner must be removed");
         assertEq(owners[0], creator, "creator must remain the visible Safe owner");
-        assertEq(GnosisSafe(payable(safe)).getThreshold(), 1, "initial Safe threshold");
-        assertFalse(GnosisSafe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
+        assertEq(Safe(payable(safe)).getThreshold(), 1, "initial Safe threshold");
+        assertFalse(Safe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
 
         GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         assertEq(authority.safe, safe, "authority Safe");
@@ -206,13 +206,11 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertTrue(SafeExecutionGuard(authority.executionGuard).isSealed(), "owner route must be sealed");
         assertEq(SafeExecutionGuard(authority.executionGuard).safe(), safe, "guard Safe");
         assertEq(address(DelayedRecoveryModule(authority.recoveryModule).safe()), safe, "recovery Safe");
-        assertTrue(
-            GnosisSafe(payable(safe)).isModuleEnabled(authority.recoveryModule), "recovery module must be enabled"
-        );
+        assertTrue(Safe(payable(safe)).isModuleEnabled(authority.recoveryModule), "recovery module must be enabled");
 
         address installedGuard = address(uint160(uint256(vm.load(safe, GUARD_STORAGE_SLOT))));
         assertEq(installedGuard, authority.executionGuard, "authority guard must be installed on Safe");
-        (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
+        (address[] memory modules, address next) = Safe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 2, "only the two delayed authority routes may be enabled");
         assertEq(next, address(0x1), "module list must be exhausted");
     }
@@ -231,7 +229,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(subnetworkRegistry.parentOf(childInstanceId), parentInstanceId);
         address moduleAddress = governedFactory.parentAuthorityModuleOf(childInstanceId);
         assertTrue(moduleAddress != address(0));
-        assertTrue(GnosisSafe(payable(childSafe)).isModuleEnabled(moduleAddress));
+        assertTrue(Safe(payable(childSafe)).isModuleEnabled(moduleAddress));
         ParentAuthorityModule module = ParentAuthorityModule(moduleAddress);
         assertEq(module.childInstanceId(), childInstanceId);
         assertEq(module.parentInstanceId(), parentInstanceId);
@@ -336,7 +334,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertTrue(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), safe), "Safe controls relayer policy");
         assertFalse(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), address(governedFactory)));
         assertEq(governedFactory.authorityOf(instanceId).safe, safe);
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(governedFactory.authorityOf(instanceId).governanceModule));
+        assertTrue(Safe(payable(safe)).isModuleEnabled(governedFactory.authorityOf(instanceId).governanceModule));
     }
 
     function test_GovernedHybridAndSignerSyncAreRejectedAtomically() public {
@@ -397,11 +395,11 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
         assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
         assertTrue(
-            GnosisSafe(payable(safe)).isModuleEnabled(authority.governanceModule),
+            Safe(payable(safe)).isModuleEnabled(authority.governanceModule),
             "governance module must remain discoverable and enabled"
         );
         assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
         assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
         assertEq(signer.owner(), safe, "signer module must be governed by the Safe");
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
@@ -412,7 +410,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             keccak256(abi.encode(uint32(5), uint32(2), uint32(5000), uint64(151_200), uint32(2)))
         );
 
-        (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
+        (address[] memory modules, address next) = Safe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 3, "gov, recovery and signer are the only enabled modules");
         assertEq(next, address(0x1));
 
@@ -470,10 +468,10 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         vm.prank(relayer);
         signer.submitSignerProof(checkpointId, 0, desired, 2, hex"1234");
 
-        assertTrue(GnosisSafe(payable(safe)).isOwner(desired[0]));
-        assertTrue(GnosisSafe(payable(safe)).isOwner(desired[1]));
-        assertFalse(GnosisSafe(payable(safe)).isOwner(creator));
-        assertEq(GnosisSafe(payable(safe)).getThreshold(), 2);
+        assertTrue(Safe(payable(safe)).isOwner(desired[0]));
+        assertTrue(Safe(payable(safe)).isOwner(desired[1]));
+        assertFalse(Safe(payable(safe)).isOwner(creator));
+        assertEq(Safe(payable(safe)).getThreshold(), 2);
         assertEq(signer.lastAppliedCheckpoint(), checkpointId);
     }
 
@@ -585,7 +583,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         );
 
         assertEq(MerkleSnapshot(snapshot).paramsHash(), originalParamsHash, "blocked paths changed scoring truth");
-        assertFalse(GnosisSafe(payable(safe)).isModuleEnabled(address(0xB0B)), "owner enabled a bypass module");
+        assertFalse(Safe(payable(safe)).isModuleEnabled(address(0xB0B)), "owner enabled a bypass module");
         assertEq(address(uint160(uint256(vm.load(safe, GUARD_STORAGE_SLOT)))), address(guard), "owner removed guard");
     }
 
@@ -834,7 +832,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             discoveryIndex, bindingIndex, "an indexer must learn the module exists before its binding announcement"
         );
         assertTrue(MerkleGovModule(module).initialBindingPublished(), "one-shot publisher consumed");
-        vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
+        vm.expectRevert(MerkleGovModule.InitialBindingAlreadyPublished.selector);
         MerkleGovModule(module).publishInitialSnapshotBinding();
     }
 
@@ -843,7 +841,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         args.admin = address(zodiacHarness);
         Created memory created = _create(args);
 
-        GnosisSafe demoSafe = _safeOwnedBy(address(zodiacHarness));
+        Safe demoSafe = _safeOwnedBy(address(zodiacHarness));
         MerkleGovModule gov =
             new MerkleGovModule(address(zodiacHarness), address(demoSafe), address(demoSafe), created.snapshot);
         SignerSyncZkModule signer = new SignerSyncZkModule(
@@ -881,7 +879,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(signer.owner(), address(demoSafe));
     }
 
-    function _safeOwnedBy(address owner) internal returns (GnosisSafe safe) {
+    function _safeOwnedBy(address owner) internal returns (Safe safe) {
         address[] memory owners = new address[](1);
         owners[0] = owner;
         bytes memory initializer = abi.encodeWithSignature(
@@ -895,7 +893,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             0,
             address(0)
         );
-        safe = GnosisSafe(payable(safeFactory.createProxyWithNonce(address(safeSingleton), initializer, 12345)));
+        safe = Safe(payable(safeFactory.createProxyWithNonce(address(safeSingleton), initializer, 12345)));
     }
 
     function _expectOwnerExecutionLocked(
@@ -908,7 +906,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     ) internal {
         vm.expectRevert(abi.encodeWithSelector(SafeExecutionGuard.OwnerExecutionLocked.selector, creator));
         vm.prank(creator);
-        GnosisSafe(payable(safe))
+        Safe(payable(safe))
             .execTransaction(
                 target, value, data, operation, 0, 0, 0, address(0), payable(address(0)), _approvedSignature(creator)
             );

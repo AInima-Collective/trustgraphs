@@ -35,13 +35,13 @@ Design: [`create-a-network.md`](./create-a-network.md) for creation,
 ## 0. Toolchain and guests, once
 
 The SP1 `succinct` Rust toolchain is not part of a normal checkout, and proving needs it. Pin the
-version: the SDK is `=6.3.1` in `zk/prover/Cargo.toml`, and the toolchain build a vkey was derived
+version: the SDK is `=6.6.0` in `zk/prover/Cargo.toml`, and the toolchain build a vkey was derived
 on is part of that vkey
 ([`networks-and-programs.md`](../../docs/concepts/networks-and-programs.md)).
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/succinctlabs/sp1/main/sp1up/sp1up | bash
-~/.sp1/bin/sp1up --version v6.3.1
+~/.sp1/bin/sp1up --version v6.6.0
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 

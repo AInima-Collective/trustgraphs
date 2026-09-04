@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {UpdateContributionsParams} from "script/UpdateContributionsParams.s.sol";
 import {ContributionsParamsController} from "src/factory/ContributionsParamsController.sol";
@@ -49,13 +49,13 @@ contract UpdateContributionsParamsHarness is UpdateContributionsParams {
 
 contract UpdateContributionsParamsScriptTest is Test {
     UpdateContributionsParamsHarness internal updater;
-    GnosisSafe internal singleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal singleton;
+    SafeProxyFactory internal safeFactory;
 
     function setUp() public {
         updater = new UpdateContributionsParamsHarness();
-        singleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        singleton = new Safe();
+        safeFactory = new SafeProxyFactory();
     }
 
     function test_DirectOwnerPublishesParams() public {
@@ -71,7 +71,7 @@ contract UpdateContributionsParamsScriptTest is Test {
     }
 
     function test_OneOfOneDevSafePublishesParamsAsSafe() public {
-        GnosisSafe safe = _safe(address(updater));
+        Safe safe = _safe(address(updater));
         MockContributionsParamsController mock = new MockContributionsParamsController(address(safe));
         ContributionsParamsCodec.Params memory next = _params();
 
@@ -99,7 +99,7 @@ contract UpdateContributionsParamsScriptTest is Test {
         address[] memory owners = new address[](2);
         owners[0] = address(updater);
         owners[1] = address(0xB0B);
-        GnosisSafe safe = _safe(owners, 2, 2);
+        Safe safe = _safe(owners, 2, 2);
         MockContributionsParamsController mock = new MockContributionsParamsController(address(safe));
 
         vm.expectRevert(
@@ -108,13 +108,13 @@ contract UpdateContributionsParamsScriptTest is Test {
         updater.updateForTest(ContributionsParamsController(address(mock)), _params(), "must use governance");
     }
 
-    function _safe(address owner) internal returns (GnosisSafe safe) {
+    function _safe(address owner) internal returns (Safe safe) {
         address[] memory owners = new address[](1);
         owners[0] = owner;
         return _safe(owners, 1, 1);
     }
 
-    function _safe(address[] memory owners, uint256 threshold, uint256 nonce) internal returns (GnosisSafe safe) {
+    function _safe(address[] memory owners, uint256 threshold, uint256 nonce) internal returns (Safe safe) {
         bytes memory initializer = abi.encodeWithSignature(
             "setup(address[],uint256,address,bytes,address,address,uint256,address)",
             owners,
@@ -126,7 +126,7 @@ contract UpdateContributionsParamsScriptTest is Test {
             0,
             address(0)
         );
-        safe = GnosisSafe(payable(safeFactory.createProxyWithNonce(address(singleton), initializer, nonce)));
+        safe = Safe(payable(safeFactory.createProxyWithNonce(address(singleton), initializer, nonce)));
     }
 
     function _params() internal pure returns (ContributionsParamsCodec.Params memory p) {

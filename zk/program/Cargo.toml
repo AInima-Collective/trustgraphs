@@ -20,7 +20,7 @@ name = "trustgraph-contributions-program"
 path = "src/contributions.rs"
 
 [dependencies]
-sp1-zkvm = "=6.3.1"
+sp1-zkvm = "=6.6.0"
 pagerank-core = { path = "../../crates/pagerank-core" }
 hypercerts-core = { path = "../../crates/hypercerts-core" }
 contributions-core = { path = "../../crates/contributions-core" }
@@ -37,9 +37,9 @@ alloy-primitives = { version = "1", features = ["serde"] }
 # these changes EVERY bin's ELF, so the root and signer vkeys rotate and must ship in one
 # coordinated deployment.
 [patch.crates-io]
-sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.0.0" }
-k256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "k256", tag = "patch-k256-13.4-sp1-6.0.0" }
-p256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "p256", tag = "patch-p256-13.2-sp1-6.0.0" }
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.2.0" }
+k256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "k256", tag = "patch-k256-13.4-sp1-6.2.0" }
+p256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "p256", tag = "patch-p256-13.2-sp1-6.2.0" }
 
 [profile.release]
 opt-level = 3

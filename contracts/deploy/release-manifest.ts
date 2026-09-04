@@ -21,6 +21,9 @@ export const RELEASE_PROGRAMS = [
   ['nostrWorkspace', 'nostr-workspace'],
 ] as const
 
+export const CURRENT_SP1_VERSION = '6.6.0'
+const SUPPORTED_SP1_VERSIONS = new Set(['6.3.1', CURRENT_SP1_VERSION])
+
 export type ReleaseProgramKey = (typeof RELEASE_PROGRAMS)[number][0]
 
 export type ReleaseProgramIdentity = {
@@ -534,6 +537,7 @@ export const validateReleaseManifest = (
     RELEASE_PROGRAMS.map(([key]) => key),
     'manifest.programs'
   )
+  let manifestSp1Version: string | null = null
   for (const [key, label] of RELEASE_PROGRAMS) {
     const program = value.programs[key]
     assertObject(program, `manifest.programs.${key}`)
@@ -542,11 +546,23 @@ export const validateReleaseManifest = (
       ['sp1Version', 'elfSha256', 'vkey'],
       `manifest.programs.${key}`
     )
-    if (program.sp1Version !== '6.3.1') {
+    if (
+      typeof program.sp1Version !== 'string' ||
+      !SUPPORTED_SP1_VERSIONS.has(program.sp1Version)
+    ) {
       throw new Error(
-        `manifest ${label} SP1 version must match the pinned 6.3.1 toolchain`
+        `manifest ${label} SP1 version must be a supported release toolchain (${[
+          ...SUPPORTED_SP1_VERSIONS,
+        ].join(', ')})`
       )
     }
+    if (
+      manifestSp1Version !== null &&
+      program.sp1Version !== manifestSp1Version
+    ) {
+      throw new Error('manifest programs must use one SP1 toolchain version')
+    }
+    manifestSp1Version = program.sp1Version
     if (
       program.elfSha256 !== null &&
       (typeof program.elfSha256 !== 'string' ||

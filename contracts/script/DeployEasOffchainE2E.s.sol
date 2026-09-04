@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.29;
 
 import {stdJson} from "forge-std/StdJson.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -7,8 +7,8 @@ import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
@@ -121,8 +121,8 @@ contract DeployEasOffchainE2E is Common {
         // The browser acceptance path uses the same governed wrapper as the product wizard. Keep
         // the seed hybrid above deterministic, then deploy the real Safe/guard/recovery stack so
         // CI can prove app creation without weakening the wizard's sealed-authority preflight.
-        GnosisSafe safeSingleton = new GnosisSafe();
-        GnosisSafeProxyFactory safeFactory = new GnosisSafeProxyFactory();
+        Safe safeSingleton = new Safe();
+        SafeProxyFactory safeFactory = new SafeProxyFactory();
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();
         SignerSyncModuleDeployer signerSyncDeployer = new SignerSyncModuleDeployer();
         MerkleGovModuleDeployer govModuleDeployer = new MerkleGovModuleDeployer();

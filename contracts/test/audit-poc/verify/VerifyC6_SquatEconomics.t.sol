@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
 import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
@@ -25,16 +25,16 @@ contract VerifyC6EconomicsSignerVerifier is IZkVerifier {
 
 contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
-    GnosisSafe internal singleton;
-    GnosisSafeProxyFactory internal proxyFactory;
+    Safe internal singleton;
+    SafeProxyFactory internal proxyFactory;
 
     address internal victim = address(0xA11CE);
     address internal squatter = address(0x5D0A7);
 
     function setUp() public override {
         super.setUp();
-        singleton = new GnosisSafe();
-        proxyFactory = new GnosisSafeProxyFactory();
+        singleton = new Safe();
+        proxyFactory = new SafeProxyFactory();
         VerifyC6EconomicsSignerVerifier signerVerifier = new VerifyC6EconomicsSignerVerifier();
         gf = new GovernedTrustgraphsFactory(
             factory,
@@ -87,7 +87,7 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
 
         emit log_named_uint("attacker squat gas", squatGas);
         emit log_named_uint("victim wasted gas ", victimGas);
-        assertTrue(GnosisSafe(payable(safe)).isOwner(victim), "front-run Safe must be adopted and graduated");
+        assertTrue(Safe(payable(safe)).isOwner(victim), "front-run Safe must be adopted and graduated");
 
         // Same name, brand-new salt -> succeeds if the squatter does not front-run again.
         args.salt = bytes32(uint256(8));

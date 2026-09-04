@@ -38,10 +38,10 @@ jobs:
             zk/composition-program -> target
             zk/nostr-program -> target
 
-      - name: Install SP1 toolchain (pinned 6.3.1)
+      - name: Install SP1 toolchain (pinned 6.6.0)
         run: |
           curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up --version v6.3.1
+          ~/.sp1/bin/sp1up --version v6.6.0
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       - name: Build all isolated guest families
@@ -108,7 +108,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: 10.18.3
 

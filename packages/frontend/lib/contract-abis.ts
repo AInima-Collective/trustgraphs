@@ -2493,7 +2493,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'safeFactory_',
-        internalType: 'contract GnosisSafeProxyFactory',
+        internalType: 'contract SafeProxyFactory',
         type: 'address',
       },
       { name: 'safeSingleton_', internalType: 'address', type: 'address' },
@@ -2510,6 +2510,16 @@ export const governedTrustgraphsFactoryAbi = [
       {
         name: 'govModuleDeployer_',
         internalType: 'contract MerkleGovModuleDeployer',
+        type: 'address',
+      },
+      {
+        name: 'parentAuthorityDeployer_',
+        internalType: 'contract ParentAuthorityModuleDeployer',
+        type: 'address',
+      },
+      {
+        name: 'subnetworkRegistry_',
+        internalType: 'contract ISubnetworkRegistry',
         type: 'address',
       },
       {
@@ -2596,6 +2606,19 @@ export const governedTrustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'PARENT_AUTHORITY_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ParentAuthorityModuleDeployer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'RECOVERY_DELAY',
     outputs: [{ name: '', internalType: 'uint48', type: 'uint48' }],
     stateMutability: 'view',
@@ -2605,11 +2628,7 @@ export const governedTrustgraphsFactoryAbi = [
     inputs: [],
     name: 'SAFE_FACTORY',
     outputs: [
-      {
-        name: '',
-        internalType: 'contract GnosisSafeProxyFactory',
-        type: 'address',
-      },
+      { name: '', internalType: 'contract SafeProxyFactory', type: 'address' },
     ],
     stateMutability: 'view',
   },
@@ -2660,6 +2679,19 @@ export const governedTrustgraphsFactoryAbi = [
     name: 'SIGNER_SYNC_VERIFIER',
     outputs: [
       { name: '', internalType: 'contract IZkVerifier', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'SUBNETWORK_REGISTRY',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ISubnetworkRegistry',
+        type: 'address',
+      },
     ],
     stateMutability: 'view',
   },
@@ -2931,6 +2963,135 @@ export const governedTrustgraphsFactoryAbi = [
     stateMutability: 'payable',
   },
   {
+    type: 'function',
+    inputs: [
+      {
+        name: 'requested',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
+        type: 'tuple',
+        components: [
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'metadataURI', internalType: 'string', type: 'string' },
+          {
+            name: 'params',
+            internalType: 'struct ParamsCodec.Params',
+            type: 'tuple',
+            components: [
+              { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+              { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'trustShareFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustDecayFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustedSeeds',
+                internalType: 'address[]',
+                type: 'address[]',
+              },
+              { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'precisionScale',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+              {
+                name: 'weightFieldIndex',
+                internalType: 'uint32',
+                type: 'uint32',
+              },
+              {
+                name: 'envelope0DomainSeparators',
+                internalType: 'bytes32[]',
+                type: 'bytes32[]',
+              },
+              {
+                name: 'lane2MaxHeadAge',
+                internalType: 'uint64',
+                type: 'uint64',
+              },
+              { name: 'accumulator', internalType: 'address', type: 'address' },
+              { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+            ],
+          },
+          { name: 'admin', internalType: 'address', type: 'address' },
+          { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
+          { name: 'withDistributor', internalType: 'bool', type: 'bool' },
+          {
+            name: 'distributorToken',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+      {
+        name: 'policy',
+        internalType: 'struct GovernedFactoryBase.InitialPolicy',
+        type: 'tuple',
+        components: [
+          {
+            name: 'minPaidIntervalBlocks',
+            internalType: 'uint64',
+            type: 'uint64',
+          },
+          { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
+        ],
+      },
+      {
+        name: 'signerSync',
+        internalType: 'struct GovernedFactoryBase.SignerSyncConfig',
+        type: 'tuple',
+        components: [
+          { name: 'enabled', internalType: 'bool', type: 'bool' },
+          { name: 'topN', internalType: 'uint32', type: 'uint32' },
+          { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+          {
+            name: 'targetThresholdBps',
+            internalType: 'uint32',
+            type: 'uint32',
+          },
+        ],
+      },
+      { name: 'parentInstanceId', internalType: 'bytes32', type: 'bytes32' },
+      {
+        name: 'tier',
+        internalType: 'enum GovernedFactoryBase.SubnetworkTier',
+        type: 'uint8',
+      },
+    ],
+    name: 'createGovernedSubnetwork',
+    outputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'safeAddress', internalType: 'address', type: 'address' },
+      { name: 'merkleGovModule', internalType: 'address', type: 'address' },
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'parentAuthorityModuleOf',
+    outputs: [
+      {
+        name: 'parentAuthorityModule',
+        internalType: 'address',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
     type: 'event',
     anonymous: false,
     inputs: [
@@ -3013,6 +3174,37 @@ export const governedTrustgraphsFactoryAbi = [
     name: 'GovernedInstanceCreated',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'childInstanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'parentInstanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'parentAuthorityModule',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'tier',
+        internalType: 'enum GovernedFactoryBase.SubnetworkTier',
+        type: 'uint8',
+        indexed: false,
+      },
+    ],
+    name: 'GovernedSubnetworkCreated',
+  },
+  {
     type: 'error',
     inputs: [{ name: 'baseNonce', internalType: 'uint256', type: 'uint256' }],
     name: 'BootstrapSafeUnavailable',
@@ -3056,7 +3248,17 @@ export const governedTrustgraphsFactoryAbi = [
     inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'InstanceDiscoveryFailed',
   },
+  { type: 'error', inputs: [], name: 'InvalidParentInstance' },
   { type: 'error', inputs: [], name: 'InvalidSignerSyncVerifier' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'parentInstanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'caller', internalType: 'address', type: 'address' },
+      { name: 'expectedAuthority', internalType: 'address', type: 'address' },
+    ],
+    name: 'NotParentAuthority',
+  },
   { type: 'error', inputs: [], name: 'PolicyRequiresPrepay' },
   { type: 'error', inputs: [], name: 'PrepayRequiresPolicy' },
   { type: 'error', inputs: [], name: 'PrepayUnavailable' },
@@ -3076,6 +3278,14 @@ export const governedTrustgraphsFactoryAbi = [
       { name: 'actual', internalType: 'bytes32', type: 'bytes32' },
     ],
     name: 'SignerSyncProgramVKeyMismatch',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expected', internalType: 'address', type: 'address' },
+      { name: 'actual', internalType: 'address', type: 'address' },
+    ],
+    name: 'SubnetworkRegistryMismatch',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
@@ -4187,13 +4397,6 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [],
-    name: 'renounceOwnership',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     inputs: [{ name: '_avatar', internalType: 'address', type: 'address' }],
     name: 'setAvatar',
     outputs: [],
@@ -4476,19 +4679,6 @@ export const merkleGovModuleAbi = [
       },
     ],
     name: 'ExecutionDelayUpdated',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'version',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'Initialized',
   },
   {
     type: 'event',
@@ -4837,8 +5027,8 @@ export const merkleGovModuleAbi = [
     ],
     name: 'ExecutionDelayNotElapsed',
   },
+  { type: 'error', inputs: [], name: 'InitialBindingAlreadyPublished' },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
-  { type: 'error', inputs: [], name: 'InvalidInitialization' },
   { type: 'error', inputs: [], name: 'InvalidMerkleProof' },
   { type: 'error', inputs: [], name: 'InvalidProposalData' },
   { type: 'error', inputs: [], name: 'InvalidQuorum' },
@@ -4846,7 +5036,6 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'NoMerkleRootSet' },
   { type: 'error', inputs: [], name: 'NoSignerActivity' },
   { type: 'error', inputs: [], name: 'NotAuthorized' },
-  { type: 'error', inputs: [], name: 'NotInitializing' },
   {
     type: 'error',
     inputs: [
@@ -4856,11 +5045,6 @@ export const merkleGovModuleAbi = [
     name: 'NotVoteDelegate',
   },
   { type: 'error', inputs: [], name: 'OnlyMerkleSnapshot' },
-  {
-    type: 'error',
-    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
-    name: 'OwnableInvalidOwner',
-  },
   {
     type: 'error',
     inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
@@ -6403,13 +6587,6 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'renounceOwnership',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
     name: 'scoreSnapshot',
     outputs: [
       {
@@ -6597,19 +6774,6 @@ export const signerSyncZkModuleAbi = [
     anonymous: false,
     inputs: [
       {
-        name: 'version',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'Initialized',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
         name: 'previousOwner',
         internalType: 'address',
         type: 'address',
@@ -6739,8 +6903,8 @@ export const signerSyncZkModuleAbi = [
     name: 'ActivityCheckpointStale',
   },
   { type: 'error', inputs: [], name: 'ActivityCheckpointSuperseded' },
+  { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'EmptySignerSet' },
-  { type: 'error', inputs: [], name: 'InvalidInitialization' },
   { type: 'error', inputs: [], name: 'InvalidSelectionParams' },
   {
     type: 'error',
@@ -6754,12 +6918,6 @@ export const signerSyncZkModuleAbi = [
       { name: 'ownerCount', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidThreshold',
-  },
-  { type: 'error', inputs: [], name: 'NotInitializing' },
-  {
-    type: 'error',
-    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
-    name: 'OwnableInvalidOwner',
   },
   {
     type: 'error',

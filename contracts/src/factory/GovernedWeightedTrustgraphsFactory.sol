@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {WeightedTrustgraphsFactory} from "src/factory/WeightedTrustgraphsFactory.sol";
@@ -23,7 +23,7 @@ import {ISubnetworkRegistry} from "interfaces/registry/ISubnetworkRegistry.sol";
 contract GovernedWeightedTrustgraphsFactory is GovernedFactoryBase {
     constructor(
         WeightedTrustgraphsFactory factory_,
-        GnosisSafeProxyFactory safeFactory_,
+        SafeProxyFactory safeFactory_,
         address safeSingleton_,
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
@@ -57,7 +57,7 @@ contract GovernedWeightedTrustgraphsFactory is GovernedFactoryBase {
     ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         _requirePrepayTerms(policy, requested.epochLength);
         _requireParentAuthority(parentInstanceId);
-        GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
+        Safe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
 
         WeightedTrustgraphsFactory.CreateArgs memory args = requested;
         args.admin = address(safe);
@@ -84,7 +84,7 @@ contract GovernedWeightedTrustgraphsFactory is GovernedFactoryBase {
         SignerSyncConfig calldata signerSync
     ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         _requirePrepayTerms(policy, requested.epochLength);
-        GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
+        Safe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
 
         WeightedTrustgraphsFactory.CreateArgs memory args = requested;
         args.admin = address(safe);

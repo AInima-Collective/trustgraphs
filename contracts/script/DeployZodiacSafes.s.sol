@@ -8,9 +8,9 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Common} from "script/Common.s.sol";
 
 // Safe contracts
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 // Our modules
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -83,8 +83,8 @@ contract DeployZodiacSafes is Common {
         address signerVerifier = vm.parseAddress(signerVerifierAddr);
 
         // Deploy Safe singleton and factory (if needed)
-        GnosisSafe safeSingleton = new GnosisSafe();
-        GnosisSafeProxyFactory safeFactory = new GnosisSafeProxyFactory();
+        Safe safeSingleton = new Safe();
+        SafeProxyFactory safeFactory = new SafeProxyFactory();
 
         // Deploy the Safe with the MerkleGovModule + SignerSyncZkModule
         SafeDeployment memory safe =
@@ -107,7 +107,7 @@ contract DeployZodiacSafes is Common {
         SafeDeployment memory deployment,
         TrustgraphsParamsController controller
     ) internal {
-        GnosisSafe safe = GnosisSafe(payable(deployment.safe));
+        Safe safe = Safe(payable(deployment.safe));
         MerkleGovModule govModule = MerkleGovModule(deployment.merkleGovModule);
         SignerSyncZkModule signerModule = SignerSyncZkModule(deployment.signerSyncModule);
 
@@ -124,7 +124,7 @@ contract DeployZodiacSafes is Common {
         require(signerModule.owner() == deployment.safe, "DeployZodiacSafes: signer module handoff failed");
     }
 
-    function _execSafe(GnosisSafe safe, address target_, bytes memory data, address signer) internal {
+    function _execSafe(Safe safe, address target_, bytes memory data, address signer) internal {
         bool success = safe.execTransaction(
             target_, 0, data, Enum.Operation.Call, 0, 0, 0, address(0), payable(0), generateSignature(signer)
         );
@@ -132,8 +132,8 @@ contract DeployZodiacSafes is Common {
     }
 
     function deployZodiacSafeWithMerkle(
-        GnosisSafe safeSingleton,
-        GnosisSafeProxyFactory safeFactory,
+        Safe safeSingleton,
+        SafeProxyFactory safeFactory,
         address deployer,
         MerkleSnapshot merkleSnapshot,
         address signerVerifier,
@@ -173,7 +173,7 @@ contract DeployZodiacSafes is Common {
 
         // Enable the module on the Safe
         // Since we have threshold of 1 and deployer is the signer, we can execute directly
-        GnosisSafe safe = GnosisSafe(payable(safeProxy));
+        Safe safe = Safe(payable(safeProxy));
 
         // Prepare module enablement transaction
         bytes memory enableMerkleGovModuleData =

@@ -19,7 +19,7 @@ same-instance and exact-input twin-instance replay, lands a different epoch-2 ro
 withheld C head, and captures the accepted provenance through a real `CompositionSourceAdapter`.
 `MockSP1Gateway` is the only contract stub.
 
-The detached guest uses SP1 6.3.1 and the Succinct `rustc 1.94.0-dev` toolchain. Build the guest
+The detached guest uses SP1 6.6.0 and the Succinct `rustc 1.94.0-dev` toolchain. Build the guest
 before running host commands; `SP1_SKIP_PROGRAM_BUILD=true` makes the prover consume that exact ELF.
 
 ```sh

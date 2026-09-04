@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
 
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
@@ -12,7 +12,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 ///      action. With a zero delay it is an immediate admin; with a nonzero delay it is a public,
 ///      child-cancellable guardian. The child's own governance can disable this Safe module.
 contract ParentAuthorityModule {
-    GnosisSafe public immutable safe;
+    Safe public immutable safe;
     IInstanceRegistry public immutable INSTANCE_REGISTRY;
     bytes32 public immutable childInstanceId;
     bytes32 public immutable parentInstanceId;
@@ -84,7 +84,7 @@ contract ParentAuthorityModule {
         childInstanceId = childInstanceId_;
         parentInstanceId = parentInstanceId_;
         executionDelay = executionDelay_;
-        safe = GnosisSafe(payable(safe_));
+        safe = Safe(payable(safe_));
 
         address childAuthority = _authorityOf(childInstanceId_);
         if (childAuthority != safe_) revert ChildAuthorityMismatch(childInstanceId_, childAuthority, safe_);

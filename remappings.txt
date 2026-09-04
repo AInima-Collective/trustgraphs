@@ -8,4 +8,4 @@ forge-std=node_modules/forge-std/src
 @ethereum-attestation-service/eas-contracts/=node_modules/@ethereum-attestation-service/eas-contracts/
 @morpho-org/universal-rewards-distributor=node_modules/@morpho-org/universal-rewards-distributor/src
 @gnosis-guild/zodiac-core/=node_modules/@gnosis-guild/zodiac-core/contracts/
-@gnosis.pm/safe-contracts/=node_modules/@gnosis.pm/safe-contracts/contracts/
+@safe-global/safe-smart-account/=node_modules/@safe-global/safe-smart-account/contracts/

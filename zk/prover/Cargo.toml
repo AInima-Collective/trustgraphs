@@ -56,8 +56,8 @@ witness-nostr = [
 fetch = ["dep:reqwest", "dep:alloy-sol-types"]
 
 [dependencies]
-sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
-sp1-core-executor = "=6.3.1"
+sp1-sdk = { version = "=6.6.0", features = ["blocking"] }
+sp1-core-executor = "=6.6.0"
 pagerank-core = { path = "../../crates/pagerank-core" }
 trustgraph-core = { path = "../../crates/trustgraph-core" }
 hypercerts-core = { path = "../../crates/hypercerts-core" }
@@ -92,7 +92,7 @@ uuid = { version = "1", features = ["serde"], optional = true }
 k256 = { version = "0.13.4", features = ["ecdsa"], optional = true }
 
 [build-dependencies]
-sp1-build = "=6.3.1"
+sp1-build = "=6.6.0"
 
 [dev-dependencies]
 # Research-only benchmark support; this does not enter the production prover dependency graph.
