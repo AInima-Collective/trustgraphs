@@ -32,14 +32,17 @@
     "shots": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs",
     "shots:contributions": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs --contributions --label=contributions",
     "shots:scoring": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs --scoring --label=scoring",
+    "smoke:wallet": "node scripts/wallet-browser-smoke.mjs",
     "smoke:sepolia": "node scripts/sepolia-browser-smoke.mjs",
     "fixture:eas-offchain": "tsx scripts/generate-eas-offchain-fixture.ts",
     "fixture:eas-offchain:check": "tsx scripts/generate-eas-offchain-fixture.ts --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
+    "@coinbase/wallet-sdk": "^4.3.7",
     "@ethereum-attestation-service/eas-sdk": "2.10.0",
     "@hookform/resolvers": "^3.10.0",
+    "@metamask/connect-evm": "^2.1.1",
     "@microsoft/clarity": "^1.0.2",
     "@ponder/client": "^0.17.9",
     "@ponder/react": "^0.17.9",
@@ -78,8 +81,9 @@
     "@tanstack/react-query-devtools": "^5.102.8",
     "@trustgraphs/eas-offchain-client": "workspace:*",
     "@types/marked": "^5.0.2",
-    "@wagmi/connectors": "^6.2.0",
-    "@wagmi/core": "^2.22.1",
+    "@wagmi/connectors": "^8.2.0",
+    "@wagmi/core": "^3.6.5",
+    "@walletconnect/ethereum-provider": "^2.24.0",
     "@x402/core": "^2.21.0",
     "@x402/evm": "^2.21.0",
     "@x402/extensions": "^2.21.0",
@@ -128,7 +132,7 @@
     "tailwindcss-safe-area": "^1.3.0",
     "use-local-storage-state": "^19.5.0",
     "viem": "^2.56.3",
-    "wagmi": "^2.19.5",
+    "wagmi": "^3.7.7",
     "zod": "3.25.67"
   },
   "devDependencies": {
