@@ -2,13 +2,16 @@
   "name": "trustgraphs-frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "prebuild": "npm run indexer:config && npm run config:generate && npm run config:link && npm run networks:link && npm run wagmi:generate",
-    "build": "next build",
+    "build": "next build --webpack",
     "predev": "npm run ensure-env-local && npm run indexer:config && npm run config:generate && npm run config:link && npm run networks:link && npm run wagmi:generate",
     "ensure-env-local": "if ! test -f .env.local; then cp .env.example .env.local; fi",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "lint": "eslint .",
     "format": "eslint . --fix",
     "start": "next start",
@@ -108,7 +111,7 @@
     "marked": "^16.4.2",
     "motion": "^12.43.0",
     "nanoid": "^5.1.16",
-    "next": "15.5.25",
+    "next": "16.3.4",
     "next-plausible": "^3.12.5",
     "next-themes": "latest",
     "openai": "^5.23.2",
