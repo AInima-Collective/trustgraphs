@@ -15,6 +15,7 @@ import { SectionHeading } from '@/components/SectionHeading'
 import { Slider } from '@/components/Slider'
 import { useNetworks } from '@/contexts/CatalogContext'
 import { useAttestation } from '@/hooks/useAttestation'
+import { isSubnetworkFeatureAvailable } from '@/lib/config'
 import { actorKey, computeContributions } from '@/lib/contributions'
 import {
   ContributionProjection,
@@ -928,7 +929,8 @@ export const ContributionsNetworkPage = ({
             trustNetwork
               ? trustgraphsTabs(
                   trustNetwork,
-                  siblingRounds.length > 0 ? siblingRounds : [network]
+                  siblingRounds.length > 0 ? siblingRounds : [network],
+                  isSubnetworkFeatureAvailable()
                 )
               : contributionsTabs(network)
           }

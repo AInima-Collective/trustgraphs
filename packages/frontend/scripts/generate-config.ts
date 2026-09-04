@@ -276,6 +276,28 @@ try {
       process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS ||
       '',
   }
+  configOutput.subnetworks = {
+    factory:
+      deployment.factory?.factory ||
+      localFactoryAddress ||
+      process.env.SUBNETWORK_TRUSTGRAPHS_FACTORY_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedFactory?.governed_factory ||
+      localGovernedFactoryDeployment.governed_factory ||
+      process.env.SUBNETWORK_GOVERNED_FACTORY_ADDRESS ||
+      '',
+    registry:
+      deployment.governedFactory?.subnetwork_registry ||
+      localGovernedFactoryDeployment.subnetwork_registry ||
+      process.env.SUBNETWORK_REGISTRY_ADDRESS ||
+      '',
+    parentModuleDeployer:
+      deployment.governedFactory?.parent_authority_deployer ||
+      localGovernedFactoryDeployment.parent_authority_deployer ||
+      process.env.PARENT_AUTHORITY_MODULE_DEPLOYER_ADDRESS ||
+      '',
+  }
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {

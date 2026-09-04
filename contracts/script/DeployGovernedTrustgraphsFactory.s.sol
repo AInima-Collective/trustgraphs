@@ -13,8 +13,11 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 
 contract DeployGovernedTrustgraphsFactory is Common {
     using stdJson for string;
@@ -73,6 +76,10 @@ contract DeployGovernedTrustgraphsFactory is Common {
         require(address(proxyFactory).code.length != 0, "DeployGoverned: Safe factory has no code");
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();
         SignerSyncModuleDeployer signerSyncDeployer = new SignerSyncModuleDeployer();
+        ParentAuthorityModuleDeployer parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
+        SubnetworkRegistry subnetworkRegistry = new SubnetworkRegistry(
+            IInstanceRegistry(address(TrustgraphsFactory(baseFactory).INSTANCE_REGISTRY())), vm.addr(_privateKey)
+        );
         // Shared by all governed wrappers (weighted + compose read it from this artifact).
         MerkleGovModuleDeployer govModuleDeployer = new MerkleGovModuleDeployer();
         GovernedTrustgraphsFactory governed = new GovernedTrustgraphsFactory(
@@ -82,9 +89,12 @@ contract DeployGovernedTrustgraphsFactory is Common {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             IZkVerifier(signerVerifier),
             signerProgramVKey
         );
+        subnetworkRegistry.grantRole(subnetworkRegistry.REGISTRAR_ROLE(), address(governed));
         vm.stopBroadcast();
 
         governedFactory = address(governed);
@@ -99,6 +109,8 @@ contract DeployGovernedTrustgraphsFactory is Common {
         json.serialize("signer_sync_verifier", Strings.toChecksumHexString(signerVerifier));
         json.serialize("signer_sync_program_vkey", vm.toString(signerProgramVKey));
         json.serialize("gov_module_deployer", Strings.toChecksumHexString(address(govModuleDeployer)));
+        json.serialize("parent_authority_deployer", Strings.toChecksumHexString(address(parentAuthorityDeployer)));
+        json.serialize("subnetwork_registry", Strings.toChecksumHexString(address(subnetworkRegistry)));
         json.serialize("recovery_delay_seconds", governed.RECOVERY_DELAY());
         json = json.serialize("governed_factory", Strings.toChecksumHexString(governedFactory));
         vm.writeFile(script_output_path, json);

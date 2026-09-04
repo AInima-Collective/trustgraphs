@@ -21,6 +21,7 @@ import {
     MerkleGovModuleDeployer,
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
@@ -28,6 +29,7 @@ import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
 import {TrustComposeValidator} from "src/params/TrustComposeValidator.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
@@ -69,6 +71,8 @@ contract GovernedTrustComposeFactoryTest is Test {
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    ParentAuthorityModuleDeployer internal parentAuthorityDeployer;
+    SubnetworkRegistry internal subnetworkRegistry;
 
     MerkleSnapshot[] internal sourceSnapshots;
     MockAccumulator[] internal sourceAccumulators;
@@ -104,6 +108,8 @@ contract GovernedTrustComposeFactoryTest is Test {
         safeSingleton = new GnosisSafe();
         safeFactory = new GnosisSafeProxyFactory();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
+        subnetworkRegistry = new SubnetworkRegistry(registry, REGISTRY_ADMIN);
         governedFactory = new GovernedTrustComposeFactory(
             factory,
             safeFactory,
@@ -111,9 +117,14 @@ contract GovernedTrustComposeFactoryTest is Test {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerVerifier,
             SIGNER_VKEY
         );
+        bytes32 subnetworkRegistrarRole = subnetworkRegistry.REGISTRAR_ROLE();
+        vm.prank(REGISTRY_ADMIN);
+        subnetworkRegistry.grantRole(subnetworkRegistrarRole, address(governedFactory));
 
         _createSources(2);
     }
@@ -162,6 +173,23 @@ contract GovernedTrustComposeFactoryTest is Test {
     function test_GovernedComposeV2ContractsHaveExplicitEip170Headroom() public view {
         assertLt(address(governedFactory).code.length, 24_576);
         assertGt(24_576 - address(governedFactory).code.length, 3_000, "wrapper runtime margin");
+    }
+
+    function test_CreateGovernedCompositionSubnetworkUsesTheSharedAtomicInstallPath() public {
+        // `_createSources` registered source 1 with this test contract as its bare authority.
+        bytes32 parentInstanceId = bytes32(uint256(1));
+        (bytes32 childInstanceId, address childSafe,,) = governedFactory.createGovernedSubnetwork(
+            _args("composition child"),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
+            GovernedFactoryBase.SignerSyncConfig({enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0}),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Admin
+        );
+
+        assertEq(subnetworkRegistry.parentOf(childInstanceId), parentInstanceId);
+        address parentModule = governedFactory.parentAuthorityModuleOf(childInstanceId);
+        assertTrue(parentModule != address(0));
+        assertTrue(GnosisSafe(payable(childSafe)).isModuleEnabled(parentModule));
     }
 
     function _decodeCreated(Vm.Log[] memory logs, bytes32 instanceId)

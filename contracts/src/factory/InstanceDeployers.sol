@@ -14,6 +14,7 @@ import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.s
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
+import {ParentAuthorityModule} from "src/zodiac/ParentAuthorityModule.sol";
 import {
     SignerSyncZkModule,
     ISignerSyncCheckpointSource,
@@ -263,5 +264,35 @@ contract SignerSyncModuleDeployer {
             minActivityWitnesses
         );
         return module;
+    }
+}
+
+/// @title ParentAuthorityModuleDeployer
+/// @notice Holds the parent module's initcode outside governed wrappers for EIP-170 headroom.
+/// @dev Every dependency and authority is explicit. This permissionless helper retains no Safe
+///      privilege; only a child Safe that enables the returned module gives it any power.
+contract ParentAuthorityModuleDeployer {
+    event ParentAuthorityModuleConfigured(
+        bytes32 indexed childInstanceId,
+        bytes32 indexed parentInstanceId,
+        address indexed parentAuthorityModule,
+        address childSafe,
+        address instanceRegistry,
+        uint48 executionDelay
+    );
+
+    function deploy(
+        address childSafe,
+        IInstanceRegistry instanceRegistry,
+        bytes32 childInstanceId,
+        bytes32 parentInstanceId,
+        uint48 executionDelay
+    ) external returns (ParentAuthorityModule module) {
+        module = new ParentAuthorityModule(
+            childSafe, instanceRegistry, childInstanceId, parentInstanceId, executionDelay
+        );
+        emit ParentAuthorityModuleConfigured(
+            childInstanceId, parentInstanceId, address(module), childSafe, address(instanceRegistry), executionDelay
+        );
     }
 }

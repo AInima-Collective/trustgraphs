@@ -18,6 +18,13 @@ import { erc8004ReputationRegistryAbi } from './abis/erc8004ReputationRegistry'
 import { graphLineageRegistryAbi } from './abis/graphLineage'
 import { onchainAttestationImporterAbi } from './abis/onchainAttestationImporter'
 import { provingVaultAbi } from './abis/provingVault'
+import {
+  delayedRecoveryModuleAbi,
+  paramsAuthorityOwnerAbi,
+  parentAuthorityModuleAbi,
+  parentAuthorityModuleDeployerAbi,
+  subnetworkRegistryAbi,
+} from './abis/subnetwork'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
   instanceRegistryAbi,
@@ -76,6 +83,8 @@ type DeploymentSummary = {
   governedFactory?: {
     governed_factory?: string
     signer_sync_deployer?: string
+    parent_authority_deployer?: string
+    subnetwork_registry?: string
   }
   governedImportedFactory?: { governed_imported_factory?: string }
   /** The fast (EPOCH_FLOOR = 1) factory generation. Same contracts and event surface as
@@ -325,6 +334,10 @@ const GOVERNED_TRUSTGRAPHS_FACTORIES = [
 ].filter((address): address is Hex => address !== undefined)
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
+const PARENT_AUTHORITY_DEPLOYER = deploymentSummary.governedFactory
+  ?.parent_authority_deployer as Hex | undefined
+const SUBNETWORK_REGISTRY = deploymentSummary.governedFactory
+  ?.subnetwork_registry as Hex | undefined
 const CHAIN_ID = IS_SEPOLIA ? 11155111 : 31337
 const EAS_ADDRESS = deploymentSummary.eas?.eas as Hex | undefined
 const SCHEMA_REGISTRY_ADDRESS = deploymentSummary.eas?.schema_registry as
@@ -406,6 +419,14 @@ const SIGNER_SYNC_MODULE_CONFIGURED = getAbiItem({
   abi: signerSyncModuleDeployerAbi,
   name: 'SignerSyncModuleConfigured',
 })
+const GOVERNED_AUTHORITY_INSTALLED = getAbiItem({
+  abi: governedTrustgraphsFactoryAbi,
+  name: 'GovernedAuthorityInstalled',
+})
+const PARENT_AUTHORITY_MODULE_CONFIGURED = getAbiItem({
+  abi: parentAuthorityModuleDeployerAbi,
+  name: 'ParentAuthorityModuleConfigured',
+})
 const WEIGHTED_PARAMS_CONTROLLER_CREATED = getAbiItem({
   abi: weightedTrustgraphsFactoryAbi,
   name: 'WeightedParamsControllerCreated',
@@ -425,6 +446,10 @@ const COMPOSITION_INSTANCE_CREATED = getAbiItem({
 const CONTRIBUTIONS_INSTANCE_CREATED = getAbiItem({
   abi: contributionsFactoryAbi,
   name: 'ContributionsInstanceCreated',
+})
+const CONTRIBUTIONS_CONTROLLER_CREATED = getAbiItem({
+  abi: contributionsFactoryAbi,
+  name: 'ContributionsParamsControllerCreated',
 })
 
 /**
@@ -481,6 +506,22 @@ const governedSignerModules = () =>
     address: SIGNER_SYNC_DEPLOYER!,
     event: SIGNER_SYNC_MODULE_CONFIGURED,
     parameter: 'signerSyncModule',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const parentAuthorityModules = () =>
+  factory({
+    address: PARENT_AUTHORITY_DEPLOYER!,
+    event: PARENT_AUTHORITY_MODULE_CONFIGURED,
+    parameter: 'parentAuthorityModule',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const governedRecoveryModules = () =>
+  factory({
+    address: GOVERNED_WRAPPERS,
+    event: GOVERNED_AUTHORITY_INSTALLED,
+    parameter: 'recoveryModule',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -548,6 +589,14 @@ const contributionsChildren = (
     address: CONTRIBUTIONS_FACTORIES,
     event: CONTRIBUTIONS_INSTANCE_CREATED,
     parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const contributionsControllers = () =>
+  factory({
+    address: CONTRIBUTIONS_FACTORIES,
+    event: CONTRIBUTIONS_CONTROLLER_CREATED,
+    parameter: 'controller',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -661,6 +710,35 @@ export default createConfig({
       chain: INSTANCE_REGISTRY
         ? { [CORE_CHAIN]: { address: INSTANCE_REGISTRY } }
         : {},
+    },
+    subnetworkRegistry: {
+      abi: subnetworkRegistryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: SUBNETWORK_REGISTRY
+        ? { [CORE_CHAIN]: { address: SUBNETWORK_REGISTRY } }
+        : {},
+    },
+    parentAuthorityModuleDeployer: {
+      abi: parentAuthorityModuleDeployerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: PARENT_AUTHORITY_DEPLOYER
+        ? { [CORE_CHAIN]: { address: PARENT_AUTHORITY_DEPLOYER } }
+        : {},
+    },
+    parentAuthorityModule: {
+      abi: parentAuthorityModuleAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: PARENT_AUTHORITY_DEPLOYER
+        ? { [CORE_CHAIN]: { address: parentAuthorityModules() } }
+        : {},
+    },
+    delayedRecoveryModule: {
+      abi: delayedRecoveryModuleAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        GOVERNED_WRAPPERS.length > 0
+          ? { [CORE_CHAIN]: { address: governedRecoveryModules() } }
+          : {},
     },
     erc8004IdentityRegistry: {
       abi: erc8004IdentityRegistryAbi,
@@ -817,6 +895,46 @@ export default createConfig({
     },
     contributionsParamsController: {
       abi: contributionsParamsControllerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: INSTANCE_REGISTRY
+        ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
+        : {},
+    },
+    // Authority-only sources cover both factory-born controllers and later registry migrations.
+    // They stay separate because each program has its own controller-discovery event.
+    paramsAuthorityTrustgraphsController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: paramsControllers() } }
+        : {},
+    },
+    paramsAuthorityWeightedController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedParamsControllers() } }
+          : {},
+    },
+    paramsAuthorityCompositionController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: compositionControllers() } }
+          : {},
+    },
+    paramsAuthorityContributionsController: {
+      abi: paramsAuthorityOwnerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: contributionsControllers() } }
+          : {},
+    },
+    paramsAuthorityMigratedController: {
+      abi: paramsAuthorityOwnerAbi,
       startBlock: CORE_START_BLOCK,
       chain: INSTANCE_REGISTRY
         ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }

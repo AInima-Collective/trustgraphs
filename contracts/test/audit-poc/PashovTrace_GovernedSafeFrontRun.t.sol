@@ -9,8 +9,10 @@ import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
@@ -51,6 +53,8 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             signerVerifier,
             signerVerifier.programVKey()
         );

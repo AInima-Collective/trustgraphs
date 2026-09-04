@@ -19,7 +19,7 @@ export type Network = {
    * a config slug.
    */
   instanceId?: Hex
-  /** The instance admin from `InstanceCreated` (catalog networks only). */
+  /** Current authority resolved from the instance's params controller (catalog networks only). */
   admin?: Hex
   /** Blocks between provable epochs, as a decimal string (catalog networks only). */
   epochLength?: string

@@ -9,9 +9,11 @@ import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
+import {ISubnetworkRegistry} from "interfaces/registry/ISubnetworkRegistry.sol";
 
 /// @title GovernedTrustgraphsFactory
 /// @notice The governed wrapper around `TrustgraphsFactory`: one transaction creates a trust
@@ -29,6 +31,8 @@ contract GovernedTrustgraphsFactory is GovernedFactoryBase {
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
         MerkleGovModuleDeployer govModuleDeployer_,
+        ParentAuthorityModuleDeployer parentAuthorityDeployer_,
+        ISubnetworkRegistry subnetworkRegistry_,
         IZkVerifier signerSyncVerifier_,
         bytes32 signerSyncProgramVKey_
     )
@@ -39,10 +43,39 @@ contract GovernedTrustgraphsFactory is GovernedFactoryBase {
             authorityDeployer_,
             signerSyncDeployer_,
             govModuleDeployer_,
+            parentAuthorityDeployer_,
+            subnetworkRegistry_,
             signerSyncVerifier_,
             signerSyncProgramVKey_
         )
     {}
+
+    /// @notice Create and atomically link a DAO-governed trust graph beneath a parent network.
+    /// @dev Must be called by the parent's current authority (normally from a parent proposal).
+    function createGovernedSubnetwork(
+        TrustgraphsFactory.CreateArgs calldata requested,
+        InitialPolicy calldata policy,
+        SignerSyncConfig calldata signerSync,
+        bytes32 parentInstanceId,
+        SubnetworkTier tier
+    ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
+        _requirePrepayTerms(policy, requested.epochLength);
+        _requireParentAuthority(parentInstanceId);
+        GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
+
+        TrustgraphsFactory.CreateArgs memory args = requested;
+        args.admin = address(safe);
+        return _installGovernedSubnetwork(
+            safe,
+            requested.name,
+            requested.salt,
+            abi.encodeCall(TrustgraphsFactory.createInstance, (args)),
+            policy,
+            signerSync,
+            parentInstanceId,
+            tier
+        );
+    }
 
     /// @notice Create one DAO-governed trust graph. `requested.admin` is deliberately ignored:
     ///         the newly-created Safe is the instance admin, controller owner and fund owner.

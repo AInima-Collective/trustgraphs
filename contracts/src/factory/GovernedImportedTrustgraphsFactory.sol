@@ -10,9 +10,11 @@ import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
+import {ISubnetworkRegistry} from "interfaces/registry/ISubnetworkRegistry.sol";
 
 /// @title GovernedImportedTrustgraphsFactory
 /// @notice DAO-governed wrapper for the existing-EAS-schema instance flavor.
@@ -24,6 +26,8 @@ contract GovernedImportedTrustgraphsFactory is GovernedFactoryBase {
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
         MerkleGovModuleDeployer govModuleDeployer_,
+        ParentAuthorityModuleDeployer parentAuthorityDeployer_,
+        ISubnetworkRegistry subnetworkRegistry_,
         IZkVerifier signerSyncVerifier_,
         bytes32 signerSyncProgramVKey_
     )
@@ -34,6 +38,8 @@ contract GovernedImportedTrustgraphsFactory is GovernedFactoryBase {
             authorityDeployer_,
             signerSyncDeployer_,
             govModuleDeployer_,
+            parentAuthorityDeployer_,
+            subnetworkRegistry_,
             signerSyncVerifier_,
             signerSyncProgramVKey_
         )

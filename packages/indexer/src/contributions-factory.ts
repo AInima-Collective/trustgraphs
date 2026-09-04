@@ -132,6 +132,20 @@ ponder.on(
   }
 )
 
+ponder.on(
+  'contributionsFactory:ContributionsParamsControllerCreated',
+  async ({ event, context }: any) => {
+    const row = await context.db.find(contributionsInstance, {
+      id: event.args.instanceId,
+    })
+    if (!row) return
+    await context.db
+      .update(contributionsInstance, { id: event.args.instanceId })
+      .set({ paramsController: event.args.controller })
+    await revalidateNetwork(event.args.instanceId)
+  }
+)
+
 // `SchemaAdopted` is observability only: the adopted UID is already carried by the creation
 // event (and pinned in the round's params), so there is no row to update — an explicit no-op
 // subscription would only add a handler that ignores its event. Deliberately not subscribed.

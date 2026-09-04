@@ -174,6 +174,7 @@ export const DEFAULT_TUNING: Tuning = {
 }
 
 export type FundToken = 'eth' | 'other'
+export type SubnetworkTier = 'admin' | 'guardian' | 'label'
 
 export type WizardData = {
   name: string
@@ -208,6 +209,8 @@ export type WizardData = {
   signerMinThreshold: number
   /** Fraction of selected signers required, in the percentage shown by the UI. */
   signerTargetThresholdPct: number
+  /** Parent power chosen only when the wizard is opened from a parent network. */
+  subnetworkTier: SubnetworkTier
 }
 
 export const EMPTY_WIZARD_DATA: WizardData = {
@@ -230,6 +233,7 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   signerTopN: 5,
   signerMinThreshold: 2,
   signerTargetThresholdPct: 50,
+  subnetworkTier: 'admin',
 }
 
 /** The presentation blob the on-chain `metadataURI` points at. Nothing here affects scores. */

@@ -10,6 +10,7 @@ import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
+import { SUBNETWORK_CONFIG } from '@/lib/config'
 import { cn } from '@/lib/utils'
 
 import {
@@ -26,10 +27,12 @@ export const AddOnsStep = ({
   data,
   onChange,
   showErrors,
+  parentInstanceId,
 }: {
   data: WizardData
   onChange: (patch: Partial<WizardData>) => void
   showErrors: boolean
+  parentInstanceId?: `0x${string}`
 }) => {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const tokenAddress = data.fundTokenAddress.trim()
@@ -61,7 +64,11 @@ export const AddOnsStep = ({
   const tokenError = showErrors ? fundTokenProblem(data) : null
   const signerSyncError = showErrors ? signerSyncProblem(data) : null
   const signerSyncAvailable = isSignerSyncAvailable()
-  const authority = useAuthorityProfile(GOVERNED_FACTORY_ADDRESS)
+  const authority = useAuthorityProfile(
+    parentInstanceId
+      ? SUBNETWORK_CONFIG?.governedFactory
+      : GOVERNED_FACTORY_ADDRESS
+  )
 
   return (
     <div className="space-y-6">
@@ -93,6 +100,57 @@ export const AddOnsStep = ({
               : 'The governance rules could not be read. Creation will remain disabled until they are available.'}
         </p>
       </Card>
+
+      {parentInstanceId && (
+        <Card type="outline" size="md" className="space-y-4">
+          <div>
+            <div className="text-sm font-medium">Parent authority</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Choose the real power this parent keeps. The registry link is
+              recorded for every tier.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(
+              [
+                [
+                  'admin',
+                  'Admin',
+                  'The parent can operate the child Safe immediately.',
+                ],
+                [
+                  'guardian',
+                  'Guardian',
+                  'The parent can queue recovery actions with a 14-day delay.',
+                ],
+                [
+                  'label',
+                  'Label only',
+                  'Organizational link with no parent power.',
+                ],
+              ] as const
+            ).map(([value, label, description]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={data.subnetworkTier === value}
+                onClick={() => onChange({ subnetworkTier: value })}
+                className={cn(
+                  'border p-3 text-left transition-colors',
+                  data.subnetworkTier === value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-muted-foreground'
+                )}
+              >
+                <span className="text-sm font-medium">{label}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {description}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card type="outline" size="md">
         <div className="flex flex-row items-start justify-between gap-4">

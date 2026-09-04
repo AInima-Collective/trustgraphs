@@ -50,6 +50,7 @@ import {
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import { useSubnetworkParent } from '@/hooks/useSubnetworks'
 import type { InstanceRow } from '@/lib/catalog'
 import {
   CONTRACT_CONFIG,
@@ -57,6 +58,7 @@ import {
   GOVERNED_WEIGHTED_FACTORY,
   PROVING_VAULT,
   WEIGHTED_FACTORY,
+  isSubnetworkFeatureAvailable,
 } from '@/lib/config'
 import {
   anchorRegistryAbi,
@@ -862,6 +864,9 @@ export const SettingsPage = ({
   // Rounds live in the indexer's runtime round catalog, keyed to this network by the factory's
   // parentInstanceId link; the newest active one fronts the card and every round lists below.
   const { rounds: allRounds } = useContributionsRounds(network.instanceId)
+  const subnetworksAvailable = isSubnetworkFeatureAvailable()
+  const { data: parentRelationship, isLoading: parentRelationshipLoading } =
+    useSubnetworkParent(subnetworksAvailable ? network.instanceId : undefined)
   const weighted = network.program === 'trust-graph-weighted'
   const contributionRounds = sortRoundsNewestActiveFirst(
     contributionsRoundsFor(network, allRounds)
@@ -2960,6 +2965,60 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                {subnetworksAvailable && (
+                  <SettingsCard
+                    title="Parent network"
+                    description="The organizational link and independently observed authority it holds over this network."
+                  >
+                    <SettingRow label="Relationship">
+                      {parentRelationshipLoading
+                        ? 'Checking the registry…'
+                        : parentRelationship?.status === 'active'
+                          ? 'Active'
+                          : parentRelationship?.status === 'pending'
+                            ? 'Awaiting parent acceptance'
+                            : 'Independent'}
+                    </SettingRow>
+                    {parentRelationship?.parent && (
+                      <SettingRow label="Parent">
+                        <Link
+                          href={`/networks/${parentRelationship.parent.id}`}
+                          className="underline underline-offset-4"
+                        >
+                          {parentRelationship.parent.name}
+                        </Link>
+                      </SettingRow>
+                    )}
+                    {parentRelationship?.status === 'active' && (
+                      <>
+                        <SettingRow label="Power tier">
+                          <span className="capitalize">
+                            {parentRelationship.power.tier}
+                          </span>
+                        </SettingRow>
+                        <SettingRow label="Power verified">
+                          <StatusPill
+                            tone={
+                              parentRelationship.power.verified
+                                ? 'good'
+                                : 'warn'
+                            }
+                          >
+                            {parentRelationship.power.verified
+                              ? 'Verified from live contracts'
+                              : 'Link active; parent power not found'}
+                          </StatusPill>
+                        </SettingRow>
+                        <SettingRow label="Instruments">
+                          {parentRelationship.power.instruments.length
+                            ? parentRelationship.power.instruments.join(', ')
+                            : 'None observed'}
+                        </SettingRow>
+                      </>
+                    )}
+                  </SettingsCard>
+                )}
+
                 <SettingsCard
                   title="Governed authority boundary"
                   description="Live Safe, guard, and module reads—not a decentralization label."
@@ -3236,7 +3295,7 @@ export const SettingsPage = ({
                       '—'
                     )}
                   </SettingRow>
-                  <SettingRow label="Initial administrator">
+                  <SettingRow label="Current administrator">
                     {network.admin ? (
                       <Address address={network.admin} displayMode="auto" />
                     ) : (

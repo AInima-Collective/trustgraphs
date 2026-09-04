@@ -5,6 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {MultiSend} from "@gnosis.pm/safe-contracts/libraries/MultiSend.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Vm} from "forge-std/Vm.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
@@ -12,6 +13,7 @@ import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
@@ -19,8 +21,10 @@ import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsControll
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {EasOffchainAnchorRegistry} from "src/registry/EasOffchainAnchorRegistry.sol";
+import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
+import {ParentAuthorityModule} from "src/zodiac/ParentAuthorityModule.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {
     SignerSyncZkModule,
@@ -29,6 +33,8 @@ import {
 } from "src/zodiac/SignerSyncZkModule.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
+import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {DeployZodiacSafes} from "script/DeployZodiacSafes.s.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
@@ -50,6 +56,22 @@ contract FactorySignerVerifier is IZkVerifier {
     }
 }
 
+contract GovernedSubnetworkParentController {
+    address public owner;
+
+    constructor(address owner_) {
+        owner = owner_;
+    }
+}
+
+contract GovernedSubnetworkTarget {
+    uint256 public number;
+
+    function setNumber(uint256 number_) external {
+        number = number_;
+    }
+}
+
 contract DeployZodiacSafesHarness is DeployZodiacSafes {
     function handoff(address deployer, SafeDeployment memory deployment, TrustgraphsParamsController controller)
         external
@@ -68,6 +90,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    ParentAuthorityModuleDeployer internal parentAuthorityDeployer;
+    SubnetworkRegistry internal subnetworkRegistry;
     FactorySignerVerifier internal signerVerifier;
     DeployZodiacSafesHarness internal zodiacHarness;
 
@@ -88,6 +112,19 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         return governedFactory.createGovernedInstance(args, policy, _noSigner());
     }
 
+    function _registerSubnetworkParent(bytes32 parentInstanceId, address authority) internal {
+        GovernedSubnetworkParentController controller = new GovernedSubnetworkParentController(authority);
+        IInstanceRegistry.Instance memory record = IInstanceRegistry.Instance({
+            program: keccak256("trust-graph"),
+            snapshot: address(0x501),
+            verifier: address(verifier),
+            registryOrAccumulator: address(0xACC),
+            paramsHash: keccak256("parent-params")
+        });
+        vm.prank(registryAdmin);
+        registry.registerWithParamsAuthority(parentInstanceId, record, address(controller));
+    }
+
     function setUp() public override {
         super.setUp();
         safeSingleton = new GnosisSafe();
@@ -95,6 +132,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        parentAuthorityDeployer = new ParentAuthorityModuleDeployer();
+        subnetworkRegistry = new SubnetworkRegistry(registry, registryAdmin);
         signerVerifier = new FactorySignerVerifier(SIGNER_VKEY);
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
@@ -103,9 +142,14 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             signerVerifier,
             SIGNER_VKEY
         );
+        bytes32 subnetworkRegistrarRole = subnetworkRegistry.REGISTRAR_ROLE();
+        vm.prank(registryAdmin);
+        subnetworkRegistry.grantRole(subnetworkRegistrarRole, address(governedFactory));
         zodiacHarness = new DeployZodiacSafesHarness();
     }
 
@@ -171,6 +215,110 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 2, "only the two delayed authority routes may be enabled");
         assertEq(next, address(0x1), "module list must be exhausted");
+    }
+
+    function test_CreateAdminSubnetworkLinksAndEnablesInstantParentModuleAtomically() public {
+        bytes32 parentInstanceId = keccak256("admin-parent");
+        _registerSubnetworkParent(parentInstanceId, creator);
+        TrustgraphsFactory.CreateArgs memory args = _args("admin child");
+        args.salt = keccak256("admin-child");
+
+        vm.prank(creator);
+        (bytes32 childInstanceId, address childSafe,,) = governedFactory.createGovernedSubnetwork(
+            args, _unpaidPolicy(), _noSigner(), parentInstanceId, GovernedFactoryBase.SubnetworkTier.Admin
+        );
+
+        assertEq(subnetworkRegistry.parentOf(childInstanceId), parentInstanceId);
+        address moduleAddress = governedFactory.parentAuthorityModuleOf(childInstanceId);
+        assertTrue(moduleAddress != address(0));
+        assertTrue(GnosisSafe(payable(childSafe)).isModuleEnabled(moduleAddress));
+        ParentAuthorityModule module = ParentAuthorityModule(moduleAddress);
+        assertEq(module.childInstanceId(), childInstanceId);
+        assertEq(module.parentInstanceId(), parentInstanceId);
+        assertEq(module.executionDelay(), 0);
+        assertEq(module.parentAuthority(), creator);
+        assertEq(governedFactory.authorityOf(childInstanceId).initialRecoveryProposer, creator);
+
+        GovernedSubnetworkTarget target = new GovernedSubnetworkTarget();
+        vm.prank(creator);
+        module.execute(
+            address(target), 0, abi.encodeCall(GovernedSubnetworkTarget.setNumber, (112)), Enum.Operation.Call
+        );
+        assertEq(target.number(), 112, "the parent must execute as the child Safe");
+    }
+
+    function test_CreateGuardianAndLabelSubnetworkInstallOnlyTheirNamedPower() public {
+        bytes32 parentInstanceId = keccak256("tier-parent");
+        _registerSubnetworkParent(parentInstanceId, creator);
+
+        vm.prank(creator);
+        (bytes32 guardianId,,,) = governedFactory.createGovernedSubnetwork(
+            _args("guardian child"),
+            _unpaidPolicy(),
+            _noSigner(),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Guardian
+        );
+        GovernedFactoryBase.Authority memory guardian = governedFactory.authorityOf(guardianId);
+        assertEq(governedFactory.parentAuthorityModuleOf(guardianId), address(0));
+        assertEq(guardian.initialRecoveryProposer, creator);
+        assertEq(DelayedRecoveryModule(guardian.recoveryModule).proposer(), creator);
+        assertEq(subnetworkRegistry.parentOf(guardianId), parentInstanceId);
+
+        vm.prank(creator);
+        (bytes32 labelId, address labelSafe,,) = governedFactory.createGovernedSubnetwork(
+            _args("label child"),
+            _unpaidPolicy(),
+            _noSigner(),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Label
+        );
+        GovernedFactoryBase.Authority memory label = governedFactory.authorityOf(labelId);
+        assertEq(governedFactory.parentAuthorityModuleOf(labelId), address(0));
+        assertEq(label.initialRecoveryProposer, labelSafe, "label-only must grant no parent recovery power");
+        assertEq(DelayedRecoveryModule(label.recoveryModule).proposer(), labelSafe);
+        assertEq(subnetworkRegistry.parentOf(labelId), parentInstanceId);
+    }
+
+    function test_CreateSubnetworkRequiresCurrentParentAuthorityBeforeCreation() public {
+        bytes32 parentInstanceId = keccak256("gated-parent");
+        _registerSubnetworkParent(parentInstanceId, creator);
+        uint256 countBefore = registry.instanceCount();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GovernedFactoryBase.NotParentAuthority.selector, parentInstanceId, address(0xBAD), creator
+            )
+        );
+        vm.prank(address(0xBAD));
+        governedFactory.createGovernedSubnetwork(
+            _args("unauthorized child"),
+            _unpaidPolicy(),
+            _noSigner(),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Admin
+        );
+        assertEq(registry.instanceCount(), countBefore);
+    }
+
+    function test_CreateSubnetworkIsAtomicWithoutRegistrarGrant() public {
+        bytes32 parentInstanceId = keccak256("ungranted-parent");
+        _registerSubnetworkParent(parentInstanceId, creator);
+        bytes32 registrarRole = subnetworkRegistry.REGISTRAR_ROLE();
+        vm.prank(registryAdmin);
+        subnetworkRegistry.revokeRole(registrarRole, address(governedFactory));
+        uint256 countBefore = registry.instanceCount();
+
+        vm.expectPartialRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
+        vm.prank(creator);
+        governedFactory.createGovernedSubnetwork(
+            _args("rolled back child"),
+            _unpaidPolicy(),
+            _noSigner(),
+            parentInstanceId,
+            GovernedFactoryBase.SubnetworkTier.Admin
+        );
+        assertEq(registry.instanceCount(), countBefore, "the base instance must roll back with the failed link");
     }
 
     function test_CreateGovernedHybridMakesSafeTheStrictLaneAdmin() public {
@@ -346,8 +494,33 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             authorityDeployer,
             signerSyncDeployer,
             govModuleDeployer,
+            parentAuthorityDeployer,
+            subnetworkRegistry,
             mismatchedVerifier,
             suppliedVKey
+        );
+    }
+
+    function test_ConstructorRejectsSubnetworkRegistryFromAnotherInstanceDirectory() public {
+        InstanceRegistry foreignInstances = new InstanceRegistry(registryAdmin);
+        SubnetworkRegistry foreignSubnetworks = new SubnetworkRegistry(foreignInstances, registryAdmin);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GovernedFactoryBase.SubnetworkRegistryMismatch.selector, address(registry), address(foreignInstances)
+            )
+        );
+        new GovernedTrustgraphsFactory(
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            parentAuthorityDeployer,
+            foreignSubnetworks,
+            signerVerifier,
+            SIGNER_VKEY
         );
     }
 
@@ -624,6 +797,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertLt(address(govModuleDeployer).code.length, 24_576);
         assertLt(address(authorityDeployer).code.length, 24_576);
         assertLt(address(signerSyncDeployer).code.length, 24_576);
+        assertLt(address(parentAuthorityDeployer).code.length, 24_576);
         assertGt(24_576 - address(governedFactory).code.length, 3_000, "governed factory runtime margin");
         assertGt(24_576 - address(govModuleDeployer).code.length, 3_000, "gov module deployer runtime margin");
     }

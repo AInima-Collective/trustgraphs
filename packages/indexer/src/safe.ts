@@ -1,5 +1,9 @@
 import { ponder } from 'ponder:registry'
-import { gnosisSafe, signerSyncModule } from 'ponder:schema'
+import {
+  gnosisSafe,
+  parentAuthorityModule,
+  signerSyncModule,
+} from 'ponder:schema'
 
 import { revalidateNetwork } from './utils'
 import { gnosisSafeAbi } from '../../frontend/lib/contract-abis'
@@ -98,5 +102,24 @@ const signerModuleToggled =
     await revalidateNetwork(row.instanceId)
   }
 
-ponder.on('governedGnosisSafe:EnabledModule', signerModuleToggled(true))
-ponder.on('governedGnosisSafe:DisabledModule', signerModuleToggled(false))
+const governedModuleToggled =
+  (enabled: boolean) =>
+  async ({ event, context }: { event: any; context: any }) => {
+    await signerModuleToggled(enabled)({ event, context })
+
+    const address = event.args.module
+    const parentModule = await context.db.find(parentAuthorityModule, {
+      address,
+    })
+    if (!parentModule || parentModule.childSafe !== event.log.address) return
+    await context.db.update(parentAuthorityModule, { address }).set({
+      enabled,
+      updatedBlock: event.block.number,
+      updatedTimestamp: event.block.timestamp,
+      updatedTxHash: event.transaction.hash,
+    })
+    await revalidateNetwork(parentModule.childInstanceId)
+  }
+
+ponder.on('governedGnosisSafe:EnabledModule', governedModuleToggled(true))
+ponder.on('governedGnosisSafe:DisabledModule', governedModuleToggled(false))
