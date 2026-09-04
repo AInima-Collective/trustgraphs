@@ -70,9 +70,7 @@ contract TrustComposeParamsControllerTest is Test {
             abi.encodeWithSelector(CompositionSourceAccumulator.validatePolicy.selector),
             abi.encode(commitment)
         );
-        vm.mockCall(
-            ACCUMULATOR, abi.encodeWithSelector(CompositionSourceAccumulator.installPolicy.selector), bytes("")
-        );
+        vm.mockCall(ACCUMULATOR, abi.encodeWithSelector(CompositionSourceAccumulator.installPolicy.selector), bytes(""));
     }
 
     function _mockLiveState() internal {

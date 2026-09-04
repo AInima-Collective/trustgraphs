@@ -62,7 +62,7 @@ export const parentAuthorityAction = onchainTable(
     target: t.hex(),
     value: t.bigint(),
     data: t.hex(),
-    operation: t.integer(),
+    safeOperation: t.integer(),
     status: t.text().notNull(), // scheduled | cancelled | executed
     executableAt: t.bigint(),
     updatedBlock: t.bigint().notNull(),

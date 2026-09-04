@@ -291,12 +291,8 @@ contract TrustComposeCaptureTest is Test {
 
     function test_TimelockCancelActivateRollbackAndTwoStepAuthorityTransfer() public {
         _createSources(2, true);
-        (
-            bytes32 instanceId,
-            MerkleSnapshot snapshot,
-            CompositionSourceAccumulator accumulator,
-            bytes memory initial
-        ) = _createComposition(2, MAX_AGE);
+        (bytes32 instanceId, MerkleSnapshot snapshot, CompositionSourceAccumulator accumulator, bytes memory initial) =
+            _createComposition(2, MAX_AGE);
         TrustComposeParamsController controller = TrustComposeParamsController(registry.paramsAuthority(instanceId));
         bytes32 initialHash = controller.currentParamsHash();
         bytes memory rotated = _policyManifest(2, MAX_AGE, true);

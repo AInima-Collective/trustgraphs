@@ -80,8 +80,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         // Claiming the standard program (and its derived domain) for a Nostr adapter is a
         // policy/adapter identity mismatch before admission is even considered.
         bytes32 wrongProgram = keccak256("trust-graph");
-        bytes memory relabeled =
-            _policy(wrongProgram, keccak256("trustgraphs.output.trust-graph-account.v1"));
+        bytes memory relabeled = _policy(wrongProgram, keccak256("trustgraphs.output.trust-graph-account.v1"));
         vm.expectPartialRevert(CompositionSourceAccumulator.AdapterPolicyMismatch.selector);
         accumulator.installPolicy(1, relabeled, adapters);
     }

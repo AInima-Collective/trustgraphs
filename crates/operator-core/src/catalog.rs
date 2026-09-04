@@ -680,8 +680,7 @@ fn scan_one<R: ChainReader>(
         if current.params.accumulator != record.registry_or_accumulator {
             disagreements.push(format!(
                 "params accumulator {:#x} != registry accumulator {:#x}",
-                current.params.accumulator,
-                record.registry_or_accumulator
+                current.params.accumulator, record.registry_or_accumulator
             ));
         }
         if reconstructed != current.current_params_hash {

@@ -369,11 +369,7 @@ fn composition_params(accumulator: Address) -> composition_core::Params {
     params
 }
 
-fn add_composition_with(
-    chain: &mut FakeChain,
-    seed: u8,
-    params: composition_core::Params,
-) -> B256 {
+fn add_composition_with(chain: &mut FakeChain, seed: u8, params: composition_core::Params) -> B256 {
     let id = B256::from([seed; 32]);
     let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
     let accumulator = params.accumulator;

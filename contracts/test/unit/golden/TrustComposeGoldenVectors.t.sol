@@ -99,9 +99,7 @@ contract TrustComposeGoldenVectorsTest is Test {
         // program and its real output domain, never the class and never each other's identity.
         assertEq(bytes32(_readUint(manifest, 23 + 84, 32)), TrustComposeValidator.TRUST_GRAPH_PROGRAM_ID);
         assertEq(bytes32(_readUint(manifest, 23 + 116, 32)), TrustComposeValidator.TRUST_GRAPH_OUTPUT_DOMAIN);
-        assertEq(
-            bytes32(_readUint(manifest, 23 + 293 + 84, 32)), TrustComposeValidator.WEIGHTED_TRUST_GRAPH_PROGRAM_ID
-        );
+        assertEq(bytes32(_readUint(manifest, 23 + 293 + 84, 32)), TrustComposeValidator.WEIGHTED_TRUST_GRAPH_PROGRAM_ID);
         assertEq(
             bytes32(_readUint(manifest, 23 + 293 + 116, 32)), TrustComposeValidator.WEIGHTED_TRUST_GRAPH_OUTPUT_DOMAIN
         );

@@ -137,10 +137,10 @@ library TrustComposeValidator {
     /// @notice Prove every field except the complete source policy remains constitutional. The
     ///         class is an immutable identity field: a rotation may move between mixed and
     ///         homogeneous source sets, but never widen or narrow what the instance can admit.
-    function validateRotation(
-        TrustComposeParamsCodec.Params memory next,
-        TrustComposeParamsCodec.Params memory initial
-    ) internal pure {
+    function validateRotation(TrustComposeParamsCodec.Params memory next, TrustComposeParamsCodec.Params memory initial)
+        internal
+        pure
+    {
         validateComputationalEnvelope(next);
         if (
             next.version != initial.version || next.programId != initial.programId

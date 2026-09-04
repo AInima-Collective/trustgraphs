@@ -118,9 +118,7 @@ contract TrustComposeFactoryTest is Test {
         CompositionSourceAdapterFactory foreignFactory = new CompositionSourceAdapterFactory(foreignRegistry);
         vm.expectRevert(
             abi.encodeWithSelector(
-                TrustComposeFactory.SourceAdapterRegistryMismatch.selector,
-                address(registry),
-                address(foreignRegistry)
+                TrustComposeFactory.SourceAdapterRegistryMismatch.selector, address(registry), address(foreignRegistry)
             )
         );
         _deploy(verifier, VKEY, registry, foreignFactory, EPOCH_FLOOR, ACTIVATION_DELAY);
