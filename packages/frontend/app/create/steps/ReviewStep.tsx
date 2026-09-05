@@ -10,11 +10,11 @@ import {
   encodeFunctionData,
   formatUnits,
   keccak256,
-  parseEther,
   toBytes,
   zeroAddress,
 } from 'viem'
 import {
+  useAccount,
   usePublicClient,
   useReadContract,
   useReadContracts,
@@ -23,6 +23,8 @@ import {
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
+import { useApplicationChain } from '@/hooks/useApplicationChain'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { useEnsResolver } from '@/hooks/useEns'
 import { PROVING_VAULT, SUBNETWORK_CONFIG } from '@/lib/config'
@@ -30,6 +32,7 @@ import {
   governedTrustgraphsFactoryAbi,
   trustgraphsFactoryAbi,
 } from '@/lib/contract-abis'
+import { reviewCreationFunding } from '@/lib/creation-funding'
 import {
   EnsResolutionChangedError,
   getAccountIdentifierErrorMessage,
@@ -38,14 +41,13 @@ import {
   ETHEREUM_TRANSACTION_GAS_CAP,
   bufferedEthereumGasLimit,
 } from '@/lib/ethereum-gas'
+import { contractReadState, financialReadState } from '@/lib/financial-state'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
-import {
-  conservativeRefreshEstimate,
-  initialPolicyForCreation,
-} from '@/lib/proving-prepay'
+import { conservativeRefreshEstimate } from '@/lib/proving-prepay'
 import { priceFeedReadAbi, provingVaultReadAbi } from '@/lib/settings-contracts'
 import { governedSubnetworkFactoryAbi } from '@/lib/subnetwork'
 import { txToast } from '@/lib/tx'
+import { getTargetChainId } from '@/lib/wagmi'
 
 import {
   CreateArgs,
@@ -102,20 +104,28 @@ export const ReviewStep = ({
   parentNetworkId?: string
 }) => {
   const router = useRouter()
-  const publicClient = usePublicClient()
+  const { isConnected } = useAccount()
+  const { openConnectWallet } = useWalletConnectionContext()
+  const {
+    wrongChain,
+    targetChain,
+    switchToTarget,
+    switchingTarget,
+    switchError,
+  } = useApplicationChain()
+  const publicClient = usePublicClient({ chainId: getTargetChainId() })
   const [creating, setCreating] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const resolveAccountIdentifier = useEnsResolver()
 
   // The optional prepay rides along as `msg.value`; the governed wrapper forwards it through the
   // Safe and into the new instance's proving tank. Blank means none, which is the default.
-  const prepay = data.prepayEth.trim() ? parseEther(data.prepayEth.trim()) : 0n
   const effective = effectiveBlocks(data.tuning.cadence, epochFloor)
-  const initialPolicy = initialPolicyForCreation(
+  const {
     prepay,
-    effective,
-    data.maxPerRootUsd
-  )
+    problem: fundingInputProblem,
+    initialPolicy,
+  } = reviewCreationFunding(data, effective)
   const signerSync = buildSignerSyncConfig(data)
   const offchain = buildOffchainEasConfig(data)
   const authorityFactoryAddress = ((parentInstanceId
@@ -129,22 +139,25 @@ export const ReviewStep = ({
     : [args, initialPolicy, signerSync]
 
   const program = keccak256(toBytes('trust-graph'))
-  const { data: vaultPreview } = useReadContracts({
+  const vaultQuery = useReadContracts({
     contracts:
       prepay > 0n && PROVING_VAULT
         ? [
             {
+              chainId: getTargetChainId(),
               address: PROVING_VAULT,
               abi: provingVaultReadAbi,
               functionName: 'feePerRootUsd',
               args: [program, 1],
             },
             {
+              chainId: getTargetChainId(),
               address: PROVING_VAULT,
               abi: provingVaultReadAbi,
               functionName: 'withdrawalNotice',
             },
             {
+              chainId: getTargetChainId(),
               address: PROVING_VAULT,
               abi: provingVaultReadAbi,
               functionName: 'ETH_USD_FEED',
@@ -153,17 +166,28 @@ export const ReviewStep = ({
         : [],
     query: { enabled: prepay > 0n && !!PROVING_VAULT },
   })
+  const vaultPreview = vaultQuery.data
+  const pricingState = contractReadState(vaultQuery, 3)
   const initialBandFee = (vaultPreview?.[0]?.result as bigint | undefined) ?? 0n
   const withdrawalNotice =
     (vaultPreview?.[1]?.result as bigint | undefined) ?? 0n
   const priceFeed = vaultPreview?.[2]?.result as Address | undefined
-  const { data: priceRound } = useReadContract({
+  const priceQuery = useReadContract({
+    chainId: getTargetChainId(),
     address: priceFeed ?? zeroAddress,
     abi: priceFeedReadAbi,
     functionName: 'latestRoundData',
     query: { enabled: prepay > 0n && !!priceFeed },
   })
+  const priceRound = priceQuery.data
   const ethUsd = priceRound?.[1] && priceRound[1] > 0n ? priceRound[1] : 0n
+  const prepayReady =
+    !fundingInputProblem &&
+    (prepay === 0n ||
+      (pricingState === 'ready' &&
+        initialBandFee > 0n &&
+        financialReadState([priceQuery]) === 'ready' &&
+        ethUsd > 0n))
   const refreshEstimate = conservativeRefreshEstimate(
     prepay,
     ethUsd,
@@ -187,6 +211,7 @@ export const ReviewStep = ({
     isLoading: preflighting,
     isSuccess: preflightPassed,
   } = useSimulateContract({
+    chainId: getTargetChainId(),
     address: GOVERNED_FACTORY_ADDRESS,
     abi: governedTrustgraphsFactoryAbi,
     functionName: createFunction,
@@ -195,6 +220,7 @@ export const ReviewStep = ({
     ...(prepay > 0n ? { value: prepay } : {}),
     query: {
       enabled:
+        !fundingInputProblem &&
         !parentInstanceId &&
         !!GOVERNED_FACTORY_ADDRESS &&
         !!args.name &&
@@ -204,6 +230,19 @@ export const ReviewStep = ({
 
   const create = async () => {
     setFailure(null)
+    if (!parentInstanceId && (!isConnected || wrongChain)) {
+      setFailure(
+        `Connect your wallet to ${targetChain.name} before creating this network.`
+      )
+      return
+    }
+    if (!prepayReady) {
+      setFailure(
+        fundingInputProblem ??
+          'Verify the current proof funding prices before continuing.'
+      )
+      return
+    }
     setCreating(true)
     try {
       if (parentInstanceId) {
@@ -247,7 +286,7 @@ export const ReviewStep = ({
           createdAt: Date.now(),
         })
         router.push(
-          `/networks/${parentNetworkId ?? parentInstanceId}/governance?new=1&actionDraft=${fingerprint}`
+          `/networks/${parentNetworkId ?? parentInstanceId}/governance/new?actionDraft=${fingerprint}`
         )
         return
       }
@@ -500,18 +539,26 @@ export const ReviewStep = ({
           {data.tuning.totalPoints.toLocaleString()}
         </SummaryRow>
         <SummaryRow label="Proof funding">
-          {prepay > 0n
-            ? `${data.prepayEth.trim()} ETH prepaid for score refreshes`
-            : 'No prepayment. Anyone may produce and publish a valid proof.'}
+          {fundingInputProblem
+            ? 'Check the saved proof funding amount and spending cap.'
+            : prepay > 0n
+              ? `${data.prepayEth.trim()} ETH prepaid for score refreshes`
+              : 'No prepayment. Anyone may produce and publish a valid proof.'}
         </SummaryRow>
-        {prepay > 0n && (
+        {!fundingInputProblem && prepay > 0n && (
           <>
             <SummaryRow label="Maximum per refresh">
               ${formatUnits(initialPolicy.maxPerRootUsd, 8)} USD for the proof
               and gas
             </SummaryRow>
             <SummaryRow label="Initial fee band">
-              {initialBandFee > 0n ? (
+              {pricingState !== 'ready' ? (
+                <span className="text-muted-foreground">
+                  {pricingState === 'loading'
+                    ? 'Loading the current fee…'
+                    : 'The current fee could not be verified.'}
+                </span>
+              ) : initialBandFee > 0n ? (
                 `$${formatUnits(initialBandFee, 8)} per root while the graph has at most 1,000 inputs`
               ) : (
                 <span className="text-destructive">
@@ -521,8 +568,9 @@ export const ReviewStep = ({
               )}
             </SummaryRow>
             <SummaryRow label="Estimated refreshes">
-              {refreshEstimate === null
-                ? 'Waiting for the ETH/USD price feed'
+              {financialReadState([priceQuery]) !== 'ready' ||
+              refreshEstimate === null
+                ? 'The current ETH/USD price is unavailable'
                 : refreshEstimate === 0n
                   ? 'Less than one at the current price and maximum payment'
                   : `At least ${refreshEstimate.toLocaleString()} at the current price if every refresh uses the maximum payment`}
@@ -654,29 +702,87 @@ export const ReviewStep = ({
       )}
 
       <div className="space-y-3">
-        <Button
-          type="button"
-          onClick={create}
-          disabled={
-            creating ||
-            (!parentInstanceId &&
-              (preflighting || !preflightPassed || !!preflightError)) ||
-            !authorityProfileValid
-          }
-        >
-          {creating && <LoaderCircle className="h-4 w-4 animate-spin" />}
-          {creating
-            ? parentInstanceId
-              ? 'Preparing proposal...'
-              : 'Creating your network...'
-            : parentInstanceId
-              ? 'Prepare parent proposal'
-              : 'Create network'}
-        </Button>
+        {!parentInstanceId && !isConnected ? (
+          <Button type="button" onClick={openConnectWallet}>
+            Connect to create network
+          </Button>
+        ) : !parentInstanceId && wrongChain ? (
+          <Button
+            type="button"
+            disabled={switchingTarget}
+            onClick={() => void switchToTarget()}
+          >
+            {switchingTarget ? 'Switching…' : `Switch to ${targetChain.name}`}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            onClick={create}
+            disabled={
+              creating ||
+              !prepayReady ||
+              (!parentInstanceId &&
+                (preflighting || !preflightPassed || !!preflightError)) ||
+              !authorityProfileValid
+            }
+          >
+            {creating && <LoaderCircle className="h-4 w-4 animate-spin" />}
+            {creating
+              ? parentInstanceId
+                ? 'Preparing proposal...'
+                : 'Creating your network...'
+              : parentInstanceId
+                ? 'Prepare parent proposal'
+                : 'Create network'}
+          </Button>
+        )}
+        {fundingInputProblem && (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-destructive">
+              {fundingInputProblem}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onJumpTo('scoring')}
+            >
+              Edit proof funding
+            </Button>
+          </div>
+        )}
+        {!fundingInputProblem && prepay > 0n && !prepayReady && (
+          <div className="space-y-2">
+            <p role="status" className="text-sm text-muted-foreground">
+              Proof funding prices must be verified before you continue.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={vaultQuery.isFetching || priceQuery.isFetching}
+              onClick={() =>
+                void Promise.allSettled([
+                  vaultQuery.refetch(),
+                  ...(priceFeed ? [priceQuery.refetch()] : []),
+                ])
+              }
+            >
+              Retry pricing checks
+            </Button>
+          </div>
+        )}
+        {switchError && (
+          <p role="alert" className="text-sm text-destructive">
+            {switchError}
+          </p>
+        )}
         <Note>
-          {parentInstanceId
-            ? 'Nothing is sent yet. The parent network must pass the prepared proposal before the child is created.'
-            : 'You pay the transaction fee for this and nothing else. There is no charge for creating a network.'}
+          {fundingInputProblem
+            ? 'Correct the proof funding input before continuing.'
+            : parentInstanceId
+              ? 'Nothing is sent yet. The parent network must pass the prepared proposal before the child is created.'
+              : prepay > 0n
+                ? `Creates the network and adds ${data.prepayEth.trim()} ETH to its proof balance, plus gas.`
+                : 'You pay gas to create this network. No proof balance is added.'}
         </Note>
       </div>
     </div>

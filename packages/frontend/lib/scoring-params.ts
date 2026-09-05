@@ -471,8 +471,7 @@ export const validateParamsUpdate = (
     next.toleranceFp < MIN_TOLERANCE_FP ||
     next.toleranceFp > MAX_TOLERANCE_FP
   ) {
-    errors.toleranceFp =
-      'Tolerance must be between 0.000000000001 and 0.001.'
+    errors.toleranceFp = 'Tolerance must be between 0.000000000001 and 0.001.'
   }
   if (next.maxIterations < 1 || next.maxIterations > MAX_ITERATIONS) {
     errors.maxIterations = `Iterations must be between 1 and ${MAX_ITERATIONS}.`

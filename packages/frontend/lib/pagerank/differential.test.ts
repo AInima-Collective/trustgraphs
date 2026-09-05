@@ -130,14 +130,7 @@ const cases = Array.from({ length: 128 }, (_, index) =>
 )
 const rust = spawnSync(
   'cargo',
-  [
-    'run',
-    '--quiet',
-    '-p',
-    'pagerank-core',
-    '--example',
-    'differential_runner',
-  ],
+  ['run', '--quiet', '-p', 'pagerank-core', '--example', 'differential_runner'],
   {
     cwd: resolve(process.cwd(), '../..'),
     input: JSON.stringify(cases),

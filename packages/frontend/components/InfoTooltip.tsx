@@ -16,9 +16,7 @@ export const InfoTooltip = ({ title, className }: InfoTooltipProps) => {
     <Tooltip
       title={title}
       className={cn(
-        'inline-flex items-center justify-center p-0.5 transition-colors',
-        'text-[#a1a1a1] hover:text-[#818181] focus:text-[#818181]',
-        'focus:outline-none focus:ring-1 focus:ring-[#a1a1a1] focus:ring-offset-1',
+        'tg-touch-target inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
         className
       )}
     >

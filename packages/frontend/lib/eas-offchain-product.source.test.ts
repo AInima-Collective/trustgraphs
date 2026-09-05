@@ -16,7 +16,7 @@ test('standard creation keeps gasless off-chain vouches disabled while retaining
   assert.match(model, /OFFCHAIN_INITIAL_RELAYERS/)
   assert.match(addOns, /Gasless off-chain vouches/)
   assert.match(addOns, /Coming soon/)
-  assert.match(addOns, /enabled=\{false\} readOnly/)
+  assert.match(addOns, /enabled=\{false\} decorative/)
   assert.doesNotMatch(addOns, /withOffchainVouches:/)
   assert.match(review, /createGovernedHybridInstance/)
   assert.match(review, /createGovernedInstance/)

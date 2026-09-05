@@ -1,262 +1,38 @@
 'use client'
 
-import { useQueries, useQuery } from '@tanstack/react-query'
 import { ArrowRight, Check, Clock3, WalletCards } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
-import { Hex, erc20Abi, formatUnits, zeroAddress } from 'viem'
-import { useAccount, usePublicClient, useReadContracts } from 'wagmi'
+import { useEffect, useState } from 'react'
+import { Hex } from 'viem'
+import { useAccount, usePublicClient } from 'wagmi'
 
 import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { NetworkHeader } from '@/components/NetworkHeader'
+import { PendingClaimRecovery } from '@/components/PendingClaimRecovery'
 import { SectionHeading } from '@/components/SectionHeading'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
+import { useApplicationChain } from '@/hooks/useApplicationChain'
+import { useClaimProgress } from '@/hooks/useClaimProgress'
+import {
+  type ClaimSource,
+  type Reward,
+  type RewardState,
+  useDistributionRewards,
+} from '@/hooks/useDistributionRewards'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
-import { contributionsQueries } from '@/lib/contributions-api'
 import { parseErrorMessage } from '@/lib/error'
+import {
+  distributionClosed,
+  formatFinancialAmount,
+} from '@/lib/financial-state'
 import type { NetworkTab } from '@/lib/network-nav'
 import { txToast } from '@/lib/tx'
 import { ContributionsNetwork, Network } from '@/lib/types'
-import { usePonderQuery } from '@/lib/use-ponder-query'
-import { isHexEqual } from '@/lib/utils'
-import { merkleFundDistribution } from '@/ponder.schema'
-import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { realAddress } from '@/lib/utils'
 
 import { DistributePage } from '../distribute/component'
-
-type Distribution = typeof merkleFundDistribution.$inferSelect
-type MerkleEntry = { value: string; proof: string[] }
-
-type ClaimSource = {
-  id: 'network' | 'contributions'
-  title: string
-  description: string
-  href: string
-  linkLabel: string
-  distributor: Hex
-  snapshot: Hex
-}
-
-type Reward = {
-  source: ClaimSource
-  distribution: Distribution
-  entry: MerkleEntry | null
-  amount: bigint
-  claimedAmount: bigint
-  status: 'available' | 'claimed' | 'expired' | 'swept' | 'none'
-}
-
-const compactToken = (token: string) =>
-  `${token.slice(0, 6)}…${token.slice(-4)}`
-
-const formatAmount = (
-  value: bigint,
-  decimals: number,
-  symbol: string
-): string => {
-  const [whole, rawFraction = ''] = formatUnits(value, decimals).split('.')
-  const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  const fraction = rawFraction.replace(/0+$/, '').slice(0, 4)
-
-  if (value > 0n && groupedWhole === '0' && rawFraction && !fraction) {
-    return `<0.0001 ${symbol}`
-  }
-
-  return `${groupedWhole}${fraction ? `.${fraction}` : ''} ${symbol}`
-}
-
-const useDistributionRewards = ({
-  source,
-  account,
-  now,
-}: {
-  source?: ClaimSource
-  account?: Hex
-  now: number | null
-}) => {
-  const distributor = source?.distributor ?? zeroAddress
-  const snapshot = source?.snapshot ?? zeroAddress
-  const enabled = !!source
-
-  const { data: distributions = [], isLoading: distributionsLoading } =
-    usePonderQuery({
-      queryFn: ponderQueryFns.getFundDistributions(distributor),
-      enabled,
-    })
-
-  const { data: claims = [], isLoading: claimsLoading } = usePonderQuery({
-    queryFn: ponderQueryFns.getFundDistributionClaims({
-      distributor,
-      account,
-    }),
-    enabled: enabled && !!account,
-  })
-
-  const { data: distributorState } = usePonderQuery({
-    queryFn: ponderQueryFns.getFundDistributor(distributor),
-    enabled,
-  })
-
-  // The generic merkle endpoint is the normal proof source for both program
-  // types. Contributions also expose a current-round payout bundle; keep it as
-  // a fallback so an indexer rollout cannot strand an otherwise claimable
-  // reward just because one of the two equivalent read routes is lagging.
-  const { data: latestSnapshot } = usePonderQuery({
-    queryFn: ponderQueryFns.getLatestMerkleSnapshot(snapshot),
-    enabled: source?.id === 'contributions',
-  })
-  const payoutOptions = contributionsQueries.payout(snapshot, account)
-  const payoutBundleQuery = useQuery({
-    ...payoutOptions,
-    enabled:
-      source?.id === 'contributions' &&
-      !!account &&
-      payoutOptions.enabled !== false,
-  })
-
-  const roots = useMemo(
-    () => Array.from(new Set(distributions.map(({ root }) => root))),
-    [distributions]
-  )
-  const entryQueries = useQueries({
-    queries: roots.map((root) => ({
-      ...ponderQueries.merkleTreeEntry({ snapshot, root, account }),
-      enabled: enabled && !!account,
-    })),
-  })
-  const entries = useMemo(() => {
-    const byRoot = new Map<string, MerkleEntry>()
-    roots.forEach((root, index) => {
-      const entry = entryQueries[index]?.data
-      if (entry) byRoot.set(root, entry)
-    })
-    if (
-      latestSnapshot?.root &&
-      payoutBundleQuery.data &&
-      !byRoot.has(latestSnapshot.root)
-    ) {
-      byRoot.set(latestSnapshot.root, {
-        value: payoutBundleQuery.data.value,
-        proof: payoutBundleQuery.data.proof,
-      })
-    }
-    return byRoot
-  }, [entryQueries, latestSnapshot?.root, payoutBundleQuery.data, roots])
-
-  const claimedByDistribution = useMemo(() => {
-    const byDistribution = new Map<bigint, bigint>()
-    for (const claim of claims) {
-      byDistribution.set(claim.distributionIndex, claim.amount)
-    }
-    return byDistribution
-  }, [claims])
-
-  const erc20Tokens = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          distributions
-            .map(({ token }) => token)
-            .filter((token) => !isHexEqual(token, zeroAddress))
-        )
-      ),
-    [distributions]
-  )
-  const tokenContracts = useMemo(
-    () =>
-      erc20Tokens.flatMap((token) => [
-        {
-          address: token,
-          abi: erc20Abi,
-          functionName: 'symbol' as const,
-        },
-        {
-          address: token,
-          abi: erc20Abi,
-          functionName: 'decimals' as const,
-        },
-      ]),
-    [erc20Tokens]
-  )
-  const tokenReads = useReadContracts({
-    contracts: tokenContracts,
-    query: { enabled: tokenContracts.length > 0 },
-  })
-  const tokenMetadata = useMemo(() => {
-    const metadata = new Map<string, { symbol: string; decimals: number }>()
-    metadata.set(zeroAddress, { symbol: 'ETH', decimals: 18 })
-    erc20Tokens.forEach((token, index) => {
-      const symbol = tokenReads.data?.[index * 2]?.result
-      const decimals = tokenReads.data?.[index * 2 + 1]?.result
-      metadata.set(token, {
-        symbol: typeof symbol === 'string' ? symbol : compactToken(token),
-        decimals: typeof decimals === 'number' ? decimals : 18,
-      })
-    })
-    return metadata
-  }, [erc20Tokens, tokenReads.data])
-
-  const rewards = useMemo<Reward[]>(() => {
-    if (!source) return []
-
-    return distributions.map((distribution) => {
-      const entry = entries.get(distribution.root) ?? null
-      const claimedAmount = claimedByDistribution.get(distribution.id) ?? 0n
-      const share = entry
-        ? distribution.totalMerkleValue === 0n
-          ? 0n
-          : ((distribution.amountFunded - distribution.feeAmount) *
-              BigInt(entry.value)) /
-            distribution.totalMerkleValue
-        : 0n
-      const amount = claimedAmount > 0n ? claimedAmount : share
-      const expired =
-        now !== null &&
-        distribution.claimDeadline > 0n &&
-        BigInt(now) > distribution.claimDeadline
-
-      return {
-        source,
-        distribution,
-        entry,
-        amount,
-        claimedAmount,
-        status:
-          claimedAmount > 0n
-            ? 'claimed'
-            : distribution.sweptAmount > 0n
-              ? 'swept'
-              : expired
-                ? 'expired'
-                : share > 0n
-                  ? 'available'
-                  : 'none',
-      }
-    })
-  }, [claimedByDistribution, distributions, entries, now, source])
-
-  const tokenLabel = (token: Hex) =>
-    tokenMetadata.get(token) ?? { symbol: compactToken(token), decimals: 18 }
-
-  return {
-    source,
-    rewards,
-    paused: distributorState?.paused ?? false,
-    loading:
-      distributionsLoading ||
-      (!!account &&
-        (claimsLoading ||
-          entryQueries.some((query) => query.isLoading) ||
-          (source?.id === 'contributions' && payoutBundleQuery.isLoading))) ||
-      tokenReads.isLoading,
-    proofError: entryQueries.some((query) => query.isError),
-    tokenLabel,
-  }
-}
-
-type RewardState = ReturnType<typeof useDistributionRewards>
 
 export const RewardsPage = ({
   network,
@@ -270,22 +46,40 @@ export const RewardsPage = ({
   tabs?: NetworkTab[]
 }) => {
   const { address, isConnected } = useAccount()
-  const publicClient = usePublicClient()
+  const {
+    targetChainId,
+    targetChain,
+    wrongChain,
+    switchToTarget,
+    switchingTarget,
+    switchError,
+  } = useApplicationChain()
+  const publicClient = usePublicClient({ chainId: targetChainId })
+  const claimProgress = useClaimProgress(address)
   const [now, setNow] = useState<number | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
   const [claimingAll, setClaimingAll] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [batchProgress, setBatchProgress] = useState<string | null>(null)
 
-  useEffect(() => setNow(Math.floor(Date.now() / 1_000)), [])
+  useEffect(() => {
+    const tick = () => setNow(Math.floor(Date.now() / 1_000))
+    tick()
+    const timer = setInterval(tick, 15_000)
+    return () => clearInterval(timer)
+  }, [])
 
-  const networkSource = network.contracts.merkleFundDistributor
+  const networkDistributor = realAddress(
+    network.contracts.merkleFundDistributor
+  )
+  const networkSource = networkDistributor
     ? {
         id: 'network' as const,
         title: 'Network rewards',
         description: `Funds allocated using the ${network.name} trust scores captured when each reward pool was created.`,
         href: '#fund-rewards',
         linkLabel: 'Funding and history',
-        distributor: network.contracts.merkleFundDistributor,
+        distributor: networkDistributor,
         snapshot: network.contracts.merkleSnapshot,
       }
     : undefined
@@ -315,7 +109,23 @@ export const RewardsPage = ({
   const sources = [networkRewards, contributionRewards].filter(
     (state): state is RewardState & { source: ClaimSource } => !!state.source
   )
-  const rewards = sources.flatMap((source) => source.rewards)
+  const progressSources = sources.map((source) => ({
+    ...source,
+    rewards: source.rewards.map((reward): Reward => {
+      const progress = claimProgress.get(
+        reward.source.distributor,
+        reward.distribution.id
+      )
+      return progress && reward.status !== 'claimed'
+        ? {
+            ...reward,
+            status: progress.status === 'confirmed' ? 'claimed' : 'pending',
+            transactionHash: progress.hash,
+          }
+        : reward
+    }),
+  }))
+  const rewards = progressSources.flatMap((source) => source.rewards)
   const pending = rewards.filter((reward) => reward.status === 'available')
   const available = pending.filter(
     (reward) =>
@@ -324,12 +134,30 @@ export const RewardsPage = ({
   const rewardHistory = rewards.filter(
     (reward) => reward.status !== 'none'
   ).length
-  const isLoading = sources.some((source) => source.loading)
+  const isLoading =
+    sources.some((source) => source.loading) ||
+    (isConnected && !claimProgress.ready)
+  const hasUnverified = sources.some(
+    (source) =>
+      source.readState !== 'ready' || source.proofError || source.metadataError
+  )
+  const retryRewards = () => sources.forEach((source) => source.retry())
 
   const rewardKey = (reward: Reward) =>
     `${reward.source.id}:${reward.distribution.id.toString()}`
 
   const transactionFor = async (reward: Reward) => {
+    if (wrongChain)
+      throw new Error(`Switch to ${targetChain.name} before claiming.`)
+    if (
+      reward.status !== 'available' ||
+      distributionClosed(reward.distribution, Math.floor(Date.now() / 1_000)) ||
+      !claimProgress.ready ||
+      claimProgress.get(reward.source.distributor, reward.distribution.id)
+    )
+      throw new Error(
+        'This reward is not ready to claim. Refresh its status first.'
+      )
     if (!address || !publicClient || !reward.entry) {
       throw new Error('The proof for this reward is not available yet')
     }
@@ -350,6 +178,8 @@ export const RewardsPage = ({
 
     return {
       tx: {
+        account: address,
+        chainId: targetChainId,
         abi: merkleFundDistributorAbi,
         address: reward.source.distributor,
         functionName: 'claim' as const,
@@ -357,6 +187,12 @@ export const RewardsPage = ({
         gas: (gas * 120n) / 100n,
       },
       successMessage: `${reward.source.title} claimed!`,
+      onTransactionSent: (hash: Hex) =>
+        claimProgress.submitted(
+          reward.source.distributor,
+          reward.distribution.id,
+          hash
+        ),
     }
   }
 
@@ -364,8 +200,19 @@ export const RewardsPage = ({
     setError(null)
     setClaiming(rewardKey(reward))
     try {
-      await txToast(await transactionFor(reward))
+      const [receipt] = await txToast(await transactionFor(reward))
+      claimProgress.confirmed(
+        reward.source.distributor,
+        reward.distribution.id,
+        receipt.transactionHash
+      )
+      retryRewards()
     } catch (claimError) {
+      claimProgress.failed(
+        reward.source.distributor,
+        reward.distribution.id,
+        claimError
+      )
       setError(parseErrorMessage(claimError))
     } finally {
       setClaiming(null)
@@ -377,8 +224,31 @@ export const RewardsPage = ({
     setError(null)
     setClaimingAll(true)
     try {
-      const transactions = await Promise.all(available.map(transactionFor))
-      await txToast(...transactions)
+      for (const [index, reward] of available.entries()) {
+        setBatchProgress(
+          `Claim ${index + 1} of ${available.length}: confirm this transaction in your wallet.`
+        )
+        let receipt
+        try {
+          ;[receipt] = await txToast(await transactionFor(reward))
+        } catch (claimError) {
+          claimProgress.failed(
+            reward.source.distributor,
+            reward.distribution.id,
+            claimError
+          )
+          throw claimError
+        }
+        claimProgress.confirmed(
+          reward.source.distributor,
+          reward.distribution.id,
+          receipt.transactionHash
+        )
+        setBatchProgress(
+          `${index + 1} of ${available.length} claims confirmed.`
+        )
+      }
+      retryRewards()
     } catch (claimError) {
       setError(parseErrorMessage(claimError))
     } finally {
@@ -414,6 +284,29 @@ export const RewardsPage = ({
             <p className="text-sm text-text-muted" aria-live="polite">
               Checking every reward source…
             </p>
+          ) : hasUnverified ? (
+            <div className="space-y-3" role="status">
+              <p className="tg-display text-3xl">Some rewards need checking</p>
+              <p className="text-sm text-text-muted">
+                We could not verify every reward source. Previously loaded
+                amounts may be out of date; unverified rewards cannot be
+                claimed.
+              </p>
+              <Button variant="outline" onClick={retryRewards}>
+                Retry rewards
+              </Button>
+            </div>
+          ) : rewards.some((reward) => reward.status === 'pending') &&
+            pending.length === 0 ? (
+            <div className="space-y-2">
+              <p className="tg-display text-3xl">
+                Claims awaiting confirmation
+              </p>
+              <p className="text-sm text-text-muted">
+                Check their transaction status below if your wallet cancelled or
+                replaced a claim.
+              </p>
+            </div>
           ) : pending.length === 0 ? (
             <div className="space-y-2">
               <p className="tg-display text-4xl">All caught up</p>
@@ -456,7 +349,7 @@ export const RewardsPage = ({
             size="lg"
             className="w-full md:w-auto"
             onClick={claimAll}
-            disabled={claimingAll || claiming !== null}
+            disabled={wrongChain || claimingAll || claiming !== null}
           >
             {claimingAll
               ? 'Claiming rewards…'
@@ -465,6 +358,30 @@ export const RewardsPage = ({
         )}
       </section>
 
+      {wrongChain && (
+        <Card type="outline" size="md" className="space-y-3">
+          <p>
+            Rewards are shown for {targetChain.name}. Switch your wallet to
+            claim them.
+          </p>
+          <Button
+            onClick={() => void switchToTarget()}
+            disabled={switchingTarget}
+          >
+            Switch to {targetChain.name}
+          </Button>
+          {switchError && (
+            <p role="alert" className="text-error">
+              {switchError}
+            </p>
+          )}
+        </Card>
+      )}
+      {batchProgress && (
+        <p role="status" className="text-sm">
+          {batchProgress}
+        </p>
+      )}
       {error && (
         <Card type="outline" size="md" className="border-error text-error">
           <p className="text-sm">{error}</p>
@@ -472,7 +389,7 @@ export const RewardsPage = ({
       )}
 
       <div className="grid gap-10 lg:grid-cols-2 lg:gap-8">
-        {sources.map((source) => (
+        {progressSources.map((source) => (
           <ClaimSourceSection
             key={source.source.id}
             state={source}
@@ -481,11 +398,14 @@ export const RewardsPage = ({
             claimingAll={claimingAll}
             rewardKey={rewardKey}
             onClaim={claimReward}
+            wrongChain={wrongChain}
+            explorerUrl={targetChain.blockExplorers?.default.url}
+            progress={claimProgress}
           />
         ))}
       </div>
 
-      {isConnected && !isLoading && rewardHistory === 0 && (
+      {isConnected && !isLoading && !hasUnverified && rewardHistory === 0 && (
         <p className="border-t border-hairline pt-6 text-sm text-text-muted">
           Rewards appear here as soon as a distribution is funded against a
           proven score table.
@@ -510,6 +430,9 @@ const ClaimSourceSection = ({
   claimingAll,
   rewardKey,
   onClaim,
+  wrongChain,
+  explorerUrl,
+  progress,
 }: {
   state: RewardState & { source: ClaimSource }
   connected: boolean
@@ -517,6 +440,9 @@ const ClaimSourceSection = ({
   claimingAll: boolean
   rewardKey: (reward: Reward) => string
   onClaim: (reward: Reward) => void
+  wrongChain: boolean
+  explorerUrl?: string
+  progress: ReturnType<typeof useClaimProgress>
 }) => {
   const visibleRewards = state.rewards.filter(
     (reward) => reward.status !== 'none'
@@ -559,6 +485,19 @@ const ClaimSourceSection = ({
         </p>
       )}
 
+      {connected &&
+        (state.readState === 'error' || state.readState === 'stale') && (
+          <div role="status" className="space-y-3 text-sm">
+            <p>
+              {state.readState === 'stale'
+                ? 'This source could not be refreshed. Previously loaded data is shown below.'
+                : 'This reward source could not be checked.'}
+            </p>
+            <Button size="sm" variant="outline" onClick={state.retry}>
+              Retry source
+            </Button>
+          </div>
+        )}
       {!connected ? (
         <Card type="outline" size="lg" className="min-h-36">
           <WalletCards className="mb-4 h-5 w-5 text-text-muted" />
@@ -567,8 +506,11 @@ const ClaimSourceSection = ({
           </p>
         </Card>
       ) : state.loading ? (
-        <p className="text-sm text-text-muted">Checking this source…</p>
-      ) : visibleRewards.length === 0 ? (
+        <p role="status" className="text-sm text-text-muted">
+          Checking rewards and payout proofs…
+        </p>
+      ) : state.readState !== 'ready' &&
+        visibleRewards.length === 0 ? null : visibleRewards.length === 0 ? (
         <Card type="outline" size="lg" className="min-h-36">
           <p className="text-sm text-text-muted">
             No rewards from this source yet.
@@ -589,10 +531,9 @@ const ClaimSourceSection = ({
                 <div className="min-w-0 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <p className="text-lg tabular-nums">
-                      {formatAmount(
+                      {formatFinancialAmount(
                         reward.amount,
-                        metadata.decimals,
-                        metadata.symbol
+                        reward.status === 'unknown' ? undefined : metadata
                       )}
                     </p>
                     <RewardStatus
@@ -600,6 +541,16 @@ const ClaimSourceSection = ({
                       paused={state.paused}
                     />
                   </div>
+                  {reward.transactionHash && explorerUrl && (
+                    <a
+                      href={`${explorerUrl}/tx/${reward.transactionHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs underline"
+                    >
+                      View claim transaction
+                    </a>
+                  )}
                   <p className="text-xs text-text-muted">
                     Distribution #{(reward.distribution.id + 1n).toString()}{' '}
                     <span aria-hidden="true">·</span>{' '}
@@ -609,6 +560,17 @@ const ClaimSourceSection = ({
                   </p>
                 </div>
 
+                {reward.status === 'pending' && reward.transactionHash && (
+                  <PendingClaimRecovery
+                    key={reward.transactionHash}
+                    progress={progress}
+                    distributor={reward.source.distributor}
+                    id={reward.distribution.id}
+                    hash={reward.transactionHash}
+                    onRefresh={state.retry}
+                    disabled={claimingAll || claiming !== null}
+                  />
+                )}
                 {reward.status === 'available' && (
                   <Button
                     variant="default"
@@ -616,6 +578,8 @@ const ClaimSourceSection = ({
                     className="w-full sm:w-auto"
                     onClick={() => onClaim(reward)}
                     disabled={
+                      wrongChain ||
+                      state.readState !== 'ready' ||
                       state.paused ||
                       claimingAll ||
                       claiming !== null ||
@@ -631,10 +595,21 @@ const ClaimSourceSection = ({
         </div>
       )}
 
+      {state.metadataError && (
+        <p role="status" className="text-xs text-warn">
+          Some token details could not be verified.{' '}
+          <button className="underline" onClick={state.retry}>
+            Retry token details
+          </button>
+        </p>
+      )}
       {state.proofError && connected && (
-        <p className="text-xs text-warn">
-          Some proof data could not be loaded. Those rewards may be missing
-          until the indexer is available again.
+        <p role="status" className="text-xs text-warn">
+          Some payout proofs could not be verified. Recheck them before claiming
+          these rewards.{' '}
+          <button className="underline" onClick={state.retry}>
+            Retry proof data
+          </button>
         </p>
       )}
     </section>
@@ -648,6 +623,14 @@ const RewardStatus = ({
   status: Reward['status']
   paused: boolean
 }) => {
+  if (status === 'unknown')
+    return <span className="text-xs text-warn">Not verified</span>
+  if (status === 'pending')
+    return (
+      <span className="text-xs text-text-muted">
+        Claim sent · waiting for confirmation
+      </span>
+    )
   if (status === 'available') {
     return (
       <span className="tg-label-strong">{paused ? 'Paused' : 'Ready'}</span>

@@ -23,15 +23,17 @@ const rustList = (source: string, name: string): string[] => {
   const open = source.indexOf('&[', start)
   const close = source.indexOf('];', open)
   assert.ok(open >= 0 && close > open, `${name} is not an array literal`)
-  return [...source.slice(open, close).matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1])
+  return [...source.slice(open, close).matchAll(/"([a-z0-9_]+)"/g)].map(
+    (m) => m[1]
+  )
 }
 
 /** Every `input.<key>` / `raw.<key>` / `wanted.<key>` the adapter reads out of the heartbeat. */
 const readKeys = (block: string): Set<string> =>
   new Set(
-    [...block.matchAll(/\b(?:input|raw|wanted|entry\?)\.([a-z][a-z0-9_]*)/g)].map(
-      (m) => m[1]
-    )
+    [
+      ...block.matchAll(/\b(?:input|raw|wanted|entry\?)\.([a-z][a-z0-9_]*)/g),
+    ].map((m) => m[1])
   )
 
 test('every heartbeat field the adapter reads is one the operator publishes', async () => {
@@ -47,7 +49,10 @@ test('every heartbeat field the adapter reads is one the operator publishes', as
     route.indexOf('const sanitizeSettings'),
     route.indexOf('export async function GET')
   )
-  assert.ok(settingsBlock.length > 0, 'sanitizeSettings is missing from the route')
+  assert.ok(
+    settingsBlock.length > 0,
+    'sanitizeSettings is missing from the route'
+  )
 
   for (const key of readKeys(settingsBlock)) {
     assert.ok(
@@ -77,7 +82,10 @@ test('every heartbeat field the adapter reads is one the operator publishes', as
       `health.rs publishes ${key} and nothing reads it`
     )
   }
-  assert.ok(actionBlock.includes("'idle'"), 'the action sanitizer lost its vocabulary')
+  assert.ok(
+    actionBlock.includes("'idle'"),
+    'the action sanitizer lost its vocabulary'
+  )
 })
 
 test('the adapter never forwards the parts of the heartbeat that are not published', async () => {

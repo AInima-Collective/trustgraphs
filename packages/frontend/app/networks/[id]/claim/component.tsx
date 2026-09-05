@@ -1,9 +1,8 @@
 'use client'
 
-import { useQueries, useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { Hex, erc20Abi, formatUnits, parseUnits } from 'viem'
+import { useEffect, useState } from 'react'
+import { type Hex, erc20Abi, zeroAddress, zeroHash } from 'viem'
 import { useAccount, usePublicClient, useReadContracts } from 'wagmi'
 
 import { Address } from '@/components/Address'
@@ -13,701 +12,741 @@ import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { NetworkHeader } from '@/components/NetworkHeader'
+import { PendingClaimRecovery } from '@/components/PendingClaimRecovery'
 import { SectionHeading } from '@/components/SectionHeading'
-import { Column, Table } from '@/components/Table'
+import { type Column, Table } from '@/components/Table'
+import { WalletConnectionButton } from '@/components/WalletConnectionButton'
+import { useApplicationChain } from '@/hooks/useApplicationChain'
+import { useClaimProgress } from '@/hooks/useClaimProgress'
+import {
+  type Reward,
+  useDistributionRewards,
+} from '@/hooks/useDistributionRewards'
+import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
-import { contributionsQueries } from '@/lib/contributions-api'
 import { parseErrorMessage } from '@/lib/error'
+import {
+  contractReadState,
+  distributionClosed,
+  formatFinancialAmount,
+  parseFinancialAmount,
+} from '@/lib/financial-state'
 import {
   distributeArgs as buildDistributeArgs,
   fundingTermsAbi,
   latestMerkleStateAbi,
+  quotedFee,
 } from '@/lib/funding-terms'
 import { contributionsTabs } from '@/lib/network-nav'
 import { txToast } from '@/lib/tx'
-import { ContributionsNetwork } from '@/lib/types'
-import { usePonderQuery } from '@/lib/use-ponder-query'
-import { merkleFundDistribution } from '@/ponder.schema'
-import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { type ContributionsNetwork } from '@/lib/types'
 
-import { useContributionsData } from '../contributions-shared'
-
-type DistributionRow = typeof merkleFundDistribution.$inferSelect
-
-/**
- * Claim surface for a contributions round. The current contributor payout is promoted above
- * distribution history, while permissionless funding keeps the existing approve/deposit path
- * behind a disclosure at the bottom of the page.
- */
+/** Standalone contribution payouts share the same verified reward reads as the network page. */
 export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
-  const { address: connectedAddress, isConnected } = useAccount()
-  const publicClient = usePublicClient()
-  const { round, tokenSymbol, tokenDecimals } = useContributionsData(network)
-
-  const [isDistributing, setIsDistributing] = useState(false)
-  const [isClaiming, setIsClaiming] = useState(false)
-  const [claimingDistributionId, setClaimingDistributionId] = useState<
-    bigint | null
-  >(null)
+  const { address, isConnected } = useAccount()
+  const {
+    targetChainId,
+    targetChain,
+    wrongChain,
+    switchToTarget,
+    switchingTarget,
+    switchError,
+  } = useApplicationChain()
+  const publicClient = usePublicClient({ chainId: targetChainId })
+  const progress = useClaimProgress(address)
+  const [now, setNow] = useState<number | null>(null)
+  const [funding, setFunding] = useState(false)
+  const [claiming, setClaiming] = useState<bigint | null>(null)
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
-
-  const distributorAddress = network.contracts.merkleFundDistributor
-  const snapshotAddress = network.contracts.merkleSnapshot
+  const distributor = network.contracts.merkleFundDistributor
+  const snapshot = network.contracts.merkleSnapshot
   const poolToken = network.contracts.poolToken
+  const native = poolToken?.toLowerCase() === zeroAddress
 
-  // Existing distributions for this round's distributor (generic indexer tables).
-  const { data: distributions = [], isLoading: isLoadingDistributions } =
-    usePonderQuery({
-      queryFn: ponderQueryFns.getFundDistributions(distributorAddress),
-      enabled: !!distributorAddress,
-    })
+  useEffect(() => {
+    const tick = () => setNow(Math.floor(Date.now() / 1_000))
+    tick()
+    const timer = setInterval(tick, 15_000)
+    return () => clearInterval(timer)
+  }, [])
 
-  // The user's past claims.
-  const { data: userClaims = [], isLoading: isLoadingUserClaims } =
-    usePonderQuery({
-      queryFn: ponderQueryFns.getFundDistributionClaims({
-        distributor: distributorAddress,
-        account: connectedAddress,
-      }),
-      enabled: !!distributorAddress && !!connectedAddress,
-    })
-  const claimedByDistribution = useMemo(() => {
-    const map = new Map<bigint, bigint>()
-    for (const claim of userClaims)
-      map.set(claim.distributionIndex, claim.amount)
-    return map
-  }, [userClaims])
-
-  // Distributor state (fee, pause, allowlist).
-  const { data: distributorState } = usePonderQuery({
-    queryFn: ponderQueryFns.getFundDistributor(distributorAddress),
-    enabled: !!distributorAddress,
+  const state = useDistributionRewards({
+    source: {
+      id: 'contributions',
+      title: 'Round payout',
+      description: '',
+      href: `/networks/${network.id}`,
+      linkLabel: 'View round',
+      distributor,
+      snapshot,
+    },
+    account: address,
+    now,
   })
-  // Fee terms and the payout denominator come from the chain, not the indexer: `distribute` is
-  // bound to these exact values, and a rounded copy would revert a legitimate round.
-  const { data: fundingTerms } = useReadContracts({
+  const rewards = state.rewards.map((reward): Reward => {
+    const recorded = progress.get(distributor, reward.distribution.id)
+    return recorded && reward.status !== 'claimed'
+      ? {
+          ...reward,
+          status: recorded.status === 'confirmed' ? 'claimed' : 'pending',
+          transactionHash: recorded.hash,
+        }
+      : reward
+  })
+  const metadata = useTokenMetadata(poolToken ? [poolToken] : [])
+  const poolMetadata = metadata.get(poolToken ?? '')
+  const tokenName = poolMetadata?.symbol ?? 'the payout token'
+  const tokenQuery = useReadContracts({
     contracts:
-      distributorAddress && snapshotAddress
+      address && poolToken && !native
         ? [
             {
-              address: distributorAddress,
-              abi: fundingTermsAbi,
-              functionName: 'feePercentage',
+              address: poolToken,
+              chainId: targetChainId,
+              abi: erc20Abi,
+              functionName: 'allowance',
+              args: [address, distributor],
             },
             {
-              address: distributorAddress,
-              abi: fundingTermsAbi,
-              functionName: 'FEE_RANGE',
-            },
-            {
-              address: distributorAddress,
-              abi: fundingTermsAbi,
-              functionName: 'feeRecipient',
-            },
-            {
-              address: snapshotAddress as Hex,
-              abi: latestMerkleStateAbi,
-              functionName: 'getLatestState',
+              address: poolToken,
+              chainId: targetChainId,
+              abi: erc20Abi,
+              functionName: 'balanceOf',
+              args: [address],
             },
           ]
         : [],
+    query: { enabled: !!address && !!poolToken && !native },
   })
-  const feePercentageRaw = fundingTerms?.[0]?.result as bigint | undefined
-  const feeRange = fundingTerms?.[1]?.result as bigint | undefined
-  const feeRecipient = fundingTerms?.[2]?.result as Hex | undefined
-  const expectedTotalMerkleValue = (
-    fundingTerms?.[3]?.result as { totalValue?: bigint } | undefined
-  )?.totalValue
-  const feePercentage =
-    feePercentageRaw !== undefined && feeRange
-      ? (Number(feePercentageRaw) / Number(feeRange)) * 100
+  const allowance = tokenQuery.data?.[0]?.result as bigint | undefined
+  const balance = tokenQuery.data?.[1]?.result as bigint | undefined
+  const termsQuery = useReadContracts({
+    contracts: [
+      {
+        address: distributor,
+        chainId: targetChainId,
+        abi: fundingTermsAbi,
+        functionName: 'feePercentage',
+      },
+      {
+        address: distributor,
+        chainId: targetChainId,
+        abi: fundingTermsAbi,
+        functionName: 'FEE_RANGE',
+      },
+      {
+        address: distributor,
+        chainId: targetChainId,
+        abi: fundingTermsAbi,
+        functionName: 'feeRecipient',
+      },
+      {
+        address: snapshot,
+        chainId: targetChainId,
+        abi: latestMerkleStateAbi,
+        functionName: 'getLatestState',
+      },
+    ],
+  })
+  const feePercentage = termsQuery.data?.[0]?.result as bigint | undefined
+  const feeRange = termsQuery.data?.[1]?.result as bigint | undefined
+  const feeRecipient = termsQuery.data?.[2]?.result as Hex | undefined
+  const latestState = termsQuery.data?.[3]?.result as
+    | { root: Hex; totalValue: bigint }
+    | undefined
+  const expectedRoot =
+    latestState?.root && latestState.root !== zeroHash
+      ? latestState.root
       : undefined
-  const isPaused = distributorState?.paused
-
-  // The proven root new distributions are pinned to: the round API's root, falling back to the
-  // latest root indexed on this instance's snapshot contract.
-  const { data: latestSnapshot } = usePonderQuery({
-    queryFn: ponderQueryFns.getLatestMerkleSnapshot(snapshotAddress),
-    enabled: !!snapshotAddress,
-  })
-  const expectedRoot = (round?.root ??
-    latestSnapshot?.root ??
-    null) as Hex | null
-
-  // The connected account's payout proof bundle for the current root
-  // (route: /contributions/:snapshot/payout/:account; mock-gated in the client module).
-  const payoutBundleQuery = useQuery(
-    contributionsQueries.payout(snapshotAddress, connectedAddress)
-  )
-  const payoutBundle = payoutBundleQuery.data
-
-  // Per-distribution fallback: the generic merkle-entry route serves proofs for any indexed
-  // root, covering distributions pinned to older roots.
-  const uniqueRoots = useMemo(
-    () => Array.from(new Set(distributions.map((d) => d.root))),
-    [distributions]
-  )
-  const rootEntryQueries = useQueries({
-    queries: uniqueRoots.map((root) => ({
-      ...ponderQueries.merkleTreeEntry({
-        snapshot: snapshotAddress,
-        root,
-        account: connectedAddress,
-      }),
-      enabled: !!connectedAddress && !!root,
-    })),
-  })
-  const entryForRoot = useCallback(
-    (root: string): { value: string; proof: string[] } | null => {
-      const index = uniqueRoots.indexOf(root as Hex)
-      const generic = index >= 0 ? rootEntryQueries[index]?.data : null
-      if (generic) return generic
-      // Fall back to the contributions payout bundle when the distribution is pinned to the
-      // round's current root.
-      if (
-        payoutBundle &&
-        expectedRoot &&
-        root.toLowerCase() === expectedRoot.toLowerCase()
-      ) {
-        return { value: payoutBundle.value, proof: payoutBundle.proof }
-      }
-      return null
-    },
-    [uniqueRoots, rootEntryQueries, payoutBundle, expectedRoot]
-  )
-
-  // Pool token allowance/balance for the funding path.
-  const { data: tokenInfo, refetch: refetchTokenInfo } = useReadContracts({
-    contracts: connectedAddress
-      ? [
-          {
-            address: poolToken,
-            abi: erc20Abi,
-            functionName: 'allowance',
-            args: [connectedAddress, distributorAddress],
-          },
-          {
-            address: poolToken,
-            abi: erc20Abi,
-            functionName: 'balanceOf',
-            args: [connectedAddress],
-          },
-        ]
-      : [],
-    query: { enabled: !!connectedAddress && !!poolToken },
-  })
-  const allowance = (tokenInfo?.[0]?.result as bigint | undefined) ?? 0n
-  const balance = tokenInfo?.[1]?.result as bigint | undefined
-
-  const parsedAmount = useMemo(() => {
-    try {
-      return amount ? parseUnits(amount, tokenDecimals) : 0n
-    } catch {
-      return 0n
-    }
-  }, [amount, tokenDecimals])
-  const needsApproval = parsedAmount > 0n && allowance < parsedAmount
-
-  const formatToken = (value: bigint) => {
-    const [whole, fraction] = formatUnits(value, tokenDecimals).split('.')
-    const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-    return `${groupedWhole}${fraction ? `.${fraction}` : ''} ${tokenSymbol}`
+  const termsStatus = contractReadState(termsQuery, 4)
+  const parsed = parseFinancialAmount(amount, poolMetadata?.decimals)
+  const parsedAmount = parsed.amount ?? 0n
+  const needsApproval =
+    !native && allowance !== undefined && allowance < parsedAmount
+  const allowed =
+    !state.distributorState?.allowlistEnabled ||
+    state.distributorState.allowlist?.some(
+      (item) => item.toLowerCase() === address?.toLowerCase()
+    )
+  const fundingProblem = !isConnected
+    ? 'Connect a wallet to fund this round.'
+    : wrongChain
+      ? `Switch to ${targetChain.name} to fund this round.`
+      : metadata.state(poolToken ?? '') === 'loading'
+        ? 'Loading payout token details…'
+        : metadata.state(poolToken ?? '') !== 'ready'
+          ? 'Payout token details could not be verified. Retry before funding.'
+          : termsStatus === 'loading'
+            ? 'Loading the current fee and proven scores…'
+            : termsStatus !== 'ready' || !feeRange || !feeRecipient
+              ? 'The fee and proven scores could not be verified. Retry before funding.'
+              : !expectedRoot
+                ? 'Funding opens after the round’s first proven scores are published.'
+                : state.distributorReadState === 'loading'
+                  ? 'Checking funding access…'
+                  : state.distributorReadState !== 'ready' ||
+                      !state.distributorState
+                    ? 'Funding access could not be verified. Retry before funding.'
+                    : state.paused
+                      ? 'Funding and payouts are paused.'
+                      : !allowed
+                        ? 'This wallet is not allowed to fund the round.'
+                        : !native &&
+                            contractReadState(tokenQuery, 2) === 'loading'
+                          ? 'Checking token balance and approval…'
+                          : !native &&
+                              contractReadState(tokenQuery, 2) !== 'ready'
+                            ? 'Token balance and approval could not be verified. Retry before funding.'
+                            : !native &&
+                                balance !== undefined &&
+                                parsedAmount > balance
+                              ? 'The amount exceeds your token balance.'
+                              : null
+  const fee =
+    feePercentage !== undefined && feeRange
+      ? quotedFee(parsedAmount, feePercentage, feeRange)
+      : undefined
+  const retryFunding = () => {
+    state.retry()
+    void Promise.allSettled([
+      termsQuery.refetch(),
+      ...(!native ? [metadata.refetch(), tokenQuery.refetch()] : []),
+    ])
   }
+  const current =
+    rewards.find((reward) => reward.distribution.root === expectedRoot) ??
+    rewards[0]
+  const loading = state.loading || (isConnected && !progress.ready)
+  const unavailable = state.readState === 'error' || state.readState === 'stale'
 
-  const handleApprove = async () => {
-    if (!connectedAddress || !publicClient || !poolToken) return
+  const fund = async () => {
+    if (
+      fundingProblem ||
+      !parsed.amount ||
+      !address ||
+      !publicClient ||
+      !poolToken ||
+      !expectedRoot ||
+      !latestState ||
+      feePercentage === undefined ||
+      !feeRange ||
+      !feeRecipient
+    ) {
+      setError(
+        fundingProblem ?? parsed.error ?? 'Enter an amount before funding.'
+      )
+      return
+    }
+    setFunding(true)
     setError(null)
-    setIsDistributing(true)
     try {
-      const gasEstimate = await publicClient.estimateContractGas({
-        address: poolToken,
-        abi: erc20Abi,
-        functionName: 'approve',
-        args: [distributorAddress, parsedAmount],
-        account: connectedAddress,
-      })
-      await txToast({
-        tx: {
+      if (needsApproval) {
+        const args = [distributor, parsed.amount] as const
+        const gas = await publicClient.estimateContractGas({
           address: poolToken,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [distributorAddress, parsedAmount],
-          gas: (gasEstimate * 120n) / 100n,
-        },
-        successMessage: 'Token approval successful!',
-      })
-      refetchTokenInfo()
-    } catch (err) {
-      console.error('Approval error:', err)
-      setError(parseErrorMessage(err))
-    } finally {
-      setIsDistributing(false)
-    }
-  }
-
-  const handleDistribute = async () => {
-    if (
-      !connectedAddress ||
-      !publicClient ||
-      !expectedRoot ||
-      !poolToken ||
-      feePercentageRaw === undefined ||
-      !feeRange ||
-      !feeRecipient ||
-      expectedTotalMerkleValue === undefined
-    )
-      return
-    setError(null)
-    setIsDistributing(true)
-    try {
-      // The full guard set: root, denominator, the fee this screen quoted, and its recipient.
-      const distributeArgs = buildDistributeArgs({
-        token: poolToken,
-        amount: parsedAmount,
-        expectedRoot,
-        expectedTotalMerkleValue,
-        claimDeadline: 0n,
-        feePercentage: feePercentageRaw,
-        feeRange,
-        feeRecipient,
-      })
-      const gasEstimate = await publicClient.estimateContractGas({
-        abi: merkleFundDistributorAbi,
-        address: distributorAddress,
-        functionName: 'distribute',
-        args: distributeArgs,
-        account: connectedAddress,
-      })
-      await txToast({
-        tx: {
+          args,
+          account: address,
+        })
+        await txToast({
+          tx: {
+            account: address,
+            chainId: targetChainId,
+            address: poolToken,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args,
+            gas: (gas * 120n) / 100n,
+          },
+          successMessage: `${tokenName} approved for this payout.`,
+        })
+        await tokenQuery.refetch()
+      } else {
+        const args = buildDistributeArgs({
+          token: poolToken,
+          amount: parsed.amount,
+          expectedRoot,
+          expectedTotalMerkleValue: latestState.totalValue,
+          claimDeadline: 0n,
+          feePercentage,
+          feeRange,
+          feeRecipient,
+        })
+        const value = native ? parsed.amount : undefined
+        const gas = await publicClient.estimateContractGas({
+          address: distributor,
           abi: merkleFundDistributorAbi,
-          address: distributorAddress,
           functionName: 'distribute',
-          args: distributeArgs,
-          gas: (gasEstimate * 120n) / 100n,
-        },
-        successMessage: 'Round payout funded!',
-      })
-      setAmount('')
-    } catch (err) {
-      console.error('Distribution error:', err)
-      setError(parseErrorMessage(err))
+          args,
+          account: address,
+          value,
+        })
+        await txToast({
+          tx: {
+            account: address,
+            chainId: targetChainId,
+            address: distributor,
+            abi: merkleFundDistributorAbi,
+            functionName: 'distribute',
+            args,
+            gas: (gas * 120n) / 100n,
+            value,
+          },
+          successMessage: 'Round payout funded.',
+        })
+        setAmount('')
+        state.retry()
+      }
+    } catch (failure) {
+      setError(parseErrorMessage(failure))
     } finally {
-      setIsDistributing(false)
+      setFunding(false)
     }
   }
 
-  const handleClaim = async (distribution: DistributionRow) => {
-    if (!connectedAddress || !publicClient) return
+  const claim = async (reward: Reward) => {
+    if (
+      !address ||
+      !publicClient ||
+      !reward.entry ||
+      wrongChain ||
+      state.paused ||
+      state.readState !== 'ready' ||
+      !progress.ready ||
+      reward.status !== 'available' ||
+      distributionClosed(reward.distribution, Math.floor(Date.now() / 1_000))
+    ) {
+      setError(
+        wrongChain
+          ? `Switch to ${targetChain.name} before claiming.`
+          : 'This payout could not be verified. Refresh before claiming.'
+      )
+      return
+    }
     setError(null)
-    setIsClaiming(true)
-    setClaimingDistributionId(distribution.id)
+    setClaiming(reward.distribution.id)
     try {
-      const entry = entryForRoot(distribution.root)
-      if (!entry) {
-        throw new Error(
-          'No payout entry found for your account in this distribution'
-        )
-      }
       const args = [
-        distribution.id,
-        connectedAddress,
-        BigInt(entry.value),
-        entry.proof as Hex[],
+        reward.distribution.id,
+        address,
+        BigInt(reward.entry.value),
+        reward.entry.proof as Hex[],
       ] as const
-      const gasEstimate = await publicClient.estimateContractGas({
+      const gas = await publicClient.estimateContractGas({
+        address: distributor,
         abi: merkleFundDistributorAbi,
-        address: distributorAddress,
         functionName: 'claim',
         args,
-        account: connectedAddress,
+        account: address,
       })
-      await txToast({
+      const [receipt] = await txToast({
         tx: {
+          account: address,
+          chainId: targetChainId,
+          address: distributor,
           abi: merkleFundDistributorAbi,
-          address: distributorAddress,
           functionName: 'claim',
           args,
-          gas: (gasEstimate * 120n) / 100n,
+          gas: (gas * 120n) / 100n,
         },
-        successMessage: 'Payout claimed!',
+        successMessage: 'Payout claimed.',
+        onTransactionSent: (hash) =>
+          progress.submitted(distributor, reward.distribution.id, hash),
       })
-    } catch (err) {
-      console.error('Claim error:', err)
-      setError(parseErrorMessage(err))
+      progress.confirmed(
+        distributor,
+        reward.distribution.id,
+        receipt.transactionHash
+      )
+      state.retry()
+    } catch (failure) {
+      progress.failed(distributor, reward.distribution.id, failure)
+      setError(parseErrorMessage(failure))
     } finally {
-      setIsClaiming(false)
-      setClaimingDistributionId(null)
+      setClaiming(null)
     }
   }
 
-  const getShareAmount = useCallback(
-    (distribution: DistributionRow) => {
-      const entry = entryForRoot(distribution.root)
-      if (!entry) return 0n
-      const totalDistributable =
-        distribution.amountFunded - distribution.feeAmount
-      if (distribution.totalMerkleValue === 0n) return 0n
-      return (
-        (totalDistributable * BigInt(entry.value)) /
-        distribution.totalMerkleValue
-      )
-    },
-    [entryForRoot]
-  )
-
-  const getClaimableAmount = useCallback(
-    (distribution: DistributionRow) => {
-      if ((claimedByDistribution.get(distribution.id) ?? 0n) > 0n) return 0n
-      return getShareAmount(distribution)
-    },
-    [claimedByDistribution, getShareAmount]
-  )
-
-  // The hero represents the newest distribution against the current proven score table. If the
-  // round service is unavailable, the newest on-chain distribution remains a useful fallback.
-  const currentDistribution = useMemo(() => {
-    const currentRoot = expectedRoot?.toLowerCase()
-    return (
-      (currentRoot
-        ? distributions.find(
-            (distribution) => distribution.root.toLowerCase() === currentRoot
-          )
-        : undefined) ??
-      distributions[0] ??
-      null
-    )
-  }, [distributions, expectedRoot])
-
-  const currentEntry = currentDistribution
-    ? entryForRoot(currentDistribution.root)
-    : null
-  const currentClaimedAmount = currentDistribution
-    ? (claimedByDistribution.get(currentDistribution.id) ?? 0n)
-    : 0n
-  const currentShareAmount = currentDistribution
-    ? currentClaimedAmount > 0n
-      ? currentClaimedAmount
-      : getShareAmount(currentDistribution)
-    : 0n
-  const currentRootQuery = currentDistribution
-    ? rootEntryQueries[uniqueRoots.indexOf(currentDistribution.root as Hex)]
-    : undefined
-  const currentUsesBundle =
-    !!currentDistribution &&
-    !!expectedRoot &&
-    currentDistribution.root.toLowerCase() === expectedRoot.toLowerCase()
-  const isLoadingCurrentEntry =
-    !!connectedAddress &&
-    !!currentDistribution &&
-    currentClaimedAmount === 0n &&
-    !currentEntry &&
-    (!!currentRootQuery?.isLoading ||
-      (currentUsesBundle && payoutBundleQuery.isLoading))
-  const currentEntryFailed =
-    currentClaimedAmount === 0n &&
-    !currentEntry &&
-    (!!currentRootQuery?.isError ||
-      (currentUsesBundle && payoutBundleQuery.isError))
-
-  const distributionColumns: Column<DistributionRow>[] = [
+  const claimButton = (reward: Reward) =>
+    reward.status === 'pending' && reward.transactionHash ? (
+      <PendingClaimRecovery
+        key={reward.transactionHash}
+        progress={progress}
+        distributor={distributor}
+        id={reward.distribution.id}
+        hash={reward.transactionHash}
+        onRefresh={state.retry}
+        disabled={claiming !== null}
+      />
+    ) : reward.status === 'available' ? (
+      <Button
+        onClick={() => void claim(reward)}
+        disabled={
+          claiming !== null ||
+          state.paused ||
+          wrongChain ||
+          !progress.ready ||
+          state.readState !== 'ready'
+        }
+      >
+        {claiming === reward.distribution.id ? 'Claiming…' : 'Claim payout'}
+      </Button>
+    ) : null
+  const statusText = (reward: Reward) =>
+    ({
+      available: state.paused ? 'Paused' : 'Ready to claim',
+      claimed: 'Claimed',
+      pending: 'Claim sent · waiting for confirmation',
+      expired: 'Claim window closed',
+      swept: 'Returned to funder',
+      unknown: 'Not verified',
+      none: 'No share',
+    })[reward.status]
+  const transactionLink = (reward: Reward) =>
+    reward.transactionHash && targetChain.blockExplorers?.default.url ? (
+      <a
+        href={`${targetChain.blockExplorers.default.url}/tx/${reward.transactionHash}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs underline"
+      >
+        View claim transaction
+      </a>
+    ) : null
+  const columns: Column<Reward>[] = [
     {
       key: 'funder',
       header: 'FUNDED BY',
-      sortable: false,
-      render: (row) => (
-        <Address address={row.distributor} displayMode="truncated" />
+      render: (reward) => (
+        <Address
+          address={reward.distribution.distributor}
+          displayMode="truncated"
+        />
       ),
+    },
+    {
+      key: 'token',
+      header: 'TOKEN',
+      render: (reward) =>
+        reward.distribution.token === zeroAddress ? (
+          'ETH'
+        ) : (
+          <Address
+            address={reward.distribution.token}
+            displayMode="truncated"
+          />
+        ),
     },
     {
       key: 'amount',
       header: 'POOL',
-      sortable: true,
-      accessor: (row) => Number(row.amountFunded),
-      render: (row) => formatToken(row.amountFunded),
+      render: (reward) =>
+        formatFinancialAmount(
+          reward.distribution.amountFunded,
+          state.tokenLabel(reward.distribution.token)
+        ),
     },
     {
-      key: 'distributed',
+      key: 'paid',
       header: 'PAID OUT',
-      sortable: true,
-      accessor: (row) => Number(row.amountDistributed),
-      render: (row) => formatToken(row.amountDistributed),
+      render: (reward) =>
+        formatFinancialAmount(
+          reward.distribution.amountDistributed,
+          state.tokenLabel(reward.distribution.token)
+        ),
     },
     {
       key: 'timestamp',
       header: 'DATE',
       sortable: true,
-      accessor: (row) => Number(row.timestamp),
-      render: (row) =>
-        new Date(Number(row.timestamp) * 1000).toLocaleDateString(),
+      accessor: (reward) => Number(reward.distribution.timestamp),
+      render: (reward) =>
+        new Date(
+          Number(reward.distribution.timestamp) * 1_000
+        ).toLocaleDateString(),
     },
     {
-      key: 'claimable',
+      key: 'share',
       header: 'YOUR SHARE',
-      sortable: false,
-      render: (row) => {
-        const alreadyClaimed = claimedByDistribution.get(row.id)
-        if (alreadyClaimed && alreadyClaimed > 0n) {
-          return (
-            <span className="flex items-center gap-1 text-success">
-              <Check className="w-4 h-4" />
-              Claimed {formatToken(alreadyClaimed)}
-            </span>
-          )
-        }
-        const claimable = getClaimableAmount(row)
-        return claimable > 0n ? formatToken(claimable) : 'No share'
-      },
+      render: (reward) =>
+        !isConnected ? (
+          'Connect to check'
+        ) : (
+          <div className="space-y-1">
+            <p>{statusText(reward)}</p>
+            {reward.amount > 0n && (
+              <p>
+                {formatFinancialAmount(
+                  reward.amount,
+                  state.tokenLabel(reward.distribution.token)
+                )}
+              </p>
+            )}
+            {transactionLink(reward)}
+          </div>
+        ),
     },
     {
       key: 'action',
       header: '',
-      sortable: false,
-      render: (row) => {
-        const alreadyClaimed = claimedByDistribution.get(row.id)
-        if (alreadyClaimed && alreadyClaimed > 0n) return ''
-        // The newest current payout owns the page's primary Claim button. Historical payouts
-        // remain claimable from the table without duplicating that action in the usual one-row
-        // case.
-        if (currentDistribution?.id === row.id) return ''
-        const claimable = getClaimableAmount(row)
-        if (claimable === 0n) return ''
-        return (
-          <Button
-            size="xs"
-            variant="default"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleClaim(row)
-            }}
-            disabled={isClaiming || isPaused}
-          >
-            {claimingDistributionId === row.id ? 'Claiming...' : 'Claim'}
-          </Button>
-        )
-      },
+      render: (reward) =>
+        reward.distribution.id === current?.distribution.id
+          ? null
+          : claimButton(reward),
     },
   ]
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <header className="space-y-4">
-        <NetworkHeader
-          network={network}
-          tabs={contributionsTabs(network)}
-          className="w-full"
-        />
-        <div className="max-w-3xl space-y-2">
-          <h2 className="text-2xl font-semibold">Claim your share</h2>
-          <p className="text-muted-foreground">
-            Your share comes from the round&apos;s proven community scores.
-            Funding or claiming later never changes your portion.
-          </p>
-        </div>
+        <NetworkHeader network={network} tabs={contributionsTabs(network)} />
+        <h2 className="text-2xl">Claim your share</h2>
+        <p className="text-sm text-muted-foreground">
+          Your share is fixed by the proven scores used when each payout was
+          funded.
+        </p>
       </header>
-
-      {isPaused && (
-        <Card type="outline" size="lg" className="border-warn">
-          <p className="text-sm text-warn">
-            Payouts are paused right now. Funding and claiming will resume when
-            the operator unpauses the contract.
+      {wrongChain && (
+        <Card type="outline" size="md" className="space-y-3">
+          <p>
+            Payouts are shown for {targetChain.name}. Switch your wallet to fund
+            or claim.
           </p>
+          <Button
+            onClick={() => void switchToTarget()}
+            disabled={switchingTarget}
+          >
+            Switch to {targetChain.name}
+          </Button>
+          {switchError && (
+            <p role="alert" className="text-error">
+              {switchError}
+            </p>
+          )}
         </Card>
       )}
-
-      {error && <p className="text-sm text-error">{error}</p>}
-
+      {state.paused && (
+        <p role="status" className="text-sm text-warn">
+          Funding and payouts are paused. Your recorded share is unchanged.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-error">
+          {error}
+        </p>
+      )}
       <section
         aria-labelledby="your-share-heading"
-        className="grid min-h-[18rem] gap-8 border-y border-hairline py-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+        className="grid gap-6 border-y border-hairline py-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
       >
         <div className="min-w-0 space-y-3">
-          <p id="your-share-heading" className="tg-label">
-            Your share:
-          </p>
+          <h3 id="your-share-heading" className="tg-label">
+            Your share
+          </h3>
           {!isConnected ? (
-            <p className="max-w-xl text-text-muted">
-              Connect your wallet to see your share and claim it.
-            </p>
-          ) : isLoadingDistributions ||
-            isLoadingUserClaims ||
-            isLoadingCurrentEntry ? (
-            <p className="text-sm text-text-muted" aria-live="polite">
-              Checking your share in the current payout.
-            </p>
-          ) : !currentDistribution ? (
-            <div className="space-y-2">
-              <p className="tg-display text-4xl tabular-nums">
-                Not available yet
+            <>
+              <p>Connect your wallet to see your share.</p>
+              <WalletConnectionButton />
+            </>
+          ) : unavailable ? (
+            <>
+              <p className="text-xl">We couldn’t verify your payouts</p>
+              <p className="text-sm text-muted-foreground">
+                {state.readState === 'stale'
+                  ? 'Previously loaded data is shown below. Refresh it before claiming.'
+                  : 'Try the data service again to check your rewards.'}
               </p>
-              <p className="text-sm text-text-muted">
-                No payout has been funded for this round yet.
+              <Button variant="outline" onClick={state.retry}>
+                Retry payouts
+              </Button>
+            </>
+          ) : loading ? (
+            <p role="status">Checking your share…</p>
+          ) : !current ? (
+            <>
+              <p className="text-xl">No payout funded yet</p>
+              <p className="text-sm text-muted-foreground">
+                Your share appears after a payout is funded for this round.
               </p>
-            </div>
-          ) : currentEntryFailed ? (
-            <div className="space-y-2">
-              <p className="tg-display text-4xl tabular-nums">Unavailable</p>
-              <p className="text-sm text-warn">
-                Your payout entry could not be loaded. Try again when the round
-                service is available.
+            </>
+          ) : current.status === 'unknown' ? (
+            <>
+              <p className="text-xl">Your share could not be verified</p>
+              <p className="text-sm text-muted-foreground">
+                Payout proofs or token details are unavailable. Recheck them
+                before claiming.
               </p>
-            </div>
+              <Button variant="outline" onClick={state.retry}>
+                Retry payout details
+              </Button>
+            </>
           ) : (
-            <div className="space-y-3">
-              <p className="tg-display text-4xl tabular-nums break-words sm:text-5xl">
-                {formatToken(currentShareAmount)}
+            <>
+              <p className="tg-display break-words text-3xl sm:text-5xl">
+                {formatFinancialAmount(
+                  current.amount,
+                  state.tokenLabel(current.distribution.token)
+                )}
               </p>
-              {currentClaimedAmount > 0n ? (
-                <p className="flex items-center gap-2 text-sm text-success">
-                  <Check className="h-4 w-4" aria-hidden="true" />
-                  Already claimed from this payout.
-                </p>
-              ) : currentShareAmount === 0n ? (
-                <p className="text-sm text-text-muted">
-                  This wallet has no share in the current payout.
-                </p>
-              ) : (
-                <p className="text-sm text-text-muted">
-                  This amount is fixed by the proven scores for this payout.
-                </p>
-              )}
-            </div>
+              <p className="flex items-center gap-2 text-sm">
+                {current.status === 'claimed' && (
+                  <Check className="h-4 w-4 text-success" aria-hidden />
+                )}
+                {statusText(current)}
+              </p>
+              {transactionLink(current)}
+            </>
           )}
         </div>
-
         {isConnected &&
-          currentDistribution &&
-          currentShareAmount > 0n &&
-          currentClaimedAmount === 0n &&
-          !isLoadingUserClaims &&
-          !isLoadingCurrentEntry &&
-          !currentEntryFailed && (
-            <Button
-              variant="default"
-              size="lg"
-              className="w-full sm:w-auto"
-              onClick={() => handleClaim(currentDistribution)}
-              disabled={isClaiming || isPaused}
-            >
-              {claimingDistributionId === currentDistribution.id
-                ? 'Claiming...'
-                : 'Claim'}
-            </Button>
-          )}
+          !loading &&
+          !unavailable &&
+          current &&
+          claimButton(current)}
       </section>
-
       <section className="space-y-4" aria-labelledby="payout-history-heading">
-        <div id="payout-history-heading">
-          <SectionHeading>Payout history</SectionHeading>
-        </div>
-        {isLoadingDistributions ? (
-          <p className="text-sm text-muted-foreground">
-            Loading payout history.
-          </p>
-        ) : distributions.length === 0 ? (
-          <Card type="outline" size="lg" className="text-center">
-            <p className="text-muted-foreground">
-              No payouts have been funded for this round yet.
+        <SectionHeading>
+          <span id="payout-history-heading">Payout history</span>
+        </SectionHeading>
+        {state.historyState === 'loading' ? (
+          <p role="status">Loading payout history…</p>
+        ) : state.historyState !== 'ready' ? (
+          <div role="status" className="space-y-2">
+            <p>
+              {state.historyState === 'stale'
+                ? 'Payout history could not be refreshed. Previously loaded pools are shown below.'
+                : 'Payout history could not be loaded.'}
             </p>
-          </Card>
-        ) : (
+            <Button variant="outline" onClick={state.retry}>
+              Retry history
+            </Button>
+          </div>
+        ) : rewards.length === 0 ? (
+          <p>No payouts have been funded for this round yet.</p>
+        ) : null}
+        {(state.metadataError || state.proofError) && (
+          <div role="status" className="space-y-2 text-sm text-warn">
+            <p>
+              Some token or proof details could not be verified. Unverified
+              payouts cannot be claimed.
+            </p>
+            <Button variant="outline" onClick={state.retry}>
+              Retry payout details
+            </Button>
+          </div>
+        )}
+        {rewards.length > 0 && (
           <Table
-            columns={distributionColumns}
-            data={distributions}
+            columns={columns}
+            data={rewards}
             defaultSortColumn="timestamp"
             defaultSortDirection="desc"
             rowClassName="text-sm"
-            getRowKey={(row) => row.id.toString()}
+            getRowKey={(reward) => reward.distribution.id.toString()}
           />
         )}
       </section>
-
       <details className="group border-y border-hairline">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-4 py-4 text-sm">
           <span>Fund this round</span>
-          <ChevronDown
-            className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
-            aria-hidden="true"
-          />
+          <ChevronDown className="h-4 w-4" aria-hidden />
         </summary>
-        <div className="border-t border-hairline py-6">
+        <div className="max-w-xl space-y-4 border-t border-hairline py-6">
+          <p className="text-sm text-muted-foreground">
+            Deposit {tokenName} using the latest proven scores. Later score
+            changes will not change this payout.
+          </p>
           {!isConnected ? (
-            <p className="text-sm text-text-muted">
-              Connect your wallet to fund this round.
-            </p>
-          ) : isPaused ? (
-            <p className="text-sm text-warn">
-              Funding will resume when the operator unpauses the contract.
-            </p>
+            <WalletConnectionButton />
           ) : (
-            <div className="max-w-xl space-y-4">
-              <div>
-                <SectionHeading>Fund the round payout</SectionHeading>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Deposit {tokenSymbol} against the round&apos;s latest proven
-                  scores. The deposit is locked to that exact score table, so
-                  later score changes cannot redirect it.
-                </p>
-              </div>
-
+            <>
               <div className="space-y-2">
-                <Label>Amount ({tokenSymbol})</Label>
+                <Label htmlFor="round-funding-amount">
+                  Amount ({tokenName})
+                </Label>
                 <Input
-                  type="number"
-                  placeholder="0.0"
+                  id="round-funding-amount"
+                  inputMode="decimal"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  onChange={(event) => setAmount(event.target.value)}
+                  disabled={funding}
+                  aria-invalid={!!parsed.error}
+                  aria-describedby="round-funding-error round-funding-status"
                 />
+                {parsed.error && (
+                  <p
+                    id="round-funding-error"
+                    role="alert"
+                    className="text-xs text-error"
+                  >
+                    {parsed.error}
+                  </p>
+                )}
                 {balance !== undefined && (
                   <p className="text-xs text-muted-foreground">
-                    Your balance: {formatToken(balance)}
+                    Wallet balance:{' '}
+                    {formatFinancialAmount(balance, poolMetadata)}
                   </p>
                 )}
-                {feePercentage !== undefined && parsedAmount > 0n && (
+                {termsStatus === 'ready' &&
+                fee !== undefined &&
+                parsed.amount &&
+                poolMetadata ? (
                   <p className="text-xs text-muted-foreground">
-                    A {feePercentage.toFixed(2)}% fee is deducted from the
-                    deposit before it is split.
+                    Fee: {formatFinancialAmount(fee, poolMetadata)} · Members
+                    receive{' '}
+                    {formatFinancialAmount(parsed.amount - fee, poolMetadata)}
                   </p>
+                ) : null}
+              </div>
+              <div
+                id="round-funding-status"
+                role="status"
+                className="space-y-2 text-sm text-muted-foreground"
+              >
+                {fundingProblem && (
+                  <>
+                    <p>{fundingProblem}</p>
+                    {!wrongChain && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={retryFunding}
+                        disabled={funding}
+                      >
+                        Retry checks
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
-
-              {needsApproval ? (
-                <Button
-                  onClick={handleApprove}
-                  disabled={isDistributing || !parsedAmount}
-                >
-                  {isDistributing
-                    ? 'Approving...'
-                    : `Approve ${tokenSymbol} spending`}
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleDistribute}
-                  disabled={isDistributing || !parsedAmount || !expectedRoot}
-                >
-                  {isDistributing ? 'Funding...' : 'Fund payout'}
-                </Button>
-              )}
-
-              {expectedRoot ? (
+              <Button
+                onClick={() => void fund()}
+                disabled={funding || !!fundingProblem || !parsed.amount}
+              >
+                {funding
+                  ? needsApproval
+                    ? 'Approving…'
+                    : 'Funding…'
+                  : needsApproval
+                    ? `Approve ${tokenName} spending`
+                    : 'Fund payout'}
+              </Button>
+              {expectedRoot && (
                 <p className="text-xs text-muted-foreground">
-                  Locked to proven score table:{' '}
+                  Using proven score table:{' '}
                   <CopyableText
                     text={expectedRoot}
-                    className="text-xs text-muted-foreground"
                     truncate
                     truncateEnds={[8, 6]}
                     alwaysShowCopyIcon
                   />
                 </p>
-              ) : (
-                <p className="text-xs text-warn">
-                  Funding is disabled until the round&apos;s first proven score
-                  table lands on-chain.
-                </p>
               )}
-            </div>
+            </>
           )}
         </div>
       </details>

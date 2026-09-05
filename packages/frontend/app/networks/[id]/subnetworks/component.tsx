@@ -160,7 +160,7 @@ export const SubnetworksPage = () => {
       createdAt: Date.now(),
     })
     router.push(
-      `/networks/${network.id}/governance?new=1&actionDraft=${fingerprint}`
+      `/networks/${network.id}/governance/new?actionDraft=${fingerprint}`
     )
   }
 

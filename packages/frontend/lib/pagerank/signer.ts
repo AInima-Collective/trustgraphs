@@ -6,15 +6,15 @@
 //! root producer), then applies a deterministic top-N selection rule. It is float-free and
 //! deterministic so the SP1 guest, host, and browser all agree byte-for-byte.
 
-import { concat, keccak256, type Hex } from 'viem'
+import { type Hex, concat, keccak256 } from 'viem'
 
 import { compute } from './compute'
 import { selectionParamsHash, signerJournalDigest } from './encode'
 import { signerSetRoot } from './merkle'
 import {
   type GuestInput,
-  type SignerActivity,
   type SelectionParams,
+  type SignerActivity,
   type SignerComputeResult,
   type SignerInput,
   type SignerJournal,
@@ -118,7 +118,10 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     activityAcc = foldActivity(activityAcc, BigInt(index + 1), record)
     const account = record.account.toLowerCase() as Hex
     const previous = latest.get(account) ?? 0n
-    latest.set(account, record.blockNumber > previous ? record.blockNumber : previous)
+    latest.set(
+      account,
+      record.blockNumber > previous ? record.blockNumber : previous
+    )
   })
   if (activityCheckpoint.count !== BigInt(activity.length)) {
     throw new Error('activity count mismatch')
@@ -131,11 +134,17 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     (address) => address.toLowerCase() as Hex
   )
   currentSigners.sort(cmpAddr)
-  if (currentSigners.length === 0 || new Set(currentSigners).size !== currentSigners.length) {
+  if (
+    currentSigners.length === 0 ||
+    new Set(currentSigners).size !== currentSigners.length
+  ) {
     throw new Error('invalid current Safe owner set')
   }
   const currentThreshold = input.currentThreshold ?? 0n
-  if (currentThreshold < 1n || currentThreshold > BigInt(currentSigners.length)) {
+  if (
+    currentThreshold < 1n ||
+    currentThreshold > BigInt(currentSigners.length)
+  ) {
     throw new Error('invalid current Safe threshold')
   }
 
@@ -156,12 +165,12 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
   const witnessPool = input.wasInitialized
     ? currentSigners
     : [...positiveScores]
-  const witnessCount = witnessPool.filter((account) => fresh.has(account)).length
+  const witnessCount = witnessPool.filter((account) =>
+    fresh.has(account)
+  ).length
   const minimum = input.selection.minActivityWitnesses
   let activityApplied =
-    activityCheckpoint.count !== 0n &&
-    minimum >= 2 &&
-    witnessCount >= minimum
+    activityCheckpoint.count !== 0n && minimum >= 2 && witnessCount >= minimum
   let chosen = activityApplied
     ? selectSigners(
         base.scores.filter(([account]) =>

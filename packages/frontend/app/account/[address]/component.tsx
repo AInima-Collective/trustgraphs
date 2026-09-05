@@ -195,6 +195,15 @@ export const AccountProfilePage = ({
       tooltip: 'The name of the network.',
       sortable: false,
       accessor: (row) => row.network.name,
+      render: (row) => (
+        <Link
+          href={`/networks/${row.network.id}`}
+          onClick={() => pushBreadcrumb()}
+          className="tg-touch-target inline-flex items-center underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        >
+          {row.network.name}
+        </Link>
+      ),
     },
     {
       key: 'seed',
@@ -347,9 +356,15 @@ export const AccountProfilePage = ({
 
         <div className="flex flex-row gap-2">
           {!!selectedNetworkRow?.network.applicationUrl && (
-            <Tooltip title={`Apply to join ${selectedNetworkRow.network.name}`}>
+            <Tooltip
+              title={`Apply to join ${selectedNetworkRow.network.name}`}
+              asChild
+              nativeButton={false}
+            >
               <ButtonLink
+                role="link"
                 href={selectedNetworkRow.network.applicationUrl}
+                aria-label={`Apply to join ${selectedNetworkRow.network.name}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 size="icon"
@@ -778,10 +793,15 @@ const commonAttestationColumns = (
     sortable: true,
     accessor: (row) => Number(row.time),
     render: (row) => (
-      <div className="text-sm text-text">
-        <div>{row.formattedTime}</div>
-        <div className="text-xs text-text-muted">{row.formattedTimeAgo}</div>
-      </div>
+      <Link
+        href={`/attestations/${row.uid}`}
+        onClick={() => pushBreadcrumb()}
+        className="tg-touch-target inline-flex flex-col justify-center text-sm text-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        aria-label={`View attestation from ${row.formattedTime}`}
+      >
+        <span>{row.formattedTime}</span>
+        <span className="text-xs text-text-muted">{row.formattedTimeAgo}</span>
+      </Link>
     ),
   },
 ]

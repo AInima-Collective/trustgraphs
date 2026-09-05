@@ -1,13 +1,14 @@
 import type { Connector, CreateConnectorFn } from '@wagmi/core'
 import { Chain } from 'viem'
-import { sepolia } from 'viem/chains'
+import { mainnet } from 'viem/chains'
 import { createConfig, fallback, http, mock, webSocket } from 'wagmi'
-import { mainnet } from 'wagmi/chains'
 import { injected } from 'wagmi/connectors/injected'
 
+import { applicationAndEnsChains, applicationChain } from './application-chains'
 import { CHAIN } from './config'
 import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'
 import { getReviewWalletAccount } from './review-wallet-fixture'
+import { rpcUpstreamUrl } from './rpc-upstream'
 
 const localRpcUrl =
   process.env.NEXT_PUBLIC_RPC_URL_31337 || 'http://localhost:8545'
@@ -34,32 +35,34 @@ export const localChain: Chain = {
   },
 }
 
-// Environment-based network configuration
+// Browser reads stay on the same-origin proxy; server reads use private upstreams.
 export const getCurrentChainConfig = (): Chain => {
-  if (CHAIN === 'sepolia') {
-    const publicChain = sepolia
-    const chainId = publicChain.id
-    const webSocketUrl =
-      process.env[`NEXT_PUBLIC_WEBSOCKET_URL_${publicChain.id}`]
-    return {
-      ...publicChain,
-      rpcUrls: {
-        default: {
-          http: [
-            (typeof window !== 'undefined' ? window.location.origin : '') +
-              `/api/rpc/${chainId}?id=0`,
-            (typeof window !== 'undefined' ? window.location.origin : '') +
-              `/api/rpc/${chainId}?id=1`,
-          ],
-          ...(webSocketUrl && { webSocket: [webSocketUrl] }),
-        },
-        provided: publicChain.rpcUrls.default,
+  const selected = applicationChain(CHAIN)
+  if (CHAIN === 'local') return localChain
+  const chainId = selected.id
+  const browser = typeof window !== 'undefined'
+  const httpUrls = browser
+    ? [0, 1].map(
+        (id) => `${window.location.origin}/api/rpc/${chainId}?id=${id}`
+      )
+    : [
+        rpcUpstreamUrl(String(chainId), 0),
+        rpcUpstreamUrl(String(chainId), 1),
+      ].filter((url): url is string => !!url)
+  // Next only inlines literal NEXT_PUBLIC environment accesses in browser code.
+  const webSocketUrl =
+    CHAIN === 'mainnet'
+      ? process.env.NEXT_PUBLIC_WEBSOCKET_URL_1
+      : process.env.NEXT_PUBLIC_WEBSOCKET_URL_11155111
+  return {
+    ...selected,
+    rpcUrls: {
+      default: {
+        http: httpUrls.length ? httpUrls : selected.rpcUrls.default.http,
+        ...(webSocketUrl && { webSocket: [webSocketUrl] }),
       },
-    }
-  } else if (CHAIN === 'local') {
-    return localChain
-  } else {
-    throw new Error(`Unsupported chain: ${CHAIN}`)
+      provided: selected.rpcUrls.default,
+    },
   }
 }
 
@@ -88,11 +91,11 @@ const getEnsMainnetConfig = (): Chain => {
   }
 }
 
-const supportedChains = [
+const supportedChains = applicationAndEnsChains(
   currentNetworkConfig,
-  // ENS registry and Universal Resolver calls always run on Ethereum mainnet.
-  getEnsMainnetConfig(),
-] as readonly [Chain, ...Chain[]]
+  // Keep a single chain 1 transport when the application itself is on mainnet.
+  getEnsMainnetConfig()
+)
 
 let wagmiConfig: ReturnType<typeof _makeWagmiConfig> | undefined
 /**

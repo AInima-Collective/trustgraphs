@@ -22,3 +22,12 @@ jobs:
 
       - name: Check TypeScript version and every workspace
         run: pnpm typecheck:all
+
+      - name: Frontend lint
+        run: pnpm --dir packages/frontend lint
+
+      - name: Frontend domain and release regression tests
+        run: pnpm --dir packages/frontend test
+
+      - name: Public deployment manifest regression tests
+        run: pnpm exec tsx --test contracts/deploy/release-manifest.test.ts

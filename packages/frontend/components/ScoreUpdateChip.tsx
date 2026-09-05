@@ -16,7 +16,8 @@ import { Popup } from './Popup'
  *
  * Scores here are published in verified batches, so between an attestation landing and its scores
  * arriving there is a real minutes-long window. This chip is where that window lives in the UI:
- * "N new attestations" while folds queue, "recounting scores" while a checkpoint is frozen and
+ * "N new attestations" while folds queue, "generating scores" for the first run or
+ * "recounting scores" for later updates while a checkpoint is frozen and
  * proving, a brief "scores updated" flash (plus a toast, plus a data refresh) when the root lands.
  * Clicking it opens the plain-language explanation; the proof talk stays in here, one click deep,
  * never on the surface.
@@ -73,7 +74,9 @@ export const ScoreUpdateChip = ({
   const label = flashing
     ? 'scores updated'
     : status.recounting
-      ? 'recounting scores…'
+      ? status.lastUpdate
+        ? 'recounting scores…'
+        : 'generating scores…'
       : pendingCount
         ? `${pendingCount} new attestation${pendingCount === 1 ? '' : 's'}`
         : status.lastUpdate
@@ -101,7 +104,7 @@ export const ScoreUpdateChip = ({
             type="button"
             onClick={onClick}
             className={cn(
-              'inline-flex cursor-pointer items-center gap-2 border border-border bg-surface px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors',
+              'tg-touch-target inline-flex cursor-pointer items-center gap-2 border border-border bg-surface px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors',
               open ? 'text-text' : 'text-text-muted hover:text-text',
               className
             )}
@@ -114,8 +117,8 @@ export const ScoreUpdateChip = ({
     >
       <div className="max-w-xs space-y-3 text-sm">
         <p>
-          Attestations are saved to the network right away. Scores recount in
-          batches: each update is checked before it is published.
+          Attestations are saved to the network right away. Scores are computed
+          in batches: each update is checked before it is published.
         </p>
 
         <div className="space-y-1 font-mono text-xs">
@@ -139,7 +142,9 @@ export const ScoreUpdateChip = ({
             <span className="text-text-muted">STATUS</span>
             <span>
               {status.recounting
-                ? 'recounting now…'
+                ? status.lastUpdate
+                  ? 'recounting now…'
+                  : 'generating scores…'
                 : pendingCount
                   ? 'waiting for the next update'
                   : 'up to date'}

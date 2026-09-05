@@ -33,8 +33,7 @@ const initializeScores = (
 
   const trustedCount = seeds.size
   const regularCount = reachable
-    ? Array.from(reachable.keys()).filter((node) => !isSeed(seeds, node))
-        .length
+    ? Array.from(reachable.keys()).filter((node) => !isSeed(seeds, node)).length
     : 0
   const trustedTotal = p.trustShareFp
   const regularTotal = s - p.trustShareFp

@@ -98,6 +98,7 @@ export const IdentityStep = ({
       >
         <Input
           id="network-image"
+          type="url"
           value={data.image}
           placeholder="https://example.org/logo.png"
           onChange={(e) => onChange({ image: e.target.value })}
@@ -114,6 +115,7 @@ export const IdentityStep = ({
       >
         <Input
           id="network-application"
+          type="url"
           value={data.applicationUrl}
           placeholder="https://example.org/apply"
           onChange={(e) => onChange({ applicationUrl: e.target.value })}

@@ -6,12 +6,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
-import { TableAddress } from '@/components/Address'
+import { Address, TableAddress } from '@/components/Address'
 import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
-import { CreateBatchAttestationModal } from '@/components/CreateBatchAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { HybridVouchAudit } from '@/components/HybridVouchAudit'
@@ -205,13 +204,18 @@ export const NetworkPage = () => {
 
           <div className="flex shrink-0 flex-row flex-wrap items-center gap-3 lg:pt-1">
             <ScoreUpdateChip snapshot={network.contracts.merkleSnapshot} />
-            <CreateBatchAttestationModal className="h-11 px-5" />
             <CreateAttestationModal
-              title="Make attestation"
+              title="Vouch for someone"
               className="h-11 px-5"
             />
           </div>
         </div>
+        <a
+          href="#network-members"
+          className="tg-touch-target inline-flex items-center text-sm text-text-muted underline underline-offset-4 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        >
+          View members and scores ↓
+        </a>
       </header>
 
       {network.importedLane && <ImportedEasStatus network={network} />}
@@ -220,7 +224,7 @@ export const NetworkPage = () => {
           instrument rail instead of repeated as a row of cards below it. */}
       <section
         aria-label={`${name} trust graph`}
-        className="relative h-[max(38rem,calc(100svh-10rem))] max-h-[58rem]"
+        className="relative h-96 sm:h-[max(32rem,calc(100svh-12rem))] sm:max-h-[48rem] [@media(max-height:480px)]:h-[22rem]"
       >
         {filterMode === 'agents' && (
           <p className="absolute left-1/2 top-4 z-10 w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 border border-border bg-background/90 px-3 py-2 text-center text-xs text-text-muted backdrop-blur-sm">
@@ -247,11 +251,11 @@ export const NetworkPage = () => {
         />
       </section>
 
-      {network.offchainLane && (
-        <HybridVouchAudit attestations={attestationsData ?? []} />
-      )}
-
-      <div className="space-y-6 border-t border-border pt-10 sm:pt-12">
+      <section
+        id="network-members"
+        aria-label="Network members and scores"
+        className="scroll-mt-6 space-y-6 border-t border-border pt-6 sm:pt-10"
+      >
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">
           <div className="flex flex-col gap-1">
             <SectionHeading>Network members</SectionHeading>
@@ -288,6 +292,7 @@ export const NetworkPage = () => {
               )}
 
               <Dropdown
+                label="Filter members"
                 options={[
                   { value: 'agents', label: 'AGENT WALLETS' },
                   { value: 'validated', label: 'VALIDATED' },
@@ -328,24 +333,66 @@ export const NetworkPage = () => {
         {!isLoading &&
           networkData.length > 0 &&
           (filteredNetworkData.length > 0 ? (
-            <Table
-              columns={columns}
-              data={filteredNetworkData}
-              defaultSortDirection="asc"
-              rowClassName="text-sm"
-              rowCellClassName={(row) =>
-                !isValidatedInNetwork(network, row.value) ? 'bg-accent/40' : ''
-              }
-              defaultSortColumn="rank"
-              onRowClick={
-                // Will be prefetched in the TableAddress component
-                (row) => {
-                  pushBreadcrumb()
-                  router.push(`/account/${row.account}`)
+            <>
+              <div className="md:hidden">
+                <div className="flex justify-between border-b border-hairline-strong pb-2 text-xs uppercase tracking-wider text-text-subtle">
+                  <span>Member · rank</span>
+                  <span>Trust score</span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {[...filteredNetworkData]
+                    .sort((a, b) => a.rank - b.rank)
+                    .map((row) => (
+                      <li
+                        key={row.account}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <Address
+                            address={row.account}
+                            displayMode="truncated"
+                            showCopyIcon={false}
+                            showNavIcon
+                          />
+                          <p className="text-xs text-text-muted">
+                            #{row.rank} · {row.received || 0} received ·{' '}
+                            {row.sent || 0} given
+                            {isTrustedSeed(network, row.account) && (
+                              <span> · {weighted ? 'Prior' : 'Seed'}</span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="text-right text-sm tabular-nums text-text">
+                          {columns
+                            .find((column) => column.key === 'score')
+                            ?.render?.(row)}
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+              <Table
+                className="hidden md:block"
+                columns={columns}
+                data={filteredNetworkData}
+                defaultSortDirection="asc"
+                rowClassName="text-sm"
+                rowCellClassName={(row) =>
+                  !isValidatedInNetwork(network, row.value)
+                    ? 'bg-accent/40'
+                    : ''
                 }
-              }
-              getRowKey={(row) => row.account}
-            />
+                defaultSortColumn="rank"
+                onRowClick={
+                  // Will be prefetched in the TableAddress component
+                  (row) => {
+                    pushBreadcrumb()
+                    router.push(`/account/${row.account}`)
+                  }
+                }
+                getRowKey={(row) => row.account}
+              />
+            </>
           ) : (
             <div className="border border-border bg-surface py-8 text-center">
               <div className="text-sm text-text-muted">NO MEMBERS FOUND</div>
@@ -362,11 +409,21 @@ export const NetworkPage = () => {
               NO NETWORK MEMBERS FOUND
             </div>
             <div className="text-xs mt-2 text-text-muted">
-              CREATE ATTESTATIONS TO START BUILDING THE NETWORK
+              VOUCH FOR SOMEONE TO START BUILDING THE NETWORK
             </div>
           </Card>
         )}
-      </div>
+      </section>
+      {network.offchainLane && (
+        <details className="border-t border-border pt-4">
+          <summary className="tg-touch-target cursor-pointer py-3 text-sm text-text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
+            Vouch records and verification details
+          </summary>
+          <div className="pt-4">
+            <HybridVouchAudit attestations={attestationsData ?? []} />
+          </div>
+        </details>
+      )}
     </div>
   )
 }

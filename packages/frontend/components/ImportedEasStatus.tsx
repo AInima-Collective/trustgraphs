@@ -7,7 +7,7 @@ import { usePublicClient } from 'wagmi'
 import { APIS } from '@/lib/config'
 import { easAbi } from '@/lib/contract-abis'
 import { onchainAttestationImporterAbi } from '@/lib/imported-eas'
-import { txToast, type TransactionToast } from '@/lib/tx'
+import { type TransactionToast, txToast } from '@/lib/tx'
 import type { Network } from '@/lib/types'
 
 import { Button } from './Button'

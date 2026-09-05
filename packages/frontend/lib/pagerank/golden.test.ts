@@ -372,7 +372,11 @@ check(
   [addr(1), addr(2), addr(3)]
 )
 
-const loneRecord = { account: addr(1) as Hex, proposalId: 9n, blockNumber: 500n }
+const loneRecord = {
+  account: addr(1) as Hex,
+  proposalId: 9n,
+  blockNumber: 500n,
+}
 const lone = computeSigners({
   edges: input.edges,
   params,

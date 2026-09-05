@@ -3,7 +3,14 @@ import path from 'path'
 
 import type { Hex } from 'viem'
 
-import { ChainTarget, DeploymentStage } from './types'
+import { DeploymentStage } from './types'
+
+type PublicReleaseChain = 'sepolia' | 'mainnet'
+type ReleaseManifestOptions = {
+  requireComplete?: boolean
+  /** Existing deployment tooling stays Sepolia-bound unless a reader explicitly opts in. */
+  expectedChain?: PublicReleaseChain
+}
 
 export type DeploymentRecord = {
   address: Hex | null
@@ -37,7 +44,7 @@ export type ReleaseManifest = {
   version: 1
   status: 'planned' | 'deployed'
   stage: DeploymentStage
-  chain: ChainTarget
+  chain: PublicReleaseChain
   chainId: number
   deploymentCommit: string | null
   firstDeploymentBlock: number | null
@@ -195,7 +202,7 @@ const validateRecord = (
 
 export const validateReleaseManifest = (
   value: unknown,
-  { requireComplete = false }: { requireComplete?: boolean } = {}
+  { requireComplete = false, expectedChain = 'sepolia' }: ReleaseManifestOptions = {}
 ): ReleaseManifest => {
   assertObject(value, 'manifest')
   assertNoSecrets(value)
@@ -224,9 +231,10 @@ export const validateReleaseManifest = (
   if (value.stage !== 'production') {
     throw new Error('public release manifest stage must be production')
   }
-  if (value.chain !== 'sepolia' || value.chainId !== 11155111) {
+  const expectedChainId = expectedChain === 'mainnet' ? 1 : 11155111
+  if (value.chain !== expectedChain || value.chainId !== expectedChainId) {
     throw new Error(
-      'Sepolia manifest must bind chain=sepolia and chainId=11155111'
+      `${expectedChain === 'sepolia' ? 'Sepolia' : 'Ethereum mainnet'} manifest must bind chain=${expectedChain} and chainId=${expectedChainId}`
     )
   }
   if (value.status !== 'planned' && value.status !== 'deployed') {
@@ -648,7 +656,7 @@ export const validateReleaseManifest = (
 
 export const loadReleaseManifest = (
   file: string,
-  options: { requireComplete?: boolean } = {}
+  options: ReleaseManifestOptions = {}
 ): ReleaseManifest =>
   validateReleaseManifest(JSON.parse(fs.readFileSync(file, 'utf8')), options)
 

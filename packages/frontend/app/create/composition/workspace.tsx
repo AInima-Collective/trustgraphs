@@ -33,10 +33,12 @@ import {
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
+import { DraftNotice } from '@/components/DraftNotice'
 import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
+import { useBrowserDraft } from '@/hooks/useBrowserDraft'
 import {
   CompositionApiUnavailableError,
   type CompositionCandidate,
@@ -70,8 +72,8 @@ import {
   type CompositionPreview,
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
-  MAX_SOURCE_AGE_BLOCKS,
   MAX_COMPOSITION_BOUNDS,
+  MAX_SOURCE_AGE_BLOCKS,
   compositionSimplex,
   computeCompositionPreview,
   exactEqualWeights,
@@ -101,6 +103,7 @@ import {
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 
+import { type CompositionDraft, parseCompositionDraft } from '../advanced-draft'
 import {
   type NetworkMetadata,
   describeBlocks,
@@ -150,6 +153,17 @@ const randomWord = (): Hex => {
   return `0x${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
+const cachePreview = (instanceId: Hex, preview: CompositionPreview) => {
+  try {
+    localStorage.setItem(
+      `trustgraphs:composition-preview:${instanceId.toLowerCase()}`,
+      JSON.stringify(anchorCompositionPreview(preview))
+    )
+  } catch {
+    // A confirmed transaction and any remaining setup must survive unavailable browser storage.
+  }
+}
+
 const rebalance = (sources: CompositionSource[]) => {
   if (sources.length < 2)
     return sources.map((source) => ({ ...source, weight: 0n }))
@@ -160,13 +174,22 @@ const rebalance = (sources: CompositionSource[]) => {
   }))
 }
 
-export const CompositionWorkspace = ({
-  settingsInstanceId,
-  embedded = false,
-}: {
+type CompositionWorkspaceProps = {
   settingsInstanceId?: Hex
   embedded?: boolean
-} = {}) => {
+}
+
+export const CompositionWorkspace = (props: CompositionWorkspaceProps = {}) => (
+  <CompositionWorkspaceForm
+    key={`${getTargetChainId()}:${props.settingsInstanceId ?? 'new'}`}
+    {...props}
+  />
+)
+
+const CompositionWorkspaceForm = ({
+  settingsInstanceId,
+  embedded = false,
+}: CompositionWorkspaceProps) => {
   const router = useRouter()
   const { address, isConnected } = useAccount()
   const targetChainId = getTargetChainId()
@@ -193,7 +216,7 @@ export const CompositionWorkspace = ({
   } | null>(null)
   const [outputPool, setOutputPool] = useState('1000000000000000000000000')
   const [epochLength, setEpochLength] = useState('0')
-  const [salt] = useState<Hex>(randomWord)
+  const [salt, setSalt] = useState<Hex>(randomWord)
   // The fund and governance are structural creation-time features: they can only
   // be chosen here, so both are explicit switches rather than hidden defaults.
   const [withFund, setWithFund] = useState(false)
@@ -225,19 +248,26 @@ export const CompositionWorkspace = ({
     safe?: Hex
   } | null>(null)
 
+  const [draftCompleted, setDraftCompleted] = useState(false)
+  const [restoringSources, setRestoringSources] =
+    useState<CompositionDraft | null>(null)
+
   const { data: sourceAdapterFactory } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'SOURCE_ADAPTER_FACTORY',
     query: { enabled: factoryAvailable },
   })
   const { data: vault } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'VAULT',
     query: { enabled: factoryAvailable },
   })
   const { data: epochFloor } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'EPOCH_FLOOR',
@@ -247,6 +277,7 @@ export const CompositionWorkspace = ({
   // copy in the governance section: under governance a rotation waits through voting, execution,
   // AND this.
   const { data: policyActivationDelay } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'POLICY_ACTIVATION_DELAY',
@@ -264,6 +295,7 @@ export const CompositionWorkspace = ({
     isLoading: instanceVaultAccountLoading,
     refetch: refetchInstanceVaultAccount,
   } = useReadContract({
+    chainId: targetChainId,
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
     functionName: 'accountOf',
@@ -275,6 +307,7 @@ export const CompositionWorkspace = ({
     isLoading: instanceVaultPolicyLoading,
     refetch: refetchInstanceVaultPolicy,
   } = useReadContract({
+    chainId: targetChainId,
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
     functionName: 'policyOf',
@@ -282,6 +315,7 @@ export const CompositionWorkspace = ({
     query: { enabled: vaultAvailable && !!settingsInstanceId },
   })
   const { data: conservativeFee } = useReadContract({
+    chainId: targetChainId,
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
     functionName: 'feePerRootUsd',
@@ -326,6 +360,7 @@ export const CompositionWorkspace = ({
   )
 
   const invalidate = (reason?: string) => {
+    setDraftCompleted(false)
     setPreview(null)
     setPreviewConfig(null)
     setPreviewError(reason ?? null)
@@ -424,7 +459,76 @@ export const CompositionWorkspace = ({
     invalidate(reason)
   }
 
+  const loadVerifiedSource = async (
+    candidate: CompositionCandidate,
+    retainedSources: CompositionSource[],
+    familyId?: Hex
+  ) => {
+    if (!publicClient) throw new Error('Target-chain RPC is unavailable.')
+    requireCompatibleCandidate(
+      candidate,
+      retainedSources.map((source) => ({
+        ...candidate,
+        instanceId: source.instanceId,
+        chainId: source.chainId.toString(),
+        snapshot: source.snapshot,
+        programId: source.programId,
+      }))
+    )
+    const provenanceEnabled = await publicClient.readContract({
+      address: candidate.snapshot,
+      abi: compositionSourceSnapshotAbi,
+      functionName: 'provenanceEnabled',
+    })
+    const count = await publicClient.readContract({
+      address: candidate.snapshot,
+      abi: compositionSourceSnapshotAbi,
+      functionName: 'getStateCount',
+    })
+    if (count === 0n)
+      throw new Error(`${candidate.name} has no accepted output yet.`)
+    const stateIndex = count - 1n
+    const [state, provenance] = await Promise.all([
+      publicClient.readContract({
+        address: candidate.snapshot,
+        abi: compositionSourceSnapshotAbi,
+        functionName: 'getStateAtIndex',
+        args: [stateIndex],
+      }),
+      publicClient.readContract({
+        address: candidate.snapshot,
+        abi: compositionSourceSnapshotAbi,
+        functionName: 'getStateProvenance',
+        args: [stateIndex],
+      }),
+    ])
+    const loaded = await fetchCompositionSource({
+      familyId,
+      api: APIS.ponder,
+      candidate,
+      chain: {
+        provenanceEnabled,
+        stateIndex,
+        checkpointId: provenance.checkpointId,
+        acceptedAtBlock: provenance.acceptedAtBlock,
+        freezeBlock: state.blockNumber,
+        outputRoot: state.root,
+        blobSha256: state.ipfsHash,
+        cid: state.ipfsHashCid,
+        totalValue: state.totalValue,
+        verifier: provenance.verifier,
+        paramsHash: provenance.paramsHash,
+      },
+    })
+    loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
+    return loaded
+  }
+
   const toggleCandidate = async (candidate: CompositionCandidate) => {
+    if (restoringSources)
+      return setProblem(
+        'Finish restoring saved sources or discard the saved selection first.'
+      )
     const existing = sources.find(
       (source) => source.instanceId === candidate.instanceId
     )
@@ -444,61 +548,7 @@ export const CompositionWorkspace = ({
     setLoadingSource(candidate.instanceId)
     setProblem(null)
     try {
-      requireCompatibleCandidate(
-        candidate,
-        retainedSources.map((source) => ({
-          ...candidate,
-          instanceId: source.instanceId,
-          chainId: source.chainId.toString(),
-          snapshot: source.snapshot,
-          programId: source.programId,
-        }))
-      )
-      const provenanceEnabled = await publicClient.readContract({
-        address: candidate.snapshot,
-        abi: compositionSourceSnapshotAbi,
-        functionName: 'provenanceEnabled',
-      })
-      const count = await publicClient.readContract({
-        address: candidate.snapshot,
-        abi: compositionSourceSnapshotAbi,
-        functionName: 'getStateCount',
-      })
-      if (count === 0n)
-        throw new Error(`${candidate.name} has no accepted output yet.`)
-      const stateIndex = count - 1n
-      const [state, provenance] = await Promise.all([
-        publicClient.readContract({
-          address: candidate.snapshot,
-          abi: compositionSourceSnapshotAbi,
-          functionName: 'getStateAtIndex',
-          args: [stateIndex],
-        }),
-        publicClient.readContract({
-          address: candidate.snapshot,
-          abi: compositionSourceSnapshotAbi,
-          functionName: 'getStateProvenance',
-          args: [stateIndex],
-        }),
-      ])
-      const loaded = await fetchCompositionSource({
-        api: APIS.ponder,
-        candidate,
-        chain: {
-          provenanceEnabled,
-          stateIndex,
-          checkpointId: provenance.checkpointId,
-          acceptedAtBlock: provenance.acceptedAtBlock,
-          freezeBlock: state.blockNumber,
-          outputRoot: state.root,
-          blobSha256: state.ipfsHash,
-          cid: state.ipfsHashCid,
-          totalValue: state.totalValue,
-          verifier: provenance.verifier,
-          paramsHash: provenance.paramsHash,
-        },
-      })
-      loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
+      const loaded = await loadVerifiedSource(candidate, retainedSources)
       setSelected(rebalance([...retainedSources, loaded]))
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -522,6 +572,111 @@ export const CompositionWorkspace = ({
       'A governed source field changed; rebuild the exact preview.'
     )
   }
+
+  const restoreSources = async (saved: CompositionDraft) => {
+    setRestoringSources(saved)
+    setBusy(true)
+    setProblem(null)
+    try {
+      // Resolve choices against fresh catalog and target-chain state. No cached proof or adapter
+      // is accepted from browser storage, and the exact preview must be rebuilt afterwards.
+      const catalogResult = await fetchCompositionCandidates(APIS.ponder)
+      setCatalog(catalogResult.candidates)
+      setCatalogWarnings(catalogResult.warnings)
+      setApiUnavailable(false)
+      const restored: CompositionSource[] = []
+      for (const choice of saved.sources) {
+        const candidate = catalogResult.candidates.find(
+          (item) =>
+            item.instanceId.toLowerCase() === choice.instanceId.toLowerCase()
+        )
+        if (!candidate)
+          throw new Error(
+            `Saved source ${short(choice.instanceId)} is unavailable. Retry when indexing recovers, or discard the saved selection.`
+          )
+        const source = await loadVerifiedSource(
+          candidate,
+          restored,
+          choice.familyId as Hex
+        )
+        restored.push({
+          ...source,
+          weight: BigInt(choice.weight),
+          maxAgeBlocks: BigInt(choice.maxAgeBlocks),
+        })
+      }
+      setSelected(
+        restored,
+        'Saved choices restored with current source data. Rebuild the preview and simulate before signing.'
+      )
+      setRestoringSources(null)
+    } catch (error) {
+      setProblem(
+        `Saved inputs are restored, but the source selection needs checking: ${parseErrorMessage(error)}`
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const draft = useBrowserDraft({
+    storageKey: `trustgraphs:creation:composition:${targetChainId}:${settingsInstanceId ?? 'new'}:${mode}`,
+    value: {
+      salt,
+      name,
+      profile,
+      outputPool,
+      epochLength,
+      withFund,
+      fundToken,
+      fundTokenAddress,
+      withGovernance,
+      prepayEth,
+      maxPerRootUsd,
+      sources:
+        restoringSources?.sources ??
+        sources.map((source) => ({
+          instanceId: source.instanceId,
+          weight: source.weight.toString(),
+          familyId: source.familyId,
+          maxAgeBlocks: source.maxAgeBlocks.toString(),
+        })),
+    },
+    parse: parseCompositionDraft,
+    meaningful:
+      !!name.trim() ||
+      hasNetworkProfile(profile) ||
+      sources.length > 0 ||
+      !!restoringSources ||
+      withFund ||
+      withGovernance ||
+      !!prepayEth ||
+      outputPool !== '1000000000000000000000000' ||
+      epochLength !== '0' ||
+      fundToken !== 'eth' ||
+      !!fundTokenAddress ||
+      maxPerRootUsd !== DEFAULT_MAX_PER_ROOT_USD,
+    completed: draftCompleted,
+    onRestore: (saved) => {
+      invalidate()
+      setPinnedMetadata(null)
+      setSources([])
+      setTransactionProblem(null)
+      setBillingProblem(null)
+      setName(saved.name)
+      setProfile(saved.profile)
+      setSalt(saved.salt as Hex)
+      setOutputPool(saved.outputPool)
+      setEpochLength(saved.epochLength)
+      setWithFund(saved.withFund)
+      setFundToken(saved.fundToken)
+      setFundTokenAddress(saved.fundTokenAddress)
+      setWithGovernance(saved.withGovernance)
+      setPrepayEth(saved.prepayEth)
+      setMaxPerRootUsd(saved.maxPerRootUsd)
+      if (saved.sources.length) void restoreSources(saved)
+    },
+  })
 
   const buildPreview = async () => {
     setProblem(null)
@@ -1037,6 +1192,7 @@ export const CompositionWorkspace = ({
           logs: receipt.logs,
         })
         const created = createdEvent?.args.instanceId
+        setDraftCompleted(true)
         setSuccess({
           message: created
             ? prepayWei > 0n && !withGovernance
@@ -1047,10 +1203,7 @@ export const CompositionWorkspace = ({
           safe: governedEvent?.args.safe,
         })
         if (created) {
-          localStorage.setItem(
-            `trustgraphs:composition-preview:${created.toLowerCase()}`,
-            JSON.stringify(anchorCompositionPreview(preview))
-          )
+          cachePreview(created, preview)
         }
         if (prepayWei > 0n && !withGovernance) {
           if (!created || !initialPolicy) {
@@ -1096,7 +1249,7 @@ export const CompositionWorkspace = ({
             createdAt: Date.now(),
           })
           router.push(
-            `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+            `/networks/${instance.id}/governance/new?actionDraft=${fingerprint}`
           )
           return
         }
@@ -1114,15 +1267,13 @@ export const CompositionWorkspace = ({
           successMessage:
             'Composition policy proposed; the timelock is running.',
         })
+        setDraftCompleted(true)
         setSuccess({
           message:
             'Pending policy proposed. Reload to inspect its receipt and ready time.',
         })
         if (instance) {
-          localStorage.setItem(
-            `trustgraphs:composition-preview:${instance.id.toLowerCase()}`,
-            JSON.stringify(anchorCompositionPreview(preview))
-          )
+          cachePreview(instance.id, preview)
         }
         await loadRotation()
       }
@@ -1180,7 +1331,7 @@ export const CompositionWorkspace = ({
             createdAt: Date.now(),
           })
           router.push(
-            `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+            `/networks/${instance.id}/governance/new?actionDraft=${fingerprint}`
           )
           return
         }
@@ -1237,7 +1388,7 @@ export const CompositionWorkspace = ({
           createdAt: Date.now(),
         })
         router.push(
-          `/networks/${instance.id}/governance?new=1&actionDraft=${fingerprint}`
+          `/networks/${instance.id}/governance/new?actionDraft=${fingerprint}`
         )
         return
       }
@@ -1283,6 +1434,42 @@ export const CompositionWorkspace = ({
           </p>
         </header>
       )}
+      <DraftNotice
+        pending={!!draft.pending}
+        status={draft.status}
+        onRestore={draft.restore}
+        onDiscard={draft.discard}
+      />
+      {restoringSources && (
+        <Card type="outline" size="md" className="space-y-3">
+          <p role="status" className="text-sm">
+            {busy
+              ? 'Checking saved sources against current proven scores…'
+              : 'Saved source choices are retained. Recheck them to continue, or choose sources again.'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void restoreSources(restoringSources)}
+            >
+              Retry saved sources
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setRestoringSources(null)
+                setProblem(null)
+              }}
+            >
+              Discard saved selection
+            </Button>
+          </div>
+        </Card>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={loadCatalog}>
           <RefreshCw className="mr-2 h-4 w-4" /> Refresh sources
@@ -1299,7 +1486,7 @@ export const CompositionWorkspace = ({
         </Card>
       )}
       {catalogWarnings.map((warning) => (
-        <p key={warning} className="text-sm text-amber-700">
+        <p key={warning} className="text-sm text-warning">
           {warning}
         </p>
       ))}
@@ -1419,7 +1606,7 @@ export const CompositionWorkspace = ({
                 per refresh.
               </p>
             ) : instanceVaultEth > 0n ? (
-              <p className="text-amber-700">
+              <p className="text-warning">
                 This composition is funded, but paid refreshes are disabled. The
                 operator cannot spend the deposited ETH until you enable a
                 per-refresh limit below.
@@ -1732,6 +1919,7 @@ export const CompositionWorkspace = ({
                 <Switch
                   size="md"
                   enabled={withFund}
+                  aria-label="Add a shared fund"
                   readOnly={!governedAvailable}
                   onClick={() => {
                     if (!governedAvailable) return
@@ -1830,6 +2018,7 @@ export const CompositionWorkspace = ({
                 <Switch
                   size="md"
                   enabled={withGovernance}
+                  aria-label="Create with governance"
                   readOnly={!governedAvailable || (withFund && withGovernance)}
                   onClick={() => {
                     if (!governedAvailable || (withFund && withGovernance))

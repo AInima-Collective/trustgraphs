@@ -251,7 +251,7 @@ const build = async (fixture, env = {}) => {
     join(FRONTEND, SHOTS_TSCONFIG)
   )
   try {
-    await run('npx', ['next', 'build'], {
+    await run('npx', ['next', 'build', '--webpack'], {
       env: {
         NEXT_DIST_DIR: DIST,
         NEXT_TSCONFIG_PATH: SHOTS_TSCONFIG,

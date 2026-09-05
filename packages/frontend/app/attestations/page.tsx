@@ -71,8 +71,11 @@ export default function AttestationsPage() {
         </div> */}
 
         <div>
-          <label className="text-sm mb-2 block">VERIFICATION STATUS</label>
+          <label htmlFor="attestation-status" className="text-sm mb-2 block">
+            VERIFICATION STATUS
+          </label>
           <select
+            id="attestation-status"
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="w-full text-sm p-2 rounded-sm bg-background border border-border cursor-pointer"
@@ -85,8 +88,11 @@ export default function AttestationsPage() {
         </div>
 
         <div>
-          <label className="text-sm mb-2 block">SORT ORDER</label>
+          <label htmlFor="attestation-sort" className="text-sm mb-2 block">
+            SORT ORDER
+          </label>
           <select
+            id="attestation-sort"
             value={sortOrder}
             onChange={(e) =>
               setSortOrder(e.target.value as 'newest' | 'oldest')
@@ -140,6 +146,7 @@ export default function AttestationsPage() {
             <AttestationCard
               key={item.uid}
               uid={item.uid}
+              href={`/attestations/${item.uid}`}
               onClick={() => {
                 pushBreadcrumb()
                 router.push(`/attestations/${item.uid}`)

@@ -18,6 +18,8 @@ export type TooltipProps = {
    * tree. Set this whenever the child is interactive.
    */
   asChild?: boolean
+  /** False when an asChild trigger is a link rather than a button. */
+  nativeButton?: boolean
 }
 
 export const Tooltip = ({
@@ -25,6 +27,7 @@ export const Tooltip = ({
   children,
   className,
   asChild = false,
+  nativeButton = true,
 }: TooltipProps) => {
   if (!title) {
     return <>{children}</>
@@ -35,7 +38,8 @@ export const Tooltip = ({
       <Popover.Trigger
         openOnHover
         delay={0}
-        aria-label={typeof title === 'string' ? title : undefined}
+        nativeButton={nativeButton}
+        aria-label={!asChild && typeof title === 'string' ? title : undefined}
         className={className}
         onClick={(e) => e.stopPropagation()}
         {...(asChild && isValidElement(children)

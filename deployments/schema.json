@@ -18,12 +18,22 @@
     "programs",
     "instances"
   ],
+  "allOf": [
+    {
+      "if": { "properties": { "chain": { "const": "sepolia" } } },
+      "then": { "properties": { "chainId": { "const": 11155111 } } }
+    },
+    {
+      "if": { "properties": { "chain": { "const": "mainnet" } } },
+      "then": { "properties": { "chainId": { "const": 1 } } }
+    }
+  ],
   "properties": {
     "$schema": { "type": "string" },
     "version": { "const": 1 },
     "status": { "enum": ["planned", "deployed"] },
     "stage": { "const": "production" },
-    "chain": { "enum": ["sepolia"] },
+    "chain": { "enum": ["sepolia", "mainnet"] },
     "chainId": { "type": "integer", "minimum": 1 },
     "deploymentCommit": {
       "oneOf": [

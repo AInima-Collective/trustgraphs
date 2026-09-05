@@ -37,12 +37,14 @@ import {
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
+import { DraftNotice } from '@/components/DraftNotice'
 import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
 import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetworks } from '@/contexts/CatalogContext'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
+import { useBrowserDraft } from '@/hooks/useBrowserDraft'
 import {
   APIS,
   FAST_WEIGHTED_FACTORY_CONFIG,
@@ -112,6 +114,7 @@ import type {
 } from '@/lib/weighted-prior/preview.worker'
 import { BINARY_REDEPLOYMENT_NOTICE } from '@/lib/weighted-prior/workflow'
 
+import { parseWeightedDraft } from '../advanced-draft'
 import { CadenceField } from '../CadenceField'
 import {
   type Cadence,
@@ -217,11 +220,38 @@ const rotatedParamsHash = (
     chainId: BigInt(instance.params.chainId),
   })
 
-export const WeightedPriorWorkspace = ({
+type WeightedWorkspaceProps = { rotationInstanceId?: Hex }
+
+// Drafts and derived state belong to one chain, instance and mode.
+export const WeightedPriorWorkspace = (props: WeightedWorkspaceProps = {}) => (
+  <WeightedWorkspaceMode
+    key={`${getTargetChainId()}:${props.rotationInstanceId ?? 'new'}`}
+    {...props}
+  />
+)
+
+const WeightedWorkspaceMode = (props: WeightedWorkspaceProps) => {
+  const [mode, setMode] = useState<Mode>(
+    props.rotationInstanceId ? 'rotate' : 'create'
+  )
+  return (
+    <WeightedWorkspaceForm
+      key={mode}
+      {...props}
+      mode={mode}
+      setMode={setMode}
+    />
+  )
+}
+
+const WeightedWorkspaceForm = ({
   rotationInstanceId,
-}: {
-  rotationInstanceId?: Hex
-} = {}) => {
+  mode,
+  setMode,
+}: WeightedWorkspaceProps & {
+  mode: Mode
+  setMode: (mode: Mode) => void
+}) => {
   const administrative = !!rotationInstanceId
   const router = useRouter()
   const { address, isConnected } = useAccount()
@@ -230,9 +260,6 @@ export const WeightedPriorWorkspace = ({
   const chainId = useChainId()
   const publicClient = usePublicClient({ chainId: targetChainId })
   const { switchChain, isPending: switchingChain } = useSwitchChain()
-  const [mode, setMode] = useState<Mode>(
-    rotationInstanceId ? 'rotate' : 'create'
-  )
   const [format, setFormat] = useState<Format>('csv')
   const [sourceText, setSourceText] = useState(EMPTY_SOURCE)
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null)
@@ -264,7 +291,7 @@ export const WeightedPriorWorkspace = ({
   const [license, setLicense] = useState('')
   const [transform, setTransform] = useState('')
   const [cadence, setCadence] = useState<Cadence>('fastest')
-  const [salt] = useState<Hex>(randomSalt)
+  const [salt, setSalt] = useState<Hex>(randomSalt)
   // The fund and governance are structural creation-time features: they can only
   // be chosen here, so both are explicit switches rather than hidden defaults.
   const [withFund, setWithFund] = useState(false)
@@ -289,6 +316,7 @@ export const WeightedPriorWorkspace = ({
     safe: Hex | null
   } | null>(null)
   const [prefilled, setPrefilled] = useState<number | null>(null)
+  const [draftCompleted, setDraftCompleted] = useState(false)
 
   // The catalog is mounted app-wide and server-seeded, so the picker of standard networks costs
   // no extra request. Networks that predate the factory carry no instance id and cannot be looked
@@ -308,6 +336,7 @@ export const WeightedPriorWorkspace = ({
   const pending = versions.find((version) => version.status === 'pending')
   const governedRotation = !!rotationInstance?.governance
   const { data: rotationOwner } = useReadContract({
+    chainId: targetChainId,
     address: active?.controller as Address,
     abi: weightedPriorParamsControllerAbi,
     functionName: 'owner',
@@ -332,6 +361,7 @@ export const WeightedPriorWorkspace = ({
   )
 
   const { data: epochFloor } = useReadContract({
+    chainId: targetChainId,
     address: FACTORY_AVAILABLE ? WEIGHTED_FACTORY_ADDRESS : zeroAddress,
     abi: weightedTrustgraphsFactoryAbi,
     functionName: 'EPOCH_FLOOR',
@@ -480,6 +510,7 @@ export const WeightedPriorWorkspace = ({
   }, [artifacts, createFields, initialPolicy, mode, withGovernance])
 
   const clearDerived = () => {
+    setDraftCompleted(false)
     workerRef.current?.terminate()
     workerRef.current = null
     setArtifacts(null)
@@ -491,6 +522,74 @@ export const WeightedPriorWorkspace = ({
     setProblem(null)
     setFieldIssues([])
   }
+
+  const draft = useBrowserDraft({
+    storageKey: `trustgraphs:creation:weighted:${targetChainId}:${rotationInstanceId ?? 'new'}:${mode}`,
+    value: {
+      salt,
+      name,
+      profile,
+      format,
+      sourceText,
+      sourceUri,
+      author,
+      license,
+      transform,
+      cadence,
+      withFund,
+      fundToken,
+      fundTokenAddress,
+      withGovernance,
+      prepayEth,
+      maxPerRootUsd,
+      instanceId,
+      binaryInstanceId,
+    },
+    parse: parseWeightedDraft,
+    meaningful:
+      sourceText !== EMPTY_SOURCE ||
+      !!name.trim() ||
+      !!binaryInstanceId ||
+      hasNetworkProfile(profile) ||
+      withFund ||
+      withGovernance ||
+      !!prepayEth ||
+      !!sourceUri ||
+      !!author ||
+      !!license ||
+      !!transform ||
+      cadence !== 'fastest' ||
+      format !== 'csv' ||
+      fundToken !== 'eth' ||
+      !!fundTokenAddress ||
+      maxPerRootUsd !== DEFAULT_MAX_PER_ROOT_USD ||
+      instanceId !== (rotationInstanceId ?? ''),
+    completed: draftCompleted,
+    onRestore: (saved) => {
+      clearDerived()
+      setPinnedMetadata(null)
+      setSourceBytes(null)
+      setName(saved.name)
+      setProfile(saved.profile)
+      setSalt(saved.salt as Hex)
+      setFormat(saved.format)
+      setSourceText(saved.sourceText)
+      setSourceUri(saved.sourceUri)
+      setAuthor(saved.author)
+      setLicense(saved.license)
+      setTransform(saved.transform)
+      setCadence(saved.cadence)
+      setWithFund(saved.withFund)
+      setFundToken(saved.fundToken)
+      setFundTokenAddress(saved.fundTokenAddress)
+      setWithGovernance(saved.withGovernance)
+      setPrepayEth(saved.prepayEth)
+      setMaxPerRootUsd(saved.maxPerRootUsd)
+      setInstanceId(rotationInstanceId ?? saved.instanceId)
+      setBinaryInstanceId(saved.binaryInstanceId)
+      setPrefilled(null)
+    },
+  })
 
   const startPreview = useCallback((next: WeightedImportArtifacts) => {
     workerRef.current?.terminate()
@@ -624,8 +723,10 @@ export const WeightedPriorWorkspace = ({
               nextActive.version
             )
       setCurrentEntries(entries)
-      if (rotationInstanceId && sourceText === EMPTY_SOURCE && entries.length) {
-        setSourceText(activeSharesCsv(entries))
+      if (rotationInstanceId && entries.length) {
+        setSourceText((current) =>
+          current === EMPTY_SOURCE ? activeSharesCsv(entries) : current
+        )
       }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -867,7 +968,7 @@ export const WeightedPriorWorkspace = ({
             createdAt: Date.now(),
           })
           router.push(
-            `/networks/${rotationInstance.id}/governance?new=1&actionDraft=${fingerprint}`
+            `/networks/${rotationInstance.id}/governance/new?actionDraft=${fingerprint}`
           )
           return
         }
@@ -886,6 +987,7 @@ export const WeightedPriorWorkspace = ({
           successMessage:
             'Starting-share change proposed; the activation delay is now running.',
         })
+        setDraftCompleted(true)
         setSuccess(
           'Starting-share change proposed. It can be activated once the delay has passed; the timing shows above.'
         )
@@ -933,6 +1035,7 @@ export const WeightedPriorWorkspace = ({
           eventName: 'GovernedInstanceCreated',
           logs: receipt.logs,
         })
+        setDraftCompleted(true)
         setCreated({
           instanceId: createdEvent?.args.instanceId ?? null,
           txHash: receipt.transactionHash,
@@ -1012,7 +1115,7 @@ export const WeightedPriorWorkspace = ({
           createdAt: Date.now(),
         })
         router.push(
-          `/networks/${rotationInstance.id}/governance?new=1&actionDraft=${fingerprint}`
+          `/networks/${rotationInstance.id}/governance/new?actionDraft=${fingerprint}`
         )
         return
       }
@@ -1083,6 +1186,13 @@ export const WeightedPriorWorkspace = ({
           </div>
         )}
       </header>
+
+      <DraftNotice
+        pending={!!draft.pending}
+        status={draft.status}
+        onRestore={draft.restore}
+        onDiscard={draft.discard}
+      />
 
       {wrongChain && (
         <Card type="outline" size="md" className="space-y-3 border-warning">
@@ -1848,6 +1958,7 @@ export const WeightedPriorWorkspace = ({
                     <Switch
                       size="md"
                       enabled={withFund}
+                      aria-label="Add a shared fund"
                       readOnly={!GOVERNED_AVAILABLE}
                       onClick={() => {
                         if (!GOVERNED_AVAILABLE) return
@@ -1956,6 +2067,7 @@ export const WeightedPriorWorkspace = ({
                     <Switch
                       size="md"
                       enabled={withGovernance}
+                      aria-label="Create with governance"
                       readOnly={!GOVERNED_AVAILABLE || withFund}
                       onClick={() => {
                         if (!GOVERNED_AVAILABLE || withFund) return

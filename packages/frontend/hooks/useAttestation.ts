@@ -4,16 +4,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Hex, WaitForTransactionReceiptReturnType, isAddressEqual } from 'viem'
-import {
-  useAccount,
-  useChainId,
-  usePublicClient,
-  useSignTypedData,
-} from 'wagmi'
+import { useAccount, useConfig, usePublicClient } from 'wagmi'
 
+import {
+  type ApplicationTypedData,
+  assertApplicationChain,
+  signApplicationTypedData,
+} from '@/lib/application-transaction'
 import { intoAttestationData, intoAttestationsData } from '@/lib/attestation'
-import { easAbi } from '@/lib/contract-abis'
 import { easAddress } from '@/lib/config'
+import { easAbi } from '@/lib/contract-abis'
 import {
   EAS_DELEGATION_TTL_SECONDS,
   EAS_DELEGATION_VERSION,
@@ -26,11 +26,12 @@ import {
   splitEasRelaySignature,
 } from '@/lib/eas-delegation'
 import { parseErrorMessage } from '@/lib/error'
+import { easAttestAndImportRouterAbi } from '@/lib/imported-eas'
 import { SchemaManager } from '@/lib/schemas'
 import { txToast } from '@/lib/tx'
-import { easAttestAndImportRouterAbi } from '@/lib/imported-eas'
 import type { Network } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
+import { getTargetChainConfig } from '@/lib/wagmi'
 import { attestationKeys } from '@/queries/attestation'
 import { ponderQueryFns } from '@/queries/ponder'
 
@@ -78,9 +79,15 @@ export function useAttestation(
   importedLane?: Network['importedLane']
 ) {
   const { address: connectedAddress, isConnected } = useAccount()
-  const publicClient = usePublicClient()
-  const chainId = useChainId()
-  const { signTypedDataAsync } = useSignTypedData()
+  const config = useConfig()
+  const targetChain = getTargetChainConfig()
+  const chainId = targetChain.id
+  const publicClient = usePublicClient({ chainId })
+  const signTypedDataAsync = (parameters: ApplicationTypedData) =>
+    signApplicationTypedData(config, targetChain, {
+      ...parameters,
+      account: connectedAddress,
+    })
   const queryClient = useQueryClient()
 
   const [isCreating, setIsCreating] = useState(false)
@@ -312,6 +319,7 @@ export function useAttestation(
     setHash(null)
 
     try {
+      await assertApplicationChain(config, targetChain, connectedAddress)
       if (importedLane) {
         const receipt = await routeAttestations([attestationData])
         setIsCreated(true)
@@ -384,6 +392,7 @@ export function useAttestation(
     setHash(null)
 
     try {
+      await assertApplicationChain(config, targetChain, connectedAddress)
       if (importedLane) {
         await routeAttestations(attestationsData)
         setIsCreated(true)
@@ -458,6 +467,7 @@ export function useAttestation(
     setHash(null)
 
     try {
+      await assertApplicationChain(config, targetChain, connectedAddress)
       // Validate input formats
       if (!uid.startsWith('0x') || uid.length !== 66) {
         throw new Error(`Invalid attestation UID format: ${uid}`)

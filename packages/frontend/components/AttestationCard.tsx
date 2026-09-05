@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Hex } from 'viem'
 
 import { useAttestation } from '@/hooks/useAttestation'
@@ -13,9 +14,10 @@ import { CopyableText } from './CopyableText'
 interface AttestationCardProps {
   uid: Hex
   onClick?: () => void
+  href?: string
 }
 
-export function AttestationCard({ uid, onClick }: AttestationCardProps) {
+export function AttestationCard({ uid, onClick, href }: AttestationCardProps) {
   const {
     query: { data: attestation, isLoading, error },
   } = useAttestation(uid)
@@ -153,7 +155,13 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
           ? 'cursor-pointer hover:border-foreground/50 transition-colors'
           : ''
       }
-      onClick={onClick}
+      onClick={(event) => {
+        if (
+          !(event.target instanceof Element) ||
+          !event.target.closest('a, button, input, select, textarea')
+        )
+          onClick?.()
+      }}
     >
       <div className="flex flex-col gap-4">
         {/* Header */}
@@ -186,9 +194,18 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
         {/* Attestation Details Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <div className="text-muted-foreground text-sm font-medium mb-1">
-              UID
-            </div>
+            {href ? (
+              <Link
+                href={href}
+                className="tg-touch-target mb-1 inline-flex items-center text-sm font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              >
+                View attestation
+              </Link>
+            ) : (
+              <div className="text-muted-foreground text-sm font-medium mb-1">
+                UID
+              </div>
+            )}
             <CopyableText text={uid} className="text-foreground" />
           </div>
           <div>

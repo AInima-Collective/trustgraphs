@@ -32,9 +32,7 @@ assert.ok(previewCheck.issues.some((issue) => issue.code === 'raw-point-scale'))
 assert.ok(previewCheck.issues.some((issue) => issue.code === 'missing-account'))
 // Two-source coverage is at least half the cells by construction, so the sparse-support
 // warning (< 50%) stays quiet on the mixed baseline.
-assert.ok(
-  !previewCheck.issues.some((issue) => issue.code === 'sparse-support')
-)
+assert.ok(!previewCheck.issues.some((issue) => issue.code === 'sparse-support'))
 assert.match(COMPOSITION_TRUTH_COPY.prior, /separate trust-compose program/)
 assert.doesNotMatch(COMPOSITION_TRUTH_COPY.weights, /objective truth/i)
 

@@ -1,16 +1,8 @@
 'use client'
 
-import {
-  Code2,
-  FilePenLine,
-  PauseCircle,
-  Send,
-  ShieldCheck,
-  SlidersHorizontal,
-} from 'lucide-react'
-import type { ComponentType } from 'react'
 import { formatEther, formatUnits, isAddressEqual, zeroAddress } from 'viem'
 
+import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
   governanceActionContextFor,
@@ -81,7 +73,6 @@ type ActionPresentation = {
   title: string
   summary: string
   badge: string
-  icon: ComponentType<{ className?: string }>
   hash?: string
   evidenceURI?: string
   resultingSettings?: string[]
@@ -103,7 +94,6 @@ const presentAction = (
           ? 'Synchronize signer selection and publish these settings together as the network’s next version.'
           : 'Make these settings the network’s current, versioned scoring configuration.',
         badge: 'Scoring settings',
-        icon: SlidersHorizontal,
         hash: paramsHash(values.proposed),
         evidenceURI: values.evidenceURI,
         resultingSettings: [
@@ -122,7 +112,6 @@ const presentAction = (
         summary:
           'Point the signer-selection module at the new scoring configuration.',
         badge: 'Signer rules',
-        icon: ShieldCheck,
         hash: values.paramsHash,
       }
     }
@@ -133,7 +122,6 @@ const presentAction = (
         title: `Send ${formatEther(BigInt(values.value))} ETH`,
         summary: 'Transfer ETH from the DAO treasury.',
         badge: 'Treasury transfer',
-        icon: Send,
       }
     }
     case 'send-erc20': {
@@ -143,7 +131,6 @@ const presentAction = (
         title: `Send ${values.amount} token base units`,
         summary: `Call transfer to ${values.recipient} on the explicitly shown token contract.`,
         badge: 'Treasury transfer',
-        icon: Send,
         detailLabel: 'Token contract',
         detailValue: values.token,
       }
@@ -159,7 +146,6 @@ const presentAction = (
         summary:
           'Create a reward pool bound to one exact proven score root and fee quote.',
         badge: 'Rewards funding',
-        icon: Send,
         detailLabel: 'Expected score root',
         detailValue: values.expectedRoot,
         resultingSettings: [
@@ -180,7 +166,6 @@ const presentAction = (
           ? 'Stop new distributions and claims while preserving expired sweep access.'
           : 'Allow reward distributions and claims again.',
         badge: 'Rewards control',
-        icon: PauseCircle,
       }
     }
     case 'set-rewards-fee-recipient': {
@@ -190,7 +175,6 @@ const presentAction = (
         title: 'Change the rewards fee recipient',
         summary: 'Route future distributor fees to a new address.',
         badge: 'Rewards control',
-        icon: SlidersHorizontal,
         detailLabel: 'New fee recipient',
         detailValue: values.recipient,
       }
@@ -203,7 +187,6 @@ const presentAction = (
         summary:
           'A decrease applies immediately; an increase enters the distributor’s delayed schedule.',
         badge: 'Rewards control',
-        icon: SlidersHorizontal,
       }
     }
     case 'set-rewards-allowlist-enabled': {
@@ -215,7 +198,6 @@ const presentAction = (
           ? 'Only individually allowed addresses may create reward pools.'
           : 'Any address may create a reward pool.',
         badge: 'Rewards control',
-        icon: ShieldCheck,
       }
     }
     case 'set-rewards-distributor-allowance': {
@@ -227,7 +209,6 @@ const presentAction = (
           ? 'Permit this address to fund rewards while the allowlist is enabled.'
           : 'Remove this address from the rewards funder allowlist.',
         badge: 'Rewards control',
-        icon: ShieldCheck,
         detailLabel: 'Funder address',
         detailValue: values.distributor,
       }
@@ -240,7 +221,6 @@ const presentAction = (
         summary:
           'Point the network snapshot at the reviewed metadata revision.',
         badge: 'Network profile',
-        icon: FilePenLine,
         detailLabel: 'New metadata URI',
         detailValue: values.metadataURI,
       }
@@ -254,7 +234,6 @@ const presentAction = (
           ? 'Allow this account to publish operational parameter hashes.'
           : 'Remove this account’s operational parameter authority.',
         badge: 'Membership',
-        icon: ShieldCheck,
         detailLabel: 'Account',
         detailValue: values.account,
       }
@@ -267,7 +246,6 @@ const presentAction = (
         summary:
           'Begin a two-step handoff. Acceptance gives the successor constitutional control and removes this Safe’s role.',
         badge: 'Constitutional authority',
-        icon: ShieldCheck,
         detailLabel: 'Proposed successor',
         detailValue: values.successor,
       }
@@ -278,7 +256,6 @@ const presentAction = (
         title: 'Cancel the constitutional authority transfer',
         summary: 'Stop the snapshot’s currently pending two-step handoff.',
         badge: 'Constitutional authority',
-        icon: ShieldCheck,
       }
     case 'set-governance-quorum': {
       const values = matched.values as GovernanceQuorumActionValues
@@ -288,7 +265,6 @@ const presentAction = (
         summary:
           'Set the share of decisive voting power required for future proposals.',
         badge: 'Governance settings',
-        icon: SlidersHorizontal,
       }
     }
     case 'set-governance-voting-delay':
@@ -306,7 +282,6 @@ const presentAction = (
         title: `Set ${label} to ${values.blocks} blocks`,
         summary: `Change the network’s ${label} for future proposals.`,
         badge: 'Governance settings',
-        icon: SlidersHorizontal,
       }
     }
     case 'set-governance-delegatecall-target': {
@@ -318,7 +293,6 @@ const presentAction = (
           ? 'Permit proposal code at this address to execute inside the Safe’s storage context.'
           : 'Prevent future proposals from delegatecalling this target.',
         badge: 'Execution safety',
-        icon: ShieldCheck,
         detailLabel: 'Delegatecall target',
         detailValue: values.target,
       }
@@ -330,7 +304,6 @@ const presentAction = (
         title: `Cancel governance proposal ${values.proposalId}`,
         summary: 'Mark the referenced, unexecuted proposal as cancelled.',
         badge: 'Governance control',
-        icon: PauseCircle,
       }
     }
     case 'set-signer-sync-paused': {
@@ -342,7 +315,6 @@ const presentAction = (
           ? 'Stop new score-selected signer proofs while retaining the current Safe owners.'
           : 'Allow new score-selected signer proofs to update the Safe owners again.',
         badge: 'Safety control',
-        icon: PauseCircle,
       }
     }
     case 'rotate-weighted-prior': {
@@ -353,7 +325,6 @@ const presentAction = (
         summary:
           'Propose a reviewed weighted-prior manifest for delayed activation.',
         badge: 'Scoring settings',
-        icon: SlidersHorizontal,
         detailLabel: 'Manifest metadata digest',
         detailValue: values.metadataDigest,
       }
@@ -364,7 +335,6 @@ const presentAction = (
         title: 'Cancel pending weighted starting shares',
         summary: 'Stop the controller’s pending weighted-prior version.',
         badge: 'Scoring settings',
-        icon: PauseCircle,
       }
     case 'propose-composition-policy': {
       const values = matched.values as CompositionPolicyActionValues
@@ -374,7 +344,6 @@ const presentAction = (
         summary:
           'Propose reviewed source weights and adapters for delayed activation.',
         badge: 'Composition policy',
-        icon: SlidersHorizontal,
         detailLabel: 'Metadata digest',
         detailValue: values.metadataDigest,
         resultingSettings: [`Source adapters: ${values.adapters.length}`],
@@ -386,7 +355,6 @@ const presentAction = (
         title: 'Cancel pending composition policy',
         summary: 'Stop the controller’s currently pending source policy.',
         badge: 'Composition policy',
-        icon: PauseCircle,
       }
     case 'set-snapshot-verifier':
     case 'set-snapshot-accumulator':
@@ -415,7 +383,6 @@ const presentAction = (
         summary:
           'This changes a proof or Safe execution boundary. Review the exact address carefully.',
         badge: 'Safety control',
-        icon: ShieldCheck,
         detailLabel,
         detailValue: values.address,
       }
@@ -427,7 +394,6 @@ const presentAction = (
         title: 'Disable a Safe module',
         summary: 'Remove this module’s authority to execute Safe transactions.',
         badge: 'Safety control',
-        icon: ShieldCheck,
         detailLabel: 'Module',
         detailValue: values.module,
       }
@@ -439,7 +405,6 @@ const presentAction = (
         title: 'Replace a Safe owner',
         summary: `Replace ${values.oldOwner} with the new owner shown below.`,
         badge: 'Safety control',
-        icon: ShieldCheck,
         detailLabel: 'New owner',
         detailValue: values.newOwner,
       }
@@ -452,7 +417,6 @@ const presentAction = (
         summary:
           'Replace the identity allowed to queue arbitrary delayed Safe recovery actions.',
         badge: 'Recovery control',
-        icon: ShieldCheck,
         detailLabel: 'New recovery proposer',
         detailValue: values.address,
       }
@@ -465,7 +429,6 @@ const presentAction = (
         summary:
           'Veto this exact action before delayed recovery can execute it.',
         badge: 'Recovery control',
-        icon: PauseCircle,
         detailLabel: 'Recovery action ID',
         detailValue: values.actionId,
       }
@@ -478,7 +441,6 @@ const presentAction = (
         summary:
           'Change when and how much successful score proofs may be paid.',
         badge: 'Proving vault',
-        icon: SlidersHorizontal,
         resultingSettings: [
           `Minimum paid interval: ${values.minPaidIntervalBlocks} blocks`,
           `Maximum per root: ${values.maxPerRootUsd} USD × 1e8`,
@@ -493,7 +455,6 @@ const presentAction = (
         summary:
           'Start the withdrawal notice period while funds remain available for bounties.',
         badge: 'Proving vault',
-        icon: Send,
         resultingSettings: [
           `ETH: ${values.ethAmount} wei`,
           `USDC: ${values.usdcAmount} base units`,
@@ -506,7 +467,6 @@ const presentAction = (
         title: 'Cancel proving-fund withdrawal',
         summary: 'Keep the pending funds working for future score proofs.',
         badge: 'Proving vault',
-        icon: PauseCircle,
       }
     case 'execute-vault-withdrawal': {
       const values = matched.values as VaultWithdrawalExecuteActionValues
@@ -515,7 +475,6 @@ const presentAction = (
         title: 'Execute proving-fund withdrawal',
         summary: 'Send the remaining requested funds after the notice period.',
         badge: 'Proving vault',
-        icon: Send,
         detailLabel: 'Recipient',
         detailValue: values.recipient,
       }
@@ -528,7 +487,6 @@ const presentAction = (
         summary:
           'Create a child funding round attached to this authenticated parent network.',
         badge: 'Contribution program',
-        icon: FilePenLine,
         resultingSettings: [
           `Window: ${values.roundStart}–${values.roundEnd}`,
           `Pool shares: ${values.totalPool}`,
@@ -545,7 +503,6 @@ const presentAction = (
         summary:
           'This action is not recognized by trustgraphs. Review its raw target, value, operation, and calldata.',
         badge: action?.operation === 1 ? 'Delegate call' : 'Contract call',
-        icon: Code2,
       }
     }
   }
@@ -647,7 +604,6 @@ function ProposalActionCard({
   total: number
 }) {
   const presentation = presentAction(matched)
-  const Icon = presentation.icon
   const annotations = actions
     .map((action) => action.description?.trim())
     .filter((description): description is string => !!description)
@@ -674,7 +630,7 @@ function ProposalActionCard({
       )}
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border bg-surface text-foreground">
-          <Icon className="h-4 w-4" />
+          <GovernanceActionEmoji actionKey={matched.definition.key} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { mainnet } from 'viem/chains'
 
+import { applicationRpcChainIds } from '@/lib/application-chains'
 import { CHAIN } from '@/lib/config'
 import { rpcUpstreamUrl } from '@/lib/rpc-upstream'
 
@@ -11,17 +12,10 @@ const DEVELOPMENT_MAINNET_RPC_URLS = [
   'https://public.1rpc.io/eth',
 ] as const
 
-const PUBLIC_CHAIN_IDS: Record<string, string> = {
-  sepolia: '11155111',
-}
-
 // The browser uses the configured deployment chain plus Ethereum mainnet for ENS resolution.
 // Wallet writes go through the connected wallet's EIP-1193 provider and must never reach this
 // credentialed, read-only proxy.
-const allowedChainIds = new Set([
-  String(mainnet.id),
-  ...(PUBLIC_CHAIN_IDS[CHAIN] ? [PUBLIC_CHAIN_IDS[CHAIN]] : []),
-])
+const allowedChainIds = new Set(applicationRpcChainIds(CHAIN))
 const READ_RPC_METHODS = new Set([
   'eth_blockNumber',
   'eth_call',

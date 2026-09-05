@@ -11,10 +11,10 @@ import { CHAIN } from './config'
  * provider: `loadWalletConnectors()` is the single interaction-gated entry point.
  */
 export const makeWalletConnectors = (): CreateConnectorFn[] => [
-  // Porto has not been exercised against this Sepolia deployment. Keep the public testnet on
+  // Porto has not been qualified for public application deployments. Keep public networks on
   // connectors whose chain-switch path is verified instead of offering a wallet that may strand
   // a creator at the final transaction.
-  ...(CHAIN === 'sepolia' ? [] : [porto()]),
+  ...(CHAIN === 'local' ? [porto()] : []),
   metaMask(),
   coinbaseWallet(),
   walletConnect({

@@ -12,6 +12,7 @@ import { Switch } from '@/components/Switch'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { SUBNETWORK_CONFIG } from '@/lib/config'
 import { cn } from '@/lib/utils'
+import { getTargetChainId } from '@/lib/wagmi'
 
 import {
   GOVERNED_FACTORY_ADDRESS,
@@ -42,11 +43,13 @@ export const AddOnsStep = ({
     contracts: tokenLooksValid
       ? [
           {
+            chainId: getTargetChainId(),
             address: tokenAddress as `0x${string}`,
             abi: erc20Abi,
             functionName: 'symbol',
           },
           {
+            chainId: getTargetChainId(),
             address: tokenAddress as `0x${string}`,
             abi: erc20Abi,
             functionName: 'decimals',
@@ -162,6 +165,7 @@ export const AddOnsStep = ({
             </p>
           </div>
           <Switch
+            aria-label="Add a shared fund"
             size="md"
             enabled={data.withFund}
             onClick={() => onChange({ withFund: !data.withFund })}
@@ -241,7 +245,7 @@ export const AddOnsStep = ({
               networks currently use on-chain EAS vouches.
             </p>
           </div>
-          <Switch size="md" enabled={false} readOnly />
+          <Switch size="md" enabled={false} decorative />
         </div>
       </Card>
 
@@ -279,6 +283,7 @@ export const AddOnsStep = ({
                 </p>
               </div>
               <Switch
+                aria-label="Keep Safe signers aligned with scores"
                 size="md"
                 enabled={data.withSignerSync}
                 readOnly={!signerSyncAvailable}

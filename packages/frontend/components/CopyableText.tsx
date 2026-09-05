@@ -2,6 +2,7 @@
 
 import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 
 import { cn } from '@/lib/utils'
 
@@ -28,9 +29,13 @@ export function CopyableText({
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent parent click handlers
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Could not copy to clipboard')
+    }
   }
 
   const display = displayText || text
@@ -44,7 +49,7 @@ export function CopyableText({
       type="button"
       onClick={handleCopy}
       className={cn(
-        'group inline-flex items-center gap-2 font-mono text-xs hover:text-foreground transition-colors text-left',
+        'tg-touch-target group inline-flex min-h-6 items-center gap-2 font-mono text-xs hover:text-foreground transition-colors text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
         className
       )}
       title="Click to copy"
@@ -65,7 +70,8 @@ export function CopyableText({
         <Copy
           className={cn(
             'w-3 h-3 transition-opacity flex-shrink-0',
-            !alwaysShowCopyIcon && 'opacity-0 group-hover:opacity-100'
+            !alwaysShowCopyIcon &&
+              'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100'
           )}
         />
       )}

@@ -33,6 +33,7 @@ import { parseErrorMessage } from '@/lib/error'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { txToast } from '@/lib/tx'
 import type { Network } from '@/lib/types'
+import { getTargetChainId } from '@/lib/wagmi'
 
 const CONSTITUTIONAL_ROLE = keccak256(stringToBytes('CONSTITUTIONAL_ROLE'))
 
@@ -96,16 +97,19 @@ export const SnapshotProfileSettings = ({
   const { data: reads, refetch } = useReadContracts({
     contracts: [
       {
+        chainId: getTargetChainId(),
         address: snapshot,
         abi: merkleSnapshotAbi,
         functionName: 'metadataURI',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshot,
         abi: merkleSnapshotAbi,
         functionName: 'metadataURIHash',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshot,
         abi: merkleSnapshotAbi,
         functionName: 'metadataRevision',
@@ -114,6 +118,7 @@ export const SnapshotProfileSettings = ({
     query: { refetchInterval: 30_000 },
   })
   const { data: connectedRole } = useReadContract({
+    chainId: getTargetChainId(),
     address: snapshot,
     abi: merkleSnapshotAbi,
     functionName: 'hasRole',
@@ -193,7 +198,7 @@ export const SnapshotProfileSettings = ({
           createdAt: Date.now(),
         })
         router.push(
-          `/networks/${governanceNetworkId}/governance?new=1&actionDraft=${actionFingerprint}`
+          `/networks/${governanceNetworkId}/governance/new?actionDraft=${actionFingerprint}`
         )
         return
       }

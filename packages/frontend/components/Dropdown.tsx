@@ -15,6 +15,8 @@ export interface DropdownOption<T extends string = string> {
 export interface DropdownProps<T extends string = string> {
   /** List of options to display in the dropdown */
   options: DropdownOption<T>[]
+  /** Name of the setting this dropdown changes. */
+  label?: string
   /** Currently selected option value */
   selected: T
   /** Callback when an option is selected */
@@ -35,6 +37,7 @@ export interface DropdownProps<T extends string = string> {
 
 export const Dropdown = <T extends string = string>({
   options,
+  label = 'Filter options',
   selected,
   onSelect,
   icon,
@@ -59,6 +62,7 @@ export const Dropdown = <T extends string = string>({
 
   return (
     <Popup
+      popupLabel={label}
       position="left"
       popupClassName="!p-0"
       popupPadding={0}
@@ -92,6 +96,7 @@ export const Dropdown = <T extends string = string>({
               optionClassName
             )}
             size={null}
+            aria-pressed={option.value === selected}
             onClick={() => handleSelect(option.value)}
           >
             {option.label}

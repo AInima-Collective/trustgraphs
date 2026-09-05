@@ -129,6 +129,23 @@ export function NetworkGraph({
   guide,
 }: NetworkGraphProps) {
   const router = useRouter()
+  const [graphicsAvailable, setGraphicsAvailable] = useState<boolean | null>(
+    null
+  )
+  useEffect(() => {
+    // Browsers may disable GPU drawing. Detect that before Sigma creates its
+    // renderers so the surrounding network and member list remain usable.
+    const canvas = document.createElement('canvas')
+    try {
+      const options = { preserveDrawingBuffer: false, antialias: false }
+      const context = (canvas.getContext('webgl2', options) ||
+        canvas.getContext('webgl', options)) as WebGLRenderingContext | null
+      setGraphicsAvailable(!!context)
+      context?.getExtension('WEBGL_lose_context')?.loseContext()
+    } catch {
+      setGraphicsAvailable(false)
+    }
+  }, [])
 
   // `graphLoading`, not `isLoading`. The aggregate folds in the Gnosis Safe read,
   // which this component never draws and which climbs a four-attempt retry
@@ -194,6 +211,7 @@ export function NetworkGraph({
 
   // Load graph from data.
   useEffect(() => {
+    if (graphicsAvailable !== true) return
     if (!accountData || !attestationsData) {
       setGraph(null)
       setIsLoadingGraph(false)
@@ -434,6 +452,7 @@ export function NetworkGraph({
       killLayout()
     }
   }, [
+    graphicsAvailable,
     accountData,
     attestationsData,
     isTrustedSeed,
@@ -445,7 +464,9 @@ export function NetworkGraph({
     router,
   ])
 
-  const settling = graphLoading || (isLoadingGraph && !graph)
+  const settling =
+    graphicsAvailable === null ||
+    (graphicsAvailable && (graphLoading || (isLoadingGraph && !graph)))
 
   return (
     <div
@@ -456,7 +477,20 @@ export function NetworkGraph({
       // absent rather than "false" when settled: the harness counts nodes.
       data-settling={settling ? 'true' : undefined}
     >
-      {settling ? (
+      {graphicsAvailable === false ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3 border border-border p-6 pt-32 text-center">
+          <p className="text-sm">The graph is unavailable in this browser.</p>
+          <p className="max-w-[32ch] text-sm text-muted-foreground">
+            You can still explore members and their scores.
+          </p>
+          <Link
+            className="inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+            href={`/networks/${network.id}#network-members`}
+          >
+            View members and scores
+          </Link>
+        </div>
+      ) : settling ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-border p-4">
           <LoaderCircle size={20} className="animate-spin text-text-subtle" />
           <span className="tg-label">Building graph</span>
@@ -831,20 +865,40 @@ function GraphInspector({
   cameraControls: boolean
   guide?: NetworkGraphProps['guide']
 }) {
+  const guideContent = (
+    <GraphGuide
+      title={title}
+      graph={graph}
+      cameraControls={cameraControls}
+      guide={guide}
+    />
+  )
   return (
     <section
       aria-live="polite"
       aria-label="Graph inspector"
       className="pointer-events-none absolute inset-x-3 bottom-3 z-10 sm:right-auto sm:w-[22rem]"
     >
-      <div className="border border-hairline-strong bg-surface/95 px-3.5 py-3 backdrop-blur-md shadow-[var(--shadow-elevated)] transition-[opacity,transform] duration-150">
+      <div
+        className={cn(
+          'border border-hairline-strong bg-surface/95 backdrop-blur-md shadow-[var(--shadow-elevated)] transition-[opacity,transform] duration-150',
+          !hoverState && cameraControls ? 'sm:px-3.5 sm:py-3' : 'px-3.5 py-3'
+        )}
+      >
         {!hoverState ? (
-          <GraphGuide
-            title={title}
-            graph={graph}
-            cameraControls={cameraControls}
-            guide={guide}
-          />
+          cameraControls ? (
+            <>
+              <details className="pointer-events-auto sm:hidden">
+                <summary className="min-h-11 cursor-pointer px-3.5 py-3 text-xs text-text-muted focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink">
+                  How to read the graph
+                </summary>
+                <div className="px-3.5 pb-3">{guideContent}</div>
+              </details>
+              <div className="hidden sm:block">{guideContent}</div>
+            </>
+          ) : (
+            guideContent
+          )
         ) : hoverState.type === 'edge' ? (
           <EdgeInspector graph={graph} hoverState={hoverState} />
         ) : (

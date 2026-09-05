@@ -8,6 +8,8 @@ import toast from 'react-hot-toast'
 import { useAccount, useBalance, useConnect, useDisconnect } from 'wagmi'
 
 import { useEns } from '@/hooks/useEns'
+import { applicationEnvironmentLabel } from '@/lib/application-chains'
+import { CHAIN } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
 import { cn, formatBigNumber } from '@/lib/utils'
 import { getCurrentChainConfig } from '@/lib/wagmi'
@@ -49,9 +51,18 @@ const connectorLabel = (id: string, name: string) =>
 export const WalletConnectionButton = ({
   className,
 }: WalletConnectionButtonProps) => {
-  const { _openId, walletOptionsLoading, prepareWalletConnectors } =
-    useWalletConnectionContext()
-  const { address, isConnected } = useAccount()
+  const {
+    _openId,
+    walletOptionsLoading,
+    prepareWalletConnectors,
+    switchToTarget,
+    switchingTarget,
+    switchError,
+  } = useWalletConnectionContext()
+  const { address, isConnected, chainId } = useAccount()
+  const targetChain = getCurrentChainConfig()
+  const wrongChain = isConnected && chainId !== targetChain.id
+  const environmentLabel = applicationEnvironmentLabel(CHAIN)
   const { connectors, connectAsync, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
   const plausible = usePlausible()
@@ -76,6 +87,7 @@ export const WalletConnectionButton = ({
 
   const { data: ethBalance, isLoading: isLoadingEthBalance } = useBalance({
     address: address,
+    chainId: targetChain.id,
     query: {
       enabled: !!address,
       refetchInterval: 30_000,
@@ -138,7 +150,7 @@ export const WalletConnectionButton = ({
               aria-label={
                 isConnected
                   ? address
-                    ? `Account menu, ${accountLabel}`
+                    ? `Account menu, ${accountLabel}, ${environmentLabel}`
                     : 'Account menu'
                   : 'Connect account'
               }
@@ -167,6 +179,9 @@ export const WalletConnectionButton = ({
                   : isConnecting
                     ? 'Connecting…'
                     : 'Connect account'}
+                <span className="block text-[9px] leading-3 normal-case tracking-normal">
+                  {environmentLabel}
+                </span>
               </span>
             </Button>
           ),
@@ -177,7 +192,7 @@ export const WalletConnectionButton = ({
             <div className="flex flex-col gap-2 bg-secondary p-3 rounded-md -m-1">
               {/* Always name the chain this deployment is configured for. */}
               <p className="text-xs text-muted-foreground font-medium mb-1">
-                {getCurrentChainConfig().name} balance
+                {environmentLabel} balance
               </p>
 
               <div className="flex flex-row items-center gap-2 pl-2">
@@ -194,6 +209,29 @@ export const WalletConnectionButton = ({
                 </p>
               </div>
             </div>
+
+            {wrongChain && (
+              <div className="space-y-2 border border-warn p-3">
+                <p className="text-xs text-warn">
+                  Switch networks to use Trustgraphs actions.
+                </p>
+                <Button
+                  className="h-11 w-full whitespace-normal"
+                  size="sm"
+                  onClick={() => void switchToTarget()}
+                  disabled={switchingTarget}
+                >
+                  {switchingTarget
+                    ? 'Switching…'
+                    : `Switch to ${targetChain.name}`}
+                </Button>
+                {switchError && (
+                  <p className="text-xs text-warn" role="status">
+                    {switchError}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-1">
               <Button
@@ -241,6 +279,9 @@ export const WalletConnectionButton = ({
           </div>
         ) : (
           <div className="space-y-2">
+            <p className="px-3 py-1 text-xs text-muted-foreground">
+              {environmentLabel}
+            </p>
             {walletOptionsLoading && (
               <div
                 className="flex h-11 items-center gap-2 px-3 text-sm text-muted-foreground"

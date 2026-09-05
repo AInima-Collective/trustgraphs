@@ -429,6 +429,7 @@ html {
  * and the zoom back, on the one input on the public surface. A phone is a phone
  * in both orientations. */
 @media (pointer: coarse) {
+  input:not([type]),
   input[type='text'],
   input[type='email'],
   input[type='number'],
@@ -567,4 +568,16 @@ div.react-sigma .tg-graph-toolbar .react-sigma-control > button:focus-visible {
   z-index: 1;
   box-shadow: inset var(--focus-ring);
   outline: none;
+}
+
+/* Keep dense desktop controls comfortable to operate by touch. */
+@media (pointer: coarse) {
+  .tg-button,
+  .tg-input,
+  select,
+  .tg-touch-target,
+  div.react-sigma .tg-graph-toolbar .react-sigma-control > button {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }

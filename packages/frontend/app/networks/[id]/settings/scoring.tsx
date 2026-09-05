@@ -48,6 +48,7 @@ import { ScoringGraphPreview } from '@/components/ScoringGraphPreview'
 import { SectionHeading } from '@/components/SectionHeading'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useGovernance } from '@/hooks/useGovernance'
+import { useScoringPreview } from '@/hooks/useScoringPreview'
 import type { InstanceRow } from '@/lib/catalog'
 import { merkleGovModuleAbi, merkleSnapshotAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
@@ -77,6 +78,7 @@ import {
 import { previewScoringChange } from '@/lib/scoring-preview'
 import { txToast } from '@/lib/tx'
 import { cn, realAddress } from '@/lib/utils'
+import { getTargetChainId } from '@/lib/wagmi'
 import { ponderQueries } from '@/queries/ponder'
 
 type ReadResult = { status?: string; result?: unknown }
@@ -337,12 +339,14 @@ const useControllerState = ({
     instance?.contracts.trustgraphsParamsController
   )
   const { data: factoryRegistry } = useReadContract({
+    chainId: getTargetChainId(),
     address: factoryAddress,
     abi: paramsDiscoveryAbi,
     functionName: 'INSTANCE_REGISTRY',
     query: { enabled: !knownController && !!factoryAddress && !!instanceId },
   })
   const { data: discoveredController } = useReadContract({
+    chainId: getTargetChainId(),
     address: factoryRegistry as Address | undefined,
     abi: paramsDiscoveryAbi,
     functionName: 'paramsAuthority',
@@ -366,41 +370,49 @@ const useControllerState = ({
     contracts: controllerAddress
       ? [
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'getCurrentParams' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'currentParamsHash' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'version' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'owner' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'pendingOwner' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'instanceId' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'snapshot' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: controllerAddress,
             abi: trustgraphsParamsControllerAbi,
             functionName: 'registry' as const,
@@ -431,6 +443,7 @@ const useControllerState = ({
     | undefined
 
   const { data: registeredAuthority } = useReadContract({
+    chainId: getTargetChainId(),
     address: controllerRegistry,
     abi: paramsDiscoveryAbi,
     functionName: 'paramsAuthority',
@@ -501,7 +514,7 @@ const useAuthority = ({
   governanceAddress?: Address
   governanceCanPropose: boolean
 }) => {
-  const publicClient = usePublicClient()
+  const publicClient = usePublicClient({ chainId: getTargetChainId() })
   return useQuery({
     queryKey: [
       'scoring-authority',
@@ -1016,7 +1029,7 @@ const LiveScoringSettings = ({
 }) => {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const publicClient = usePublicClient()
+  const publicClient = usePublicClient({ chainId: getTargetChainId() })
   const { address: connectedAddress } = useAccount()
   const { network } = useNetwork()
   const governance = useGovernance()
@@ -1045,11 +1058,13 @@ const LiveScoringSettings = ({
     contracts: companionAddress
       ? [
           {
+            chainId: getTargetChainId(),
             address: companionAddress,
             abi: signerParamsAbi,
             functionName: 'paramsHash' as const,
           },
           {
+            chainId: getTargetChainId(),
             address: companionAddress,
             abi: signerParamsAbi,
             functionName: 'paramsAuthority' as const,
@@ -1079,12 +1094,14 @@ const LiveScoringSettings = ({
     contracts: checkpointId
       ? [
           {
+            chainId: getTargetChainId(),
             address: snapshotAddress,
             abi: merkleSnapshotAbi,
             functionName: 'checkpointParamsHash' as const,
             args: [BigInt(checkpointId)],
           },
           {
+            chainId: getTargetChainId(),
             address: resolverAddress,
             abi: [
               {
@@ -1252,37 +1269,40 @@ const LiveScoringSettings = ({
       blockTimestamp: BigInt(input.blockTimestamp),
     }))
   }, [checkpointInputs.data])
-  const preview = useMemo(() => {
+  const previewInput = useMemo(() => {
     if (!edges || !controller.params || !proposed) return undefined
-    try {
-      return previewScoringChange({
-        edges,
-        current: controller.params,
-        proposed,
-        ...(network.safeZodiacSignerSync.enabled
-          ? {
-              signerSelection: {
-                topN: network.safeZodiacSignerSync.topNSigners,
-                minThreshold: network.safeZodiacSignerSync.minThreshold,
-                targetThresholdBps: Math.round(
-                  network.safeZodiacSignerSync.targetThreshold * 10_000
-                ),
-                maxInactiveBlocks: BigInt(
-                  network.safeZodiacSignerSync.maxInactiveBlocks ?? '151200'
-                ),
-                minActivityWitnesses:
-                  network.safeZodiacSignerSync.minActivityWitnesses ?? 2,
-              },
-            }
-          : {}),
-      })
-    } catch (error) {
-      console.error('Scoring preview failed', error)
-      return undefined
+    return {
+      edges,
+      current: controller.params,
+      proposed,
+      ...(network.safeZodiacSignerSync.enabled
+        ? {
+            signerSelection: {
+              topN: network.safeZodiacSignerSync.topNSigners,
+              minThreshold: network.safeZodiacSignerSync.minThreshold,
+              targetThresholdBps: Math.round(
+                network.safeZodiacSignerSync.targetThreshold * 10_000
+              ),
+              maxInactiveBlocks: BigInt(
+                network.safeZodiacSignerSync.maxInactiveBlocks ?? '151200'
+              ),
+              minActivityWitnesses:
+                network.safeZodiacSignerSync.minActivityWitnesses ?? 2,
+            },
+          }
+        : {}),
     }
   }, [controller.params, edges, network.safeZodiacSignerSync, proposed])
+  const {
+    preview,
+    pending: previewPending,
+    error: previewError,
+  } = useScoringPreview(previewInput)
   const previewConsistent =
     !!preview &&
+    !previewPending &&
+    sameHex(preview.currentHash, parentHash) &&
+    sameHex(preview.proposedHash, proposedHash) &&
     sameHex(preview.inputAcc, checkpointAcc) &&
     preview.inputCount === checkpointLeafCount
 
@@ -1515,7 +1535,7 @@ const LiveScoringSettings = ({
       createdAt: Date.now(),
     })
     router.push(
-      `/networks/${network.id}/governance?new=1&scoringDraft=${fingerprint}`
+      `/networks/${network.id}/governance/new?scoringDraft=${fingerprint}`
     )
   }
 
@@ -2047,6 +2067,16 @@ const LiveScoringSettings = ({
                   )}
                 </div>
 
+                {previewPending && (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    Calculating your scoring preview…
+                  </p>
+                )}
+                {previewError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {previewError}
+                  </p>
+                )}
                 <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:justify-between">
                   <Button
                     type="button"

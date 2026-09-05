@@ -4,6 +4,7 @@ import {
   type AuthorityProfile,
   governedWrapperAbi,
 } from '@/lib/governed-wrapper'
+import { getTargetChainId } from '@/lib/wagmi'
 
 const asBig = (value: unknown): bigint | undefined =>
   typeof value === 'bigint'
@@ -21,6 +22,7 @@ const asBig = (value: unknown): bigint | undefined =>
 export const useAuthorityProfile = (
   factory: `0x${string}` | '' | undefined
 ): AuthorityProfile => {
+  const chainId = getTargetChainId()
   const address =
     factory && factory.length === 42 ? (factory as `0x${string}`) : undefined
   const { data, isLoading } = useReadContracts({
@@ -28,21 +30,25 @@ export const useAuthorityProfile = (
       ? [
           {
             address,
+            chainId,
             abi: governedWrapperAbi,
             functionName: 'MEMBER_VOTING_DELAY',
           },
           {
             address,
+            chainId,
             abi: governedWrapperAbi,
             functionName: 'MEMBER_VOTING_PERIOD',
           },
           {
             address,
+            chainId,
             abi: governedWrapperAbi,
             functionName: 'MEMBER_EXECUTION_DELAY',
           },
           {
             address,
+            chainId,
             abi: governedWrapperAbi,
             functionName: 'RECOVERY_DELAY',
           },

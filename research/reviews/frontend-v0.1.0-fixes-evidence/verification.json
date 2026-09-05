@@ -1,0 +1,465 @@
+{
+  "initialViewportSamples": 90,
+  "initialHTTP200": 78,
+  "initialFixture404": 12,
+  "initialDocumentOverflows": 0,
+  "initialPageErrors": 0,
+  "followupAffectedJourneys": [
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "standard",
+      "path": "/create/standard",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "invalidFieldFocus": true,
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "weighted",
+      "path": "/create/weighted",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "composition",
+      "path": "/create/composition",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "proposal",
+      "path": "/networks/demo-co-op/governance/new",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "rewards",
+      "path": "/networks/demo-co-op/rewards",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "fund",
+      "path": "/networks/demo-co-op/rewards?fund=true",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "settings",
+      "path": "/networks/demo-co-op/settings",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "standard",
+      "path": "/create/standard",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "invalidFieldFocus": true,
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "weighted",
+      "path": "/create/weighted",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "composition",
+      "path": "/create/composition",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "proposal",
+      "path": "/networks/demo-co-op/governance/new",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "rewards",
+      "path": "/networks/demo-co-op/rewards",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "fund",
+      "path": "/networks/demo-co-op/rewards?fund=true",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "settings",
+      "path": "/networks/demo-co-op/settings",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "dark",
+      "name": "standard",
+      "path": "/create/standard",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "invalidFieldFocus": true
+    },
+    {
+      "engine": "webkit",
+      "theme": "dark",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "dark",
+      "name": "proposal",
+      "path": "/networks/demo-co-op/governance/new",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "dark",
+      "name": "rewards",
+      "path": "/networks/demo-co-op/rewards",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "light",
+      "name": "standard",
+      "path": "/create/standard",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "invalidFieldFocus": true
+    },
+    {
+      "engine": "webkit",
+      "theme": "light",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "light",
+      "name": "proposal",
+      "path": "/networks/demo-co-op/governance/new",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "light",
+      "name": "rewards",
+      "path": "/networks/demo-co-op/rewards",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "dark",
+      "name": "standard",
+      "path": "/create/standard",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "invalidFieldFocus": true
+    },
+    {
+      "engine": "firefox",
+      "theme": "dark",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": [
+        "can't access property \"blendFunc\", o is null"
+      ],
+      "error": "Expected values to be strictly equal:\n\n1 !== 0\n"
+    },
+    {
+      "engine": "firefox",
+      "theme": "dark",
+      "name": "proposal",
+      "path": "/networks/demo-co-op/governance/new",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "dark",
+      "name": "rewards",
+      "path": "/networks/demo-co-op/rewards",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "light",
+      "name": "standard",
+      "path": "/create/standard",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "invalidFieldFocus": true
+    },
+    {
+      "engine": "firefox",
+      "theme": "light",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": [
+        "can't access property \"blendFunc\", o is null"
+      ],
+      "error": "Expected values to be strictly equal:\n\n1 !== 0\n"
+    },
+    {
+      "engine": "firefox",
+      "theme": "light",
+      "name": "proposal",
+      "path": "/networks/demo-co-op/governance/new",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "light",
+      "name": "rewards",
+      "path": "/networks/demo-co-op/rewards",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    }
+  ],
+  "finalGraphChecks": [
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "dark",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "chromium",
+      "theme": "light",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": [],
+      "axe": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "dark",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "dark",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "light",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "theme": "light",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "dark",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "dark",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "light",
+      "name": "home",
+      "path": "/",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "theme": "light",
+      "name": "overview",
+      "path": "/networks/demo-co-op",
+      "status": 200,
+      "width": 390,
+      "errors": []
+    }
+  ],
+  "finalBrowserHarness": "passed accessibility, governance, production scoring worker; no unexpected API/RPC writes",
+  "releaseTests": 30,
+  "manifestTests": 13,
+  "frontendTypeScript": "passed TS7 strict noEmit",
+  "frontendLint": "passed",
+  "productionBuild": "passed webpack in disposable fixture tree"
+}

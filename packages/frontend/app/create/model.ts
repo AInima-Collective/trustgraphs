@@ -6,11 +6,9 @@ import {
   FAST_FACTORY_CONFIG,
   SIGNER_SYNC_CONFIG,
 } from '@/lib/config'
+import { reviewCreationFunding } from '@/lib/creation-funding'
 import { parseAccountIdentifier } from '@/lib/ens'
-import {
-  DEFAULT_MAX_PER_ROOT_USD,
-  initialPolicyProblem,
-} from '@/lib/proving-prepay'
+import { DEFAULT_MAX_PER_ROOT_USD } from '@/lib/proving-prepay'
 import { FULL_SEED_TRUST_SHARE_PCT } from '@/lib/trust-share'
 
 /**
@@ -399,17 +397,8 @@ export const seedProblem = (candidate: Hex, existing: Hex[]): string | null => {
 }
 
 /** The prepay must parse as a non-negative decimal, or the create transaction reverts on send. */
-export const prepayProblem = (data: WizardData): string | null => {
-  const trimmed = data.prepayEth.trim()
-  if (!trimmed) return null
-  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
-    return 'Enter an amount like 0.5, or leave it blank.'
-  }
-  if (Number(trimmed) === 0) {
-    return 'Leave it blank rather than entering zero.'
-  }
-  return initialPolicyProblem(data.prepayEth, data.maxPerRootUsd)
-}
+export const prepayProblem = (data: WizardData): string | null =>
+  reviewCreationFunding(data, 0n).problem
 
 export const fundTokenProblem = (data: WizardData): string | null => {
   if (!data.withFund || data.fundToken === 'eth') {

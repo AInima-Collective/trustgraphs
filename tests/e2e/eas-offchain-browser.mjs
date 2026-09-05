@@ -233,10 +233,10 @@ const connect = async (page) => {
 
 const openVouch = async (page) => {
   await page
-    .getByRole('button', { name: /^Make attestation$/i })
+    .getByRole('button', { name: /^Vouch for someone$/i })
     .first()
     .click()
-  const dialog = page.getByRole('dialog', { name: 'Make attestation' })
+  const dialog = page.getByRole('dialog', { name: 'Vouch for someone' })
   await dialog.waitFor()
   return dialog
 }
@@ -476,7 +476,7 @@ const main = async () => {
         )
         .fill('browser-created on-chain predecessor')
       await dialog.getByRole('checkbox').click()
-      await dialog.getByRole('button', { name: 'Make Attestation' }).click()
+      await dialog.getByRole('button', { name: 'Review vouch' }).click()
       const closed = await mineUntil(() =>
         dialog
           .waitFor({ state: 'hidden', timeout: 90_000 })
@@ -516,16 +516,16 @@ const main = async () => {
         )
         .fill('browser-created gasless vouch')
       await dialog.getByRole('checkbox').click()
-      await dialog.getByRole('button', { name: 'Make Attestation' }).click()
+      await dialog.getByRole('button', { name: 'Review vouch' }).click()
       await dialog.getByText('Review the exact EAS v2 typed message').waitFor()
       await dialog
-        .getByRole('button', { name: 'Sign this EAS v2 vouch' })
+        .getByRole('button', { name: 'Sign vouch' })
         .click()
       await dialog
         .getByText('Review the exact append-head typed message')
         .waitFor()
       await dialog
-        .getByRole('button', { name: 'Sign append head and relay' })
+        .getByRole('button', { name: 'Sign and record' })
         .click()
       await waitForVerified(dialog)
       const bundle = await downloadBundle(page, dialog)
@@ -555,7 +555,7 @@ const main = async () => {
       await dialog.getByText('operation').waitFor()
       await dialog.getByText('revoke', { exact: true }).waitFor()
       await dialog
-        .getByRole('button', { name: 'Sign append head and relay' })
+        .getByRole('button', { name: 'Sign and record' })
         .click()
       await waitForVerified(dialog)
       const bundle = await downloadBundle(page, dialog)

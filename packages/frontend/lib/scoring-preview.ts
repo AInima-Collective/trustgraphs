@@ -95,18 +95,20 @@ const asEdgeMap = (
   return result
 }
 
+export type ScoringPreviewInput = {
+  edges: RawEdge[]
+  current: Params
+  proposed: Params
+  signerSelection?: SelectionParams
+}
+
 /** Compare two exact tuples over one exact fold log using the parity-locked browser core. */
 export const previewScoringChange = ({
   edges,
   current,
   proposed,
   signerSelection,
-}: {
-  edges: RawEdge[]
-  current: Params
-  proposed: Params
-  signerSelection?: SelectionParams
-}): ScoringPreview => {
+}: ScoringPreviewInput): ScoringPreview => {
   const before = compute({ edges, params: current })
   const after = compute({ edges, params: proposed })
   const beforeScores = asMap(before.scores)

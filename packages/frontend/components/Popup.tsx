@@ -2,12 +2,13 @@
 
 import { usePathname } from 'next/navigation'
 import {
-  ComponentType,
   Dispatch,
   ReactNode,
   RefObject,
   SetStateAction,
+  useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from 'react'
@@ -20,7 +21,7 @@ import { Card } from './Card'
 
 /** What counts as a stop in the panel's tab cycle, and as its trigger. */
 const FOCUSABLE =
-  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
 
 export interface PopupProps {
   trigger: PopupTrigger
@@ -43,7 +44,7 @@ export interface PopupProps {
    * `role="dialog"`, and a dialog with no name announces as "dialog" and
    * nothing else.
    */
-  popupLabel?: string
+  popupLabel: string
 }
 
 export type PopupTriggerOptions = {
@@ -51,10 +52,10 @@ export type PopupTriggerOptions = {
   onClick: () => void
 }
 
-export type PopupTriggerCustomComponent = ComponentType<{
-  onClick: () => void
-  open: boolean
-}>
+/** Render callback (not a component): keep the trigger's DOM stable on parent updates. */
+export type PopupTriggerCustomComponent = (
+  options: PopupTriggerOptions
+) => ReactNode
 
 export type PopupTrigger =
   | {
@@ -79,6 +80,7 @@ export const Popup = ({
   popupLabel,
 }: PopupProps) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const panelId = useId()
 
   const [_open, _setOpen] = useState(false)
   const open = trigger.type === 'manual' ? trigger.open : _open
@@ -163,6 +165,7 @@ export const Popup = ({
 
   // Track button to position the dropdown.
   const { onDropdownRef, onTrackRef, updateRectRef } = useTrackDropdown({
+    enabled: open,
     // Some space between trigger and dropdown
     top: (rect) => rect.bottom + 4,
     left:
@@ -186,7 +189,15 @@ export const Popup = ({
   // Update rect whenever position, popupPadding, or sideOffset changes.
   useEffect(() => {
     updateRectRef.current()
-  }, [position, popupPadding, sideOffset, updateRectRef])
+  }, [position, popupPadding, sideOffset, open, updateRectRef])
+
+  useEffect(() => {
+    const button = wrapperRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+    if (!button) return
+    button.setAttribute('aria-haspopup', 'dialog')
+    button.setAttribute('aria-controls', panelId)
+    button.setAttribute('aria-expanded', String(open))
+  }, [open, panelId, trigger])
 
   // Prevent initial flash on page load by hiding until first open.
   const openedOnce = useRef(open)
@@ -218,15 +229,30 @@ export const Popup = ({
           : null
       const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
       // After the exit/enter classes have settled, or the element is still inert.
-      const id = requestAnimationFrame(() => first?.focus())
+      const id = requestAnimationFrame(() => {
+        updateRectRef.current()
+        ;(first ?? panel)?.focus({ preventScroll: true })
+      })
       return () => cancelAnimationFrame(id)
     }
-    const previous = restoreRef.current
+    const remembered = restoreRef.current
+    // A custom trigger may remount when its parent updates the popup's values.
+    // Restore to the current control if the element captured on open was replaced.
+    const previous =
+      remembered && remembered !== document.body && remembered.isConnected
+        ? remembered
+        : remembered
+          ? wrapperRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+          : null
     restoreRef.current = null
-    if (previous && panel?.contains(document.activeElement)) {
+    if (
+      previous &&
+      (panel?.contains(document.activeElement) ||
+        document.activeElement === document.body)
+    ) {
       previous.focus()
     }
-  }, [open])
+  }, [open, updateRectRef])
 
   /**
    * Keep Tab inside the open panel.
@@ -284,15 +310,24 @@ export const Popup = ({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [open])
 
+  const setWrapperRef = useCallback(
+    (ref: HTMLDivElement | null) => {
+      wrapperRef.current = ref
+      onTrackRef(ref)
+    },
+    [onTrackRef]
+  )
+  const setDropdownRef = useCallback(
+    (ref: HTMLDivElement | null) => {
+      dropdownRef.current = ref
+      onDropdownRef(ref)
+    },
+    [onDropdownRef]
+  )
+
   return (
     <>
-      <div
-        className={cn('inline-block', wrapperClassName)}
-        ref={(ref) => {
-          wrapperRef.current = ref
-          onTrackRef(ref)
-        }}
-      >
+      <div className={cn('inline-block', wrapperClassName)} ref={setWrapperRef}>
         <TriggerRenderer
           options={{ open, onClick: () => setOpen((o) => !o) }}
           trigger={trigger}
@@ -319,11 +354,13 @@ export const Popup = ({
             // The trigger announces `aria-haspopup="dialog"`, so there has to be
             // a dialog in the tree for it to be pointing at. Without these the
             // promise was made and never kept.
+            id={panelId}
+            tabIndex={-1}
             role="dialog"
             aria-modal={false}
             aria-label={popupLabel}
             className={cn(
-              'fixed z-50 flex flex-col overflow-hidden! border border-hairline-strong transition-all',
+              'fixed z-50 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain border border-hairline-strong transition-[opacity,transform] [&>*]:shrink-0',
               // Prevent initial flash on page load by hiding until first open.
               !openedOnce.current && 'hidden',
               // Open.
@@ -332,10 +369,7 @@ export const Popup = ({
                 : 'animate-out fade-out-0 zoom-out-95 pointer-events-none',
               popupClassName
             )}
-            ref={(ref) => {
-              dropdownRef.current = ref
-              onDropdownRef(ref)
-            }}
+            ref={setDropdownRef}
           >
             {children}
           </Card>,
@@ -350,6 +384,5 @@ export type TriggerRendererProps = {
   options: PopupTriggerOptions
 }
 
-export const TriggerRenderer = ({ trigger, options }: TriggerRendererProps) => (
-  <>{trigger.type === 'custom' ? <trigger.Renderer {...options} /> : null}</>
-)
+export const TriggerRenderer = ({ trigger, options }: TriggerRendererProps) =>
+  trigger.type === 'custom' ? trigger.Renderer(options) : null

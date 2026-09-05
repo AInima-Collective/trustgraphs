@@ -18,10 +18,7 @@ import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { APIS, IMPORTED_FACTORY_CONFIG } from '@/lib/config'
-import {
-  governedTrustgraphsFactoryAbi,
-  trustgraphsFactoryAbi,
-} from '@/lib/contract-abis'
+import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
 import {
   type EasSchemaPreview,
   decodeLegacySample,

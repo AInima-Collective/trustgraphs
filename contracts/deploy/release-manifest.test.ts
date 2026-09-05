@@ -25,6 +25,21 @@ const WEIGHTED_BYTES32 = `0x${'77'.repeat(32)}` as `0x${string}`
 const COMPOSITION_BYTES32 = `0x${'88'.repeat(32)}` as `0x${string}`
 const CONTRIBUTIONS_BYTES32 = `0x${'99'.repeat(32)}` as `0x${string}`
 
+test('mainnet manifests require an explicit reader opt-in and the exact chain binding', () => {
+  const sepolia = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  const mainnet = { ...sepolia, chain: 'mainnet', chainId: 1 }
+  assert.throws(() => validateReleaseManifest(mainnet), /chain=sepolia/)
+  assert.equal(validateReleaseManifest(mainnet, { expectedChain: 'mainnet' }).chainId, 1)
+  assert.throws(
+    () => validateReleaseManifest(sepolia, { expectedChain: 'mainnet' }),
+    /chain=mainnet and chainId=1/
+  )
+  assert.throws(
+    () => validateReleaseManifest({ ...mainnet, chainId: 11155111 }, { expectedChain: 'mainnet' }),
+    /chain=mainnet and chainId=1/
+  )
+})
+
 test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its status', () => {
   const manifest = loadReleaseManifest(MANIFEST)
   const serialized = fs.readFileSync(MANIFEST, 'utf8')

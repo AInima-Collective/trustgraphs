@@ -129,8 +129,7 @@ export const simulateNetwork = (
               ...edge,
               kind: 1,
               blockTimestamp:
-                attestation.revocationTime &&
-                attestation.revocationTime > 0n
+                attestation.revocationTime && attestation.revocationTime > 0n
                   ? attestation.revocationTime
                   : attestation.time,
             },
