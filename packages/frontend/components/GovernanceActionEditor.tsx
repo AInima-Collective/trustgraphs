@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { type Address, isAddress, toHex } from 'viem'
 
+import { CustomCallEditor } from '@/components/governance/CustomCallEditor'
 import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { ScoringParamsEditor } from '@/components/governance/ScoringParamsEditor'
 import { GovernanceFieldGrid } from '@/components/governance/fields/GovernanceFieldGrid'
@@ -326,6 +327,16 @@ export function GovernanceActionEditor({
     case 'cancel-constitutional-transfer':
       return (
         <NoArguments note="It cancels the snapshot’s currently pending constitutional transfer." />
+      )
+    case 'custom':
+      return (
+        <CustomCallEditor
+          idBase={idBase}
+          values={values}
+          fieldErrors={fieldErrors}
+          showAllErrors={showAllErrors}
+          onChange={onChange}
+        />
       )
     default:
       return fields.length ? grid : <NoArguments />

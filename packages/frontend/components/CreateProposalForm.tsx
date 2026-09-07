@@ -24,6 +24,7 @@ import { CopyableText } from '@/components/CopyableText'
 import { GovernanceActionEditor } from '@/components/GovernanceActionEditor'
 import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import { GovernanceComposerProvider } from '@/components/governance/GovernanceComposerContext'
+import { ProposalSimulationPanel } from '@/components/governance/ProposalSimulationPanel'
 import {
   GovernanceActionLibrary,
   governanceCategoryLabels,
@@ -34,6 +35,7 @@ import { VoteButtons } from '@/components/VoteButtons'
 import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useEnsResolver } from '@/hooks/useEns'
+import { useProposalSimulation } from '@/hooks/useProposalSimulation'
 import { type ProposalAction, VoteType } from '@/hooks/useGovernance'
 import {
   type GovernanceActionDraft,
@@ -46,6 +48,7 @@ import {
   governanceComposerActionAvailable,
   governanceComposerDefinition,
   governanceComposerRegistry,
+  governanceDangerConsequence,
   validateGovernanceActionDraft,
 } from '@/lib/actions'
 import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
@@ -102,6 +105,7 @@ export function CreateProposalForm({
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [castVoteOnCreate, setCastVoteOnCreate] = useState(false)
   const [voteType, setVoteType] = useState<VoteType>(VoteType.Yes)
+  const [dangerAcknowledged, setDangerAcknowledged] = useState(false)
   const [drafts, setDrafts] = useState<DraftEntry[]>(() =>
     (prefill?.actions ?? []).map((draft, index) => ({
       ...draft,
@@ -205,6 +209,10 @@ export function CreateProposalForm({
   const highImpactCount = drafts.filter(
     (draft) => governanceComposerDefinition(draft.actionKey)?.danger
   ).length
+  const simulation = useProposalSimulation(
+    previewActions,
+    step === 'review' && actionsReady && previewActions.length > 0
+  )
   const proposalJson = actionsReady
     ? JSON.stringify(
         {
@@ -361,6 +369,10 @@ export function CreateProposalForm({
     if (!detailsReady || !actionsReady) {
       changeStep('compose')
       setAttemptedReview(true)
+      return
+    }
+    if (highImpactCount > 0 && !dangerAcknowledged) {
+      setError('Acknowledge the high-impact actions before submitting.')
       return
     }
     setIsSubmitting(true)
@@ -949,7 +961,13 @@ export function CreateProposalForm({
                         effect.
                       </p>
                       {actionsReady ? (
-                        <ProposalActionList actions={previewActions} />
+                        <>
+                          <ProposalActionList actions={previewActions} />
+                          <ProposalSimulationPanel
+                            simulation={simulation}
+                            actions={previewActions}
+                          />
+                        </>
                       ) : (
                         <p
                           role="status"
@@ -1009,14 +1027,66 @@ export function CreateProposalForm({
                     </div>
                   </dl>
                   {highImpactCount > 0 && (
-                    <p className="flex items-start gap-2 border-t border-border pt-4 text-xs leading-relaxed text-warn">
-                      <Shield className="size-4 shrink-0" aria-hidden="true" />
-                      {highImpactCount} high-impact{' '}
-                      {highImpactCount === 1
-                        ? 'action changes'
-                        : 'actions change'}{' '}
-                      authority or execution safeguards. Review these carefully.
-                    </p>
+                    <div className="space-y-3 border-t border-border pt-4">
+                      <p className="flex items-start gap-2 text-xs leading-relaxed text-warn">
+                        <Shield
+                          className="size-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        {highImpactCount} high-impact{' '}
+                        {highImpactCount === 1
+                          ? 'action changes'
+                          : 'actions change'}{' '}
+                        authority or execution safeguards.
+                      </p>
+                      <ul className="space-y-2 text-xs leading-relaxed">
+                        {drafts
+                          .filter(
+                            (draft) =>
+                              governanceComposerDefinition(draft.actionKey)
+                                ?.danger
+                          )
+                          .map((draft) => {
+                            const definition = governanceComposerDefinition(
+                              draft.actionKey
+                            )!
+                            return (
+                              <li key={draft.id}>
+                                <span className="font-medium">
+                                  {definition.label}.
+                                </span>{' '}
+                                <span className="text-text-muted">
+                                  {governanceDangerConsequence(
+                                    draft.actionKey,
+                                    definition.summary
+                                  )}
+                                </span>
+                              </li>
+                            )
+                          })}
+                      </ul>
+                      <label className="flex cursor-pointer items-start gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 shrink-0 accent-ink"
+                          checked={dangerAcknowledged}
+                          onChange={(event) =>
+                            setDangerAcknowledged(event.target.checked)
+                          }
+                          aria-describedby="danger-acknowledgement-help"
+                        />
+                        <span>
+                          I understand what these actions change
+                          <span
+                            id="danger-acknowledgement-help"
+                            className="mt-1 block text-xs leading-relaxed text-text-muted"
+                          >
+                            Required before submitting a proposal with
+                            high-impact actions.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
                   )}
                 </div>
                 <div className="space-y-4 border border-border bg-surface p-5 [&_[role=radiogroup]]:flex-col">
@@ -1082,7 +1152,9 @@ export function CreateProposalForm({
             <p className="text-xs text-text-muted">
               {step === 'review'
                 ? canCreateProposal
-                  ? 'Confirm the transaction in your wallet.'
+                  ? highImpactCount > 0 && !dangerAcknowledged
+                    ? 'Acknowledge the high-impact actions to submit.'
+                    : 'Confirm the transaction in your wallet.'
                   : isConnected
                     ? 'You need voting power in this network to submit.'
                     : 'Connect a wallet with voting power to submit.'
@@ -1117,7 +1189,10 @@ export function CreateProposalForm({
                 className="min-h-11 flex-1 sm:flex-none"
                 disabled={
                   step === 'review'
-                    ? busy || !canCreateProposal || !actionsReady
+                    ? busy ||
+                      !canCreateProposal ||
+                      !actionsReady ||
+                      (highImpactCount > 0 && !dangerAcknowledged)
                     : previewPending
                 }
               >

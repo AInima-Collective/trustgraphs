@@ -8,7 +8,9 @@ import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import {
+  type GovernanceActionContext,
   type TokenDisplay,
+  decodeKnownCall,
   formatBlockCount,
   formatBps,
   formatPercent18,
@@ -106,6 +108,7 @@ type Formatting = {
   token: (address: string) => TokenDisplay | undefined
   contractLabel: (address: string) => string | undefined
   blockTime: number
+  context: GovernanceActionContext
 }
 
 const USDC: TokenDisplay = { decimals: 6, symbol: 'USDC' }
@@ -553,6 +556,33 @@ const presentAction = (
     }
     default: {
       const action = matched.actions[0]
+      const decoded = action
+        ? decodeKnownCall(fmt.context, action.target, action.data)
+        : null
+      if (action && decoded) {
+        return {
+          kind: 'custom',
+          title: `Call ${decoded.functionName} on the ${decoded.contract.label.toLowerCase()}`,
+          summary:
+            'Not a typed action, but decoded against the network’s own contract ABI. Review every argument.',
+          badge: action.operation === 1 ? 'Delegate call' : 'Contract call',
+          details: [
+            addressDetail('Target', action.target),
+            {
+              label: 'Function',
+              value: decoded.signature,
+              kind: 'text',
+            },
+            ...decoded.args.map(
+              (arg): ActionDetail => ({
+                label: `${arg.name} (${arg.type})`,
+                value: arg.value,
+                kind: isAddress(arg.value) ? 'address' : 'text',
+              })
+            ),
+          ],
+        }
+      }
       const known = action ? fmt.contractLabel(action.target) : undefined
       return {
         kind: 'custom',
@@ -878,6 +908,7 @@ export function ProposalActionList({
     token: (address) => metadata.get(address),
     contractLabel: (address) => labels.get(address.toLowerCase()),
     blockTime: blockTimeSeconds(),
+    context,
   }
 
   if (!normalized.ok) {
