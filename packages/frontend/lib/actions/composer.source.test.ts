@@ -31,21 +31,38 @@ assert.match(form, /removeDraft\(index\)/)
 assert.match(form, /encodeGovernanceActionDraft/)
 assert.match(form, /Live encoded preview/)
 assert.match(form, /Copy DAO proposal JSON/)
+// The editor is schema-driven: every action's fields come from lib/actions/fields.ts, and
+// the few actions with derived or structured values keep dedicated editors.
+assert.match(editor, /governanceActionFields\(/)
+assert.match(editor, /GovernanceFieldGrid/)
+assert.match(editor, /ScoringParamsEditor/)
 assert.match(editor, /case 'update-scoring-params'/)
-assert.match(editor, /case 'update-network-profile'/)
-assert.match(editor, /case 'set-signer-sync-paused'/)
-assert.match(editor, /case 'rotate-weighted-prior'/)
-assert.match(editor, /case 'send-erc20'/)
-assert.match(editor, /case 'fund-rewards'/)
-assert.match(editor, /case 'set-operational-role'/)
-assert.match(editor, /case 'set-governance-quorum'/)
-assert.match(editor, /case 'set-governance-delegatecall-target'/)
-assert.match(editor, /case 'set-vault-policy'/)
-assert.match(editor, /case 'set-snapshot-verifier'/)
-assert.match(editor, /case 'set-recovery-proposer'/)
-assert.match(editor, /case 'cancel-recovery-action'/)
 assert.match(editor, /case 'create-contribution-round'/)
+assert.match(editor, /case 'rotate-weighted-prior'/)
 assert.match(editor, /case 'propose-composition-policy'/)
+assert.match(editor, /case 'disable-safe-module'/)
+assert.match(editor, /case 'swap-safe-owner'/)
+assert.doesNotMatch(editor, /Unix seconds/)
+assert.doesNotMatch(editor, /base units\)/)
+assert.match(form, /GovernanceComposerProvider/)
+assert.match(form, /validateGovernanceActionDraft/)
+assert.match(form, /fieldErrors=\{fieldErrorsFor\(draft, result\)\}/)
+assert.match(form, /showAllErrors=\{attemptedReview\}/)
+const fields = source('lib/actions/fields.ts')
+for (const kind of [
+  "kind: 'timestamp'",
+  "kind: 'blocks'",
+  "kind: 'amount'",
+  "kind: 'percent'",
+  "kind: 'bps'",
+  "kind: 'usd'",
+  "picker: 'score-root'",
+  "picker: 'safe-owner'",
+  "picker: 'safe-module'",
+  "picker: 'proposal'",
+]) {
+  assert.ok(fields.includes(kind), `fields.ts declares ${kind}`)
+}
 assert.match(form, /High-impact governance action/)
 
 for (const producer of [

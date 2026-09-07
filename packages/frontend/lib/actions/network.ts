@@ -9,6 +9,44 @@ const contractAddress = (value: string | undefined): Address | undefined => {
   return address && isAddress(address) ? address : undefined
 }
 
+const CONTRACT_LABELS: Record<
+  Exclude<keyof GovernanceActionContext, 'instanceId'>,
+  string
+> = {
+  snapshot: 'Network snapshot',
+  paramsController: 'Scoring parameters controller',
+  weightedParamsController: 'Weighted parameters controller',
+  compositionParamsController: 'Composition parameters controller',
+  signerSyncModule: 'Signer sync module',
+  recoveryModule: 'Recovery module',
+  executionGuard: 'Execution guard',
+  treasurySafe: 'Network Safe (treasury)',
+  fundDistributor: 'Rewards distributor',
+  governanceModule: 'Governance module',
+  provingVault: 'Proving vault',
+  contributionsFactory: 'Contribution-round factory',
+}
+
+/**
+ * Names for the network's own contracts, keyed by lowercase address, so composer and reviewer
+ * can say "the rewards distributor" where calldata says an address.
+ */
+export const governanceContractLabels = (
+  network: Pick<Network, 'contracts' | 'instanceId' | 'program'>
+): Map<string, string> => {
+  const context = governanceActionContextFor(network)
+  const labels = new Map<string, string>()
+  for (const [key, label] of Object.entries(CONTRACT_LABELS)) {
+    const address = context[key as keyof typeof CONTRACT_LABELS]
+    if (address) labels.set(address.toLowerCase(), label)
+  }
+  const resolver = contractAddress(network.contracts.easIndexerResolver)
+  if (resolver) labels.set(resolver.toLowerCase(), 'Attestation resolver')
+  const anchors = contractAddress(network.contracts.easOffchainAnchorRegistry)
+  if (anchors) labels.set(anchors.toLowerCase(), 'Anchor registry')
+  return labels
+}
+
 /** Build matcher context only from addresses authenticated for the network being viewed. */
 export const governanceActionContextFor = (
   network: Pick<Network, 'contracts' | 'instanceId' | 'program'>

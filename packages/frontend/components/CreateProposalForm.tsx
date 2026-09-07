@@ -23,6 +23,7 @@ import { Button } from '@/components/Button'
 import { CopyableText } from '@/components/CopyableText'
 import { GovernanceActionEditor } from '@/components/GovernanceActionEditor'
 import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
+import { GovernanceComposerProvider } from '@/components/governance/GovernanceComposerContext'
 import {
   GovernanceActionLibrary,
   governanceCategoryLabels,
@@ -36,20 +37,28 @@ import { useEnsResolver } from '@/hooks/useEns'
 import { type ProposalAction, VoteType } from '@/hooks/useGovernance'
 import {
   type GovernanceActionDraft,
+  GovernanceActionFieldError,
   type GovernanceComposerActionKey,
   defaultGovernanceActionValues,
   encodeGovernanceActionDraft,
   governanceActionContextFor,
+  governanceActionFields,
   governanceComposerActionAvailable,
   governanceComposerDefinition,
   governanceComposerRegistry,
+  validateGovernanceActionDraft,
 } from '@/lib/actions'
 import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 import type { GovernancePrefill } from '@/lib/governance-prefill'
 import { cn, formatBigNumber } from '@/lib/utils'
 
 type DraftEntry = GovernanceActionDraft & { id: number }
-type ActionPreview = { actions: ProposalAction[]; error: string | null }
+type ActionPreview = {
+  actions: ProposalAction[]
+  error: string | null
+  /** The field the error belongs to, when the encoder could attribute it. */
+  field?: string
+}
 export type ProposalDraftContent = Pick<
   GovernancePrefill,
   'title' | 'description' | 'actions'
@@ -156,6 +165,9 @@ export function CreateProposalForm({
             failure instanceof Error
               ? failure.message
               : getAccountIdentifierErrorMessage(failure),
+          ...(failure instanceof GovernanceActionFieldError
+            ? { field: failure.field }
+            : {}),
         }
       }
     },
@@ -271,6 +283,33 @@ export function CreateProposalForm({
     )
   }
 
+  /**
+   * Problems shown beside their fields: the synchronous schema check first, then whatever the
+   * encoder attributed to a field. Anything else stays an action-level message.
+   */
+  const fieldErrorsFor = (
+    draft: DraftEntry,
+    result: ActionPreview | undefined
+  ): Record<string, string> => {
+    const errors = validateGovernanceActionDraft(draft.actionKey, draft.values)
+    if (result?.error && result.field && !errors[result.field]) {
+      errors[result.field] = result.error
+    }
+    return errors
+  }
+  const actionErrorFor = (
+    draft: DraftEntry,
+    result: ActionPreview | undefined
+  ): string | null => {
+    if (!result?.error) return null
+    const attributed =
+      !!result.field &&
+      governanceActionFields(draft.actionKey).some(
+        (field) => field.key === result.field
+      )
+    return attributed ? null : result.error
+  }
+
   const updateDraft = (index: number, values: unknown) =>
     setDrafts((current) =>
       current.map((draft, itemIndex) =>
@@ -353,741 +392,753 @@ export function CreateProposalForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-8">
-      <div className="sr-only" role="status" aria-live="polite">
-        {announcement}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
-        <nav
-          aria-label="Proposal steps"
-          className="flex items-center gap-3 sm:gap-6"
-        >
-          <button
-            type="button"
-            aria-current={step === 'compose' ? 'step' : undefined}
-            onClick={() => changeStep('compose')}
-            disabled={isSubmitting}
-            className={cn(
-              'flex min-h-9 items-center gap-2 text-sm disabled:opacity-50',
-              step !== 'compose' && 'text-text-muted'
-            )}
+    <GovernanceComposerProvider drafts={drafts}>
+      <form onSubmit={handleSubmit} noValidate className="space-y-8">
+        <div className="sr-only" role="status" aria-live="polite">
+          {announcement}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
+          <nav
+            aria-label="Proposal steps"
+            className="flex items-center gap-3 sm:gap-6"
           >
-            <span
+            <button
+              type="button"
+              aria-current={step === 'compose' ? 'step' : undefined}
+              onClick={() => changeStep('compose')}
+              disabled={isSubmitting}
               className={cn(
-                'flex size-6 items-center justify-center border text-xs',
-                step === 'compose'
-                  ? 'border-ink bg-ink text-ink-fg'
-                  : 'border-border'
+                'flex min-h-9 items-center gap-2 text-sm disabled:opacity-50',
+                step !== 'compose' && 'text-text-muted'
               )}
             >
-              {step === 'review' ? (
-                <Check className="size-3" aria-hidden="true" />
-              ) : (
-                '1'
-              )}
-            </span>
-            Compose
-          </button>
-          <span className="h-px w-6 bg-border sm:w-12" aria-hidden="true" />
-          <button
-            type="button"
-            aria-current={step === 'review' ? 'step' : undefined}
-            onClick={reviewProposal}
-            disabled={isSubmitting || previewPending}
-            className={cn(
-              'flex min-h-9 items-center gap-2 text-sm disabled:opacity-50',
-              step !== 'review' && 'text-text-muted'
-            )}
-          >
-            <span
-              className={cn(
-                'flex size-6 items-center justify-center border text-xs',
-                step === 'review'
-                  ? 'border-ink bg-ink text-ink-fg'
-                  : 'border-border'
-              )}
-            >
-              2
-            </span>
-            Review & submit
-          </button>
-        </nav>
-        {draftStatus && (
-          <span role="status" className="text-xs text-text-muted">
-            {draftStatus}
-          </span>
-        )}
-      </div>
-
-      <fieldset disabled={isSubmitting} className="min-w-0 space-y-8">
-        <legend className="sr-only">Proposal builder</legend>
-        <div hidden={step !== 'compose'} className="space-y-10">
-          <section
-            aria-labelledby="proposal-details-heading"
-            className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8"
-          >
-            <div className="space-y-2">
-              <p className="tg-label">01 / The decision</p>
-              <h3
-                id="proposal-details-heading"
-                ref={step === 'compose' ? headingRef : undefined}
-                tabIndex={-1}
-                className="text-2xl outline-none"
+              <span
+                className={cn(
+                  'flex size-6 items-center justify-center border text-xs',
+                  step === 'compose'
+                    ? 'border-ink bg-ink text-ink-fg'
+                    : 'border-border'
+                )}
               >
-                Make your case.
-              </h3>
-              <p className="max-w-sm text-sm leading-relaxed text-text-muted">
-                A clear proposal helps members understand what will change and
-                why it matters.
-              </p>
-            </div>
-            <div className="min-w-0 space-y-5">
-              <div className="space-y-2">
-                <label htmlFor="proposal-title" className="text-sm font-medium">
-                  Proposal title
-                </label>
-                <input
-                  id="proposal-title"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="e.g. Fund the next community research round"
-                  className={inputClassName}
-                  required
-                  aria-invalid={attemptedReview && !title.trim()}
-                  aria-describedby={
-                    attemptedReview && !title.trim()
-                      ? 'proposal-title-error'
-                      : undefined
-                  }
-                />
-                {attemptedReview && !title.trim() && (
-                  <p id="proposal-title-error" className="text-xs text-error">
-                    Give your proposal a title.
-                  </p>
+                {step === 'review' ? (
+                  <Check className="size-3" aria-hidden="true" />
+                ) : (
+                  '1'
                 )}
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    htmlFor="proposal-description"
-                    className="text-sm font-medium"
-                  >
-                    Description
-                  </label>
-                  <span className="text-xs text-text-muted">
-                    Markdown supported
-                  </span>
-                </div>
-                <textarea
-                  id="proposal-description"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder={
-                    'What do you propose?\n\nExplain the context, the intended outcome, and any tradeoffs.'
-                  }
-                  className={`${inputClassName} min-h-36 resize-y leading-relaxed`}
-                  required
-                  aria-invalid={attemptedReview && !description.trim()}
-                  aria-describedby={
-                    attemptedReview && !description.trim()
-                      ? 'proposal-description-error'
-                      : undefined
-                  }
-                />
-                {attemptedReview && !description.trim() && (
-                  <p
-                    id="proposal-description-error"
-                    className="text-xs text-error"
-                  >
-                    Add context so members can make an informed decision.
-                  </p>
+              </span>
+              Compose
+            </button>
+            <span className="h-px w-6 bg-border sm:w-12" aria-hidden="true" />
+            <button
+              type="button"
+              aria-current={step === 'review' ? 'step' : undefined}
+              onClick={reviewProposal}
+              disabled={isSubmitting || previewPending}
+              className={cn(
+                'flex min-h-9 items-center gap-2 text-sm disabled:opacity-50',
+                step !== 'review' && 'text-text-muted'
+              )}
+            >
+              <span
+                className={cn(
+                  'flex size-6 items-center justify-center border text-xs',
+                  step === 'review'
+                    ? 'border-ink bg-ink text-ink-fg'
+                    : 'border-border'
                 )}
-              </div>
-            </div>
-          </section>
+              >
+                2
+              </span>
+              Review & submit
+            </button>
+          </nav>
+          {draftStatus && (
+            <span role="status" className="text-xs text-text-muted">
+              {draftStatus}
+            </span>
+          )}
+        </div>
 
-          <section
-            aria-labelledby="proposal-actions-heading"
-            className="space-y-5 border-t border-border pt-8"
-          >
-            <div className="flex flex-wrap items-end justify-between gap-3">
+        <fieldset disabled={isSubmitting} className="min-w-0 space-y-8">
+          <legend className="sr-only">Proposal builder</legend>
+          <div hidden={step !== 'compose'} className="space-y-10">
+            <section
+              aria-labelledby="proposal-details-heading"
+              className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8"
+            >
               <div className="space-y-2">
-                <p className="tg-label">02 / The execution</p>
-                <h3 id="proposal-actions-heading" className="text-2xl">
-                  Build the actions.
+                <p className="tg-label">01 / The decision</p>
+                <h3
+                  id="proposal-details-heading"
+                  ref={step === 'compose' ? headingRef : undefined}
+                  tabIndex={-1}
+                  className="text-2xl outline-none"
+                >
+                  Make your case.
                 </h3>
-                <p className="text-sm text-text-muted">
-                  Choose what this proposal will do. Actions run in order when a
-                  passed proposal is executed.
+                <p className="max-w-sm text-sm leading-relaxed text-text-muted">
+                  A clear proposal helps members understand what will change and
+                  why it matters.
                 </p>
               </div>
-              <span className="text-xs text-text-muted">
-                Optional for a signal vote
-              </span>
-            </div>
-            <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8">
-              <GovernanceActionLibrary
-                definitions={availableDefinitions}
-                onAdd={addDraft}
-              />
-              <div className="min-w-0 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-                  <h4 className="text-sm font-medium">
-                    Your actions{' '}
-                    <span className="ml-2 border border-border px-1.5 py-0.5 text-xs tabular-nums">
-                      {drafts.length.toString().padStart(2, '0')}
-                    </span>
-                  </h4>
-                  <span className="text-xs text-text-muted">
-                    {drafts.length
-                      ? `${readyCount} of ${drafts.length} ready`
-                      : 'No actions yet'}
-                  </span>
-                </div>
-                {removed && (
-                  <div
-                    role="status"
-                    className="flex items-center justify-between gap-3 border border-border bg-surface-2 px-3 py-2 text-xs"
+              <div className="min-w-0 space-y-5">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="proposal-title"
+                    className="text-sm font-medium"
                   >
-                    <span>
-                      {
-                        governanceComposerDefinition(removed.draft.actionKey)
-                          ?.label
-                      }{' '}
-                      removed.
+                    Proposal title
+                  </label>
+                  <input
+                    id="proposal-title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="e.g. Fund the next community research round"
+                    className={inputClassName}
+                    required
+                    aria-invalid={attemptedReview && !title.trim()}
+                    aria-describedby={
+                      attemptedReview && !title.trim()
+                        ? 'proposal-title-error'
+                        : undefined
+                    }
+                  />
+                  {attemptedReview && !title.trim() && (
+                    <p id="proposal-title-error" className="text-xs text-error">
+                      Give your proposal a title.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor="proposal-description"
+                      className="text-sm font-medium"
+                    >
+                      Description
+                    </label>
+                    <span className="text-xs text-text-muted">
+                      Markdown supported
                     </span>
+                  </div>
+                  <textarea
+                    id="proposal-description"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder={
+                      'What do you propose?\n\nExplain the context, the intended outcome, and any tradeoffs.'
+                    }
+                    className={`${inputClassName} min-h-36 resize-y leading-relaxed`}
+                    required
+                    aria-invalid={attemptedReview && !description.trim()}
+                    aria-describedby={
+                      attemptedReview && !description.trim()
+                        ? 'proposal-description-error'
+                        : undefined
+                    }
+                  />
+                  {attemptedReview && !description.trim() && (
+                    <p
+                      id="proposal-description-error"
+                      className="text-xs text-error"
+                    >
+                      Add context so members can make an informed decision.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section
+              aria-labelledby="proposal-actions-heading"
+              className="space-y-5 border-t border-border pt-8"
+            >
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-2">
+                  <p className="tg-label">02 / The execution</p>
+                  <h3 id="proposal-actions-heading" className="text-2xl">
+                    Build the actions.
+                  </h3>
+                  <p className="text-sm text-text-muted">
+                    Choose what this proposal will do. Actions run in order when
+                    a passed proposal is executed.
+                  </p>
+                </div>
+                <span className="text-xs text-text-muted">
+                  Optional for a signal vote
+                </span>
+              </div>
+              <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8">
+                <GovernanceActionLibrary
+                  definitions={availableDefinitions}
+                  onAdd={addDraft}
+                />
+                <div className="min-w-0 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+                    <h4 className="text-sm font-medium">
+                      Your actions{' '}
+                      <span className="ml-2 border border-border px-1.5 py-0.5 text-xs tabular-nums">
+                        {drafts.length.toString().padStart(2, '0')}
+                      </span>
+                    </h4>
+                    <span className="text-xs text-text-muted">
+                      {drafts.length
+                        ? `${readyCount} of ${drafts.length} ready`
+                        : 'No actions yet'}
+                    </span>
+                  </div>
+                  {removed && (
+                    <div
+                      role="status"
+                      className="flex items-center justify-between gap-3 border border-border bg-surface-2 px-3 py-2 text-xs"
+                    >
+                      <span>
+                        {
+                          governanceComposerDefinition(removed.draft.actionKey)
+                            ?.label
+                        }{' '}
+                        removed.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          setDrafts((current) => [
+                            ...current.slice(0, removed.index),
+                            removed.draft,
+                            ...current.slice(removed.index),
+                          ])
+                          focusDraft(removed.draft.id)
+                          setRemoved(null)
+                          setAnnouncement('Action restored.')
+                        }}
+                      >
+                        Undo
+                      </Button>
+                    </div>
+                  )}
+                  {!drafts.length && (
+                    <div className="flex min-h-80 flex-col items-center justify-center gap-4 border border-dashed border-hairline-strong bg-surface/50 px-5 py-10 text-center">
+                      <div className="flex size-12 items-center justify-center border border-border bg-background">
+                        <Layers3
+                          className="size-5 text-text-muted"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-base">
+                          Turn a decision into action.
+                        </h4>
+                        <p className="mx-auto max-w-sm text-sm leading-relaxed text-text-muted">
+                          Transfer funds, update your network, or change
+                          governance rules. Start with an action from the
+                          library.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => addDraft('send-eth')}
+                      >
+                        <Plus />
+                        Add a treasury transfer
+                      </Button>
+                      <p className="max-w-sm border-t border-border pt-4 text-xs leading-relaxed text-text-muted">
+                        Just gathering support? Leave actions empty to create a
+                        signal vote with no contract calls.
+                      </p>
+                    </div>
+                  )}
+                  {drafts.map((draft, index) => {
+                    const definition = governanceComposerDefinition(
+                      draft.actionKey
+                    )
+                    const expanded = expandedId === draft.id
+                    const result = results[index]
+                    return (
+                      <article
+                        key={draft.id}
+                        aria-labelledby={`action-heading-${draft.id}`}
+                        className={cn(
+                          'min-w-0 border bg-surface',
+                          expanded ? 'border-hairline-strong' : 'border-border'
+                        )}
+                      >
+                        <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-2 p-3 sm:flex sm:flex-wrap sm:p-4">
+                          <span className="mt-1 flex size-8 shrink-0 items-center justify-center border border-border text-xs text-text-muted">
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <button
+                            id={`action-heading-${draft.id}`}
+                            type="button"
+                            aria-expanded={expanded}
+                            aria-controls={`action-editor-${draft.id}`}
+                            onClick={() =>
+                              setExpandedId(expanded ? null : draft.id)
+                            }
+                            className="min-w-0 flex-1 space-y-1 px-1 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                          >
+                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-text-muted">
+                              {
+                                governanceCategoryLabels[
+                                  definition?.category ?? 'custom'
+                                ]
+                              }
+                            </span>
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                              <GovernanceActionEmoji
+                                actionKey={draft.actionKey}
+                              />
+                              {definition?.label ?? draft.actionKey}
+                              <ChevronDown
+                                className={cn(
+                                  'size-3.5 shrink-0 text-text-muted transition-transform',
+                                  expanded && 'rotate-180'
+                                )}
+                                aria-hidden="true"
+                              />
+                            </span>
+                            <span
+                              className={cn(
+                                'flex items-center gap-1.5 text-xs',
+                                result?.error
+                                  ? 'text-warn'
+                                  : result
+                                    ? 'text-success'
+                                    : 'text-text-muted'
+                              )}
+                            >
+                              {previewPending ? (
+                                <>
+                                  <LoaderCircle
+                                    className="size-3 animate-spin"
+                                    aria-hidden="true"
+                                  />
+                                  Checking fields…
+                                </>
+                              ) : result?.error ? (
+                                'Needs attention'
+                              ) : (
+                                <>
+                                  <Check
+                                    className="size-3"
+                                    aria-hidden="true"
+                                  />
+                                  Ready
+                                </>
+                              )}
+                            </span>
+                            {!expanded && result && !result.error && (
+                              <span className="line-clamp-2 break-all text-xs leading-relaxed text-text-muted">
+                                {result.actions
+                                  .map((action) => action.description)
+                                  .filter(Boolean)
+                                  .join(' · ') || definition?.summary}
+                              </span>
+                            )}
+                          </button>
+                          <div
+                            className="col-start-2 flex shrink-0 items-center gap-0.5"
+                            role="group"
+                            aria-label={`Action ${index + 1} controls`}
+                          >
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveDraft(index, -1)}
+                              disabled={index === 0}
+                              aria-label={`Move action ${index + 1} up`}
+                              title="Move up"
+                            >
+                              <ArrowUp />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveDraft(index, 1)}
+                              disabled={index === drafts.length - 1}
+                              aria-label={`Move action ${index + 1} down`}
+                              title="Move down"
+                            >
+                              <ArrowDown />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => duplicateDraft(index)}
+                              aria-label={`Duplicate action ${index + 1}`}
+                              title="Duplicate"
+                            >
+                              <Copy />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghostDestructive"
+                              size="icon"
+                              onClick={() => removeDraft(index)}
+                              aria-label={`Remove action ${index + 1}`}
+                              title="Remove"
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+                        </div>
+                        <div
+                          id={`action-editor-${draft.id}`}
+                          hidden={!expanded}
+                          className="@container space-y-4 border-t border-border p-4 sm:p-5"
+                        >
+                          <p className="text-xs leading-relaxed text-text-muted">
+                            {definition?.summary}
+                          </p>
+                          {definition?.danger && (
+                            <div className="flex gap-2 border border-warn/40 bg-warn-soft p-3 text-xs">
+                              <Shield
+                                className="mt-0.5 size-4 shrink-0 text-warn"
+                                aria-hidden="true"
+                              />
+                              <div>
+                                <p className="font-medium">
+                                  High-impact governance action
+                                </p>
+                                <p className="mt-1 leading-relaxed text-text-muted">
+                                  This changes an authority or an execution
+                                  safety boundary. Check every address and
+                                  consequence before submitting.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          <GovernanceActionEditor
+                            draft={draft}
+                            onChange={(values) => updateDraft(index, values)}
+                            fieldErrors={fieldErrorsFor(draft, result)}
+                            showAllErrors={attemptedReview}
+                          />
+                          {actionErrorFor(draft, result) && (
+                            <p
+                              className="border-l-2 border-warn bg-warn-soft px-3 py-2 text-xs leading-relaxed"
+                              role="status"
+                            >
+                              {actionErrorFor(draft, result)}
+                            </p>
+                          )}
+                        </div>
+                      </article>
+                    )
+                  })}
+                  {drafts.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border border-dashed border-border p-4">
+                      <p className="text-xs text-text-muted">
+                        Need another step? Add an action from the library.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          document.getElementById('action-search')?.focus()
+                        }
+                      >
+                        <Plus />
+                        Browse actions
+                      </Button>
+                    </div>
+                  )}
+                  {drafts.length > 0 && (
+                    <details className="border border-border bg-surface">
+                      <summary className="cursor-pointer px-4 py-3 text-xs text-text-muted">
+                        Live encoded preview{' '}
+                        <span className="ml-2">
+                          {actionsReady
+                            ? `${previewActions.length} contract calls`
+                            : 'Complete your actions to preview'}
+                        </span>
+                      </summary>
+                      <div className="space-y-4 border-t border-border p-4">
+                        {actionsReady ? (
+                          <>
+                            <ProposalActionList actions={previewActions} />
+                            {proposalJson && (
+                              <CopyableText
+                                text={proposalJson}
+                                displayText="Copy DAO proposal JSON"
+                                truncate={false}
+                                truncateOnMobile={false}
+                                alwaysShowCopyIcon
+                              />
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-text-muted">
+                            {previewPending
+                              ? 'Checking action fields…'
+                              : `Action ${invalidIndex + 1}: ${results[invalidIndex]?.error}`}
+                          </p>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {step === 'review' && (
+            <section
+              aria-labelledby="proposal-review-heading"
+              className="grid items-start gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
+            >
+              <div className="min-w-0 space-y-6">
+                <div className="space-y-2">
+                  <p className="tg-label">Ready for your network</p>
+                  <h3
+                    id="proposal-review-heading"
+                    ref={headingRef}
+                    tabIndex={-1}
+                    className="text-2xl outline-none"
+                  >
+                    Review your proposal.
+                  </h3>
+                  <p className="text-sm text-text-muted">
+                    Check the decision and every action before submitting it to
+                    a vote.
+                  </p>
+                </div>
+                <div className="space-y-5 border border-border bg-surface p-5 sm:p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="tg-label">The proposal</span>
                     <Button
                       type="button"
                       variant="link"
                       size="sm"
-                      onClick={() => {
-                        setDrafts((current) => [
-                          ...current.slice(0, removed.index),
-                          removed.draft,
-                          ...current.slice(removed.index),
-                        ])
-                        focusDraft(removed.draft.id)
-                        setRemoved(null)
-                        setAnnouncement('Action restored.')
-                      }}
+                      onClick={() => changeStep('compose')}
                     >
-                      Undo
+                      Edit details
                     </Button>
                   </div>
-                )}
-                {!drafts.length && (
-                  <div className="flex min-h-80 flex-col items-center justify-center gap-4 border border-dashed border-hairline-strong bg-surface/50 px-5 py-10 text-center">
-                    <div className="flex size-12 items-center justify-center border border-border bg-background">
-                      <Layers3
-                        className="size-5 text-text-muted"
-                        aria-hidden="true"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="text-base">
-                        Turn a decision into action.
-                      </h4>
-                      <p className="mx-auto max-w-sm text-sm leading-relaxed text-text-muted">
-                        Transfer funds, update your network, or change
-                        governance rules. Start with an action from the library.
-                      </p>
-                    </div>
+                  <h3 className="break-words text-2xl">{title}</h3>
+                  <Markdown className="min-w-0 gap-3 break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
+                    {description}
+                  </Markdown>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-medium">
+                      Execution plan · {drafts.length}{' '}
+                      {drafts.length === 1 ? 'action' : 'actions'}
+                    </h4>
                     <Button
                       type="button"
-                      variant="outline"
-                      onClick={() => addDraft('send-eth')}
-                    >
-                      <Plus />
-                      Add a treasury transfer
-                    </Button>
-                    <p className="max-w-sm border-t border-border pt-4 text-xs leading-relaxed text-text-muted">
-                      Just gathering support? Leave actions empty to create a
-                      signal vote with no contract calls.
-                    </p>
-                  </div>
-                )}
-                {drafts.map((draft, index) => {
-                  const definition = governanceComposerDefinition(
-                    draft.actionKey
-                  )
-                  const expanded = expandedId === draft.id
-                  const result = results[index]
-                  return (
-                    <article
-                      key={draft.id}
-                      aria-labelledby={`action-heading-${draft.id}`}
-                      className={cn(
-                        'min-w-0 border bg-surface',
-                        expanded ? 'border-hairline-strong' : 'border-border'
-                      )}
-                    >
-                      <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-2 p-3 sm:flex sm:flex-wrap sm:p-4">
-                        <span className="mt-1 flex size-8 shrink-0 items-center justify-center border border-border text-xs text-text-muted">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
-                        <button
-                          id={`action-heading-${draft.id}`}
-                          type="button"
-                          aria-expanded={expanded}
-                          aria-controls={`action-editor-${draft.id}`}
-                          onClick={() =>
-                            setExpandedId(expanded ? null : draft.id)
-                          }
-                          className="min-w-0 flex-1 space-y-1 px-1 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                        >
-                          <span className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-text-muted">
-                            {
-                              governanceCategoryLabels[
-                                definition?.category ?? 'custom'
-                              ]
-                            }
-                          </span>
-                          <span className="flex items-center gap-2 text-sm font-medium">
-                            <GovernanceActionEmoji
-                              actionKey={draft.actionKey}
-                            />
-                            {definition?.label ?? draft.actionKey}
-                            <ChevronDown
-                              className={cn(
-                                'size-3.5 shrink-0 text-text-muted transition-transform',
-                                expanded && 'rotate-180'
-                              )}
-                              aria-hidden="true"
-                            />
-                          </span>
-                          <span
-                            className={cn(
-                              'flex items-center gap-1.5 text-xs',
-                              result?.error
-                                ? 'text-warn'
-                                : result
-                                  ? 'text-success'
-                                  : 'text-text-muted'
-                            )}
-                          >
-                            {previewPending ? (
-                              <>
-                                <LoaderCircle
-                                  className="size-3 animate-spin"
-                                  aria-hidden="true"
-                                />
-                                Checking fields…
-                              </>
-                            ) : result?.error ? (
-                              'Needs attention'
-                            ) : (
-                              <>
-                                <Check className="size-3" aria-hidden="true" />
-                                Ready
-                              </>
-                            )}
-                          </span>
-                          {!expanded && result && !result.error && (
-                            <span className="line-clamp-2 break-all text-xs leading-relaxed text-text-muted">
-                              {result.actions
-                                .map((action) => action.description)
-                                .filter(Boolean)
-                                .join(' · ') || definition?.summary}
-                            </span>
-                          )}
-                        </button>
-                        <div
-                          className="col-start-2 flex shrink-0 items-center gap-0.5"
-                          role="group"
-                          aria-label={`Action ${index + 1} controls`}
-                        >
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveDraft(index, -1)}
-                            disabled={index === 0}
-                            aria-label={`Move action ${index + 1} up`}
-                            title="Move up"
-                          >
-                            <ArrowUp />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveDraft(index, 1)}
-                            disabled={index === drafts.length - 1}
-                            aria-label={`Move action ${index + 1} down`}
-                            title="Move down"
-                          >
-                            <ArrowDown />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => duplicateDraft(index)}
-                            aria-label={`Duplicate action ${index + 1}`}
-                            title="Duplicate"
-                          >
-                            <Copy />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghostDestructive"
-                            size="icon"
-                            onClick={() => removeDraft(index)}
-                            aria-label={`Remove action ${index + 1}`}
-                            title="Remove"
-                          >
-                            <Trash2 />
-                          </Button>
-                        </div>
-                      </div>
-                      <div
-                        id={`action-editor-${draft.id}`}
-                        hidden={!expanded}
-                        className="@container space-y-4 border-t border-border p-4 sm:p-5"
-                      >
-                        <p className="text-xs leading-relaxed text-text-muted">
-                          {definition?.summary}
-                        </p>
-                        {definition?.danger && (
-                          <div className="flex gap-2 border border-warn/40 bg-warn-soft p-3 text-xs">
-                            <Shield
-                              className="mt-0.5 size-4 shrink-0 text-warn"
-                              aria-hidden="true"
-                            />
-                            <div>
-                              <p className="font-medium">
-                                High-impact governance action
-                              </p>
-                              <p className="mt-1 leading-relaxed text-text-muted">
-                                This changes an authority or an execution safety
-                                boundary. Check every address and consequence
-                                before submitting.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        <GovernanceActionEditor
-                          draft={draft}
-                          onChange={(values) => updateDraft(index, values)}
-                        />
-                        {result?.error && (
-                          <p
-                            className="border-l-2 border-warn bg-warn-soft px-3 py-2 text-xs leading-relaxed"
-                            role="status"
-                          >
-                            {result.error}
-                          </p>
-                        )}
-                      </div>
-                    </article>
-                  )
-                })}
-                {drafts.length > 0 && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 border border-dashed border-border p-4">
-                    <p className="text-xs text-text-muted">
-                      Need another step? Add an action from the library.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
+                      variant="link"
                       size="sm"
-                      onClick={() =>
-                        document.getElementById('action-search')?.focus()
-                      }
+                      onClick={() => changeStep('compose')}
                     >
-                      <Plus />
-                      Browse actions
+                      Edit actions
                     </Button>
                   </div>
-                )}
-                {drafts.length > 0 && (
-                  <details className="border border-border bg-surface">
-                    <summary className="cursor-pointer px-4 py-3 text-xs text-text-muted">
-                      Live encoded preview{' '}
-                      <span className="ml-2">
-                        {actionsReady
-                          ? `${previewActions.length} contract calls`
-                          : 'Complete your actions to preview'}
-                      </span>
-                    </summary>
-                    <div className="space-y-4 border-t border-border p-4">
+                  {drafts.length ? (
+                    <>
+                      <p className="text-xs leading-relaxed text-text-muted">
+                        These are the exact contract calls in execution order. A
+                        passed proposal must be executed for the changes to take
+                        effect.
+                      </p>
                       {actionsReady ? (
-                        <>
-                          <ProposalActionList actions={previewActions} />
-                          {proposalJson && (
-                            <CopyableText
-                              text={proposalJson}
-                              displayText="Copy DAO proposal JSON"
-                              truncate={false}
-                              truncateOnMobile={false}
-                              alwaysShowCopyIcon
-                            />
-                          )}
-                        </>
+                        <ProposalActionList actions={previewActions} />
                       ) : (
-                        <p className="text-xs text-text-muted">
+                        <p
+                          role="status"
+                          className="border border-warn/40 bg-warn-soft p-4 text-xs"
+                        >
                           {previewPending
-                            ? 'Checking action fields…'
+                            ? 'Refreshing the action preview…'
                             : `Action ${invalidIndex + 1}: ${results[invalidIndex]?.error}`}
                         </p>
                       )}
+                    </>
+                  ) : (
+                    <div className="flex items-start gap-3 border border-border bg-surface p-5">
+                      <FileText
+                        className="size-5 shrink-0 text-text-muted"
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <p className="text-sm">Signal vote</p>
+                        <p className="mt-1 text-xs leading-relaxed text-text-muted">
+                          Members vote on the idea. This proposal has no
+                          contract calls and will not move funds or change
+                          settings.
+                        </p>
+                      </div>
                     </div>
-                  </details>
-                )}
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {step === 'review' && (
-          <section
-            aria-labelledby="proposal-review-heading"
-            className="grid items-start gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
-          >
-            <div className="min-w-0 space-y-6">
-              <div className="space-y-2">
-                <p className="tg-label">Ready for your network</p>
-                <h3
-                  id="proposal-review-heading"
-                  ref={headingRef}
-                  tabIndex={-1}
-                  className="text-2xl outline-none"
-                >
-                  Review your proposal.
-                </h3>
-                <p className="text-sm text-text-muted">
-                  Check the decision and every action before submitting it to a
-                  vote.
-                </p>
-              </div>
-              <div className="space-y-5 border border-border bg-surface p-5 sm:p-6">
-                <div className="flex items-center justify-between">
-                  <span className="tg-label">The proposal</span>
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    onClick={() => changeStep('compose')}
-                  >
-                    Edit details
-                  </Button>
+                  )}
                 </div>
-                <h3 className="break-words text-2xl">{title}</h3>
-                <Markdown className="min-w-0 gap-3 break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
-                  {description}
-                </Markdown>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="text-sm font-medium">
-                    Execution plan · {drafts.length}{' '}
-                    {drafts.length === 1 ? 'action' : 'actions'}
-                  </h4>
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    onClick={() => changeStep('compose')}
-                  >
-                    Edit actions
-                  </Button>
-                </div>
-                {drafts.length ? (
-                  <>
-                    <p className="text-xs leading-relaxed text-text-muted">
-                      These are the exact contract calls in execution order. A
-                      passed proposal must be executed for the changes to take
-                      effect.
-                    </p>
-                    {actionsReady ? (
-                      <ProposalActionList actions={previewActions} />
-                    ) : (
-                      <p
-                        role="status"
-                        className="border border-warn/40 bg-warn-soft p-4 text-xs"
-                      >
-                        {previewPending
-                          ? 'Refreshing the action preview…'
-                          : `Action ${invalidIndex + 1}: ${results[invalidIndex]?.error}`}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex items-start gap-3 border border-border bg-surface p-5">
-                    <FileText
-                      className="size-5 shrink-0 text-text-muted"
-                      aria-hidden="true"
+                {proposalJson && (
+                  <div className="border-t border-border pt-4">
+                    <CopyableText
+                      text={proposalJson}
+                      displayText="Copy DAO proposal JSON"
+                      truncate={false}
+                      truncateOnMobile={false}
+                      alwaysShowCopyIcon
+                      className="min-h-11 border border-border px-3 py-2 text-xs"
                     />
-                    <div>
-                      <p className="text-sm">Signal vote</p>
-                      <p className="mt-1 text-xs leading-relaxed text-text-muted">
-                        Members vote on the idea. This proposal has no contract
-                        calls and will not move funds or change settings.
-                      </p>
+                  </div>
+                )}
+              </div>
+              <aside className="min-w-0 space-y-5 lg:sticky lg:top-6">
+                <div className="space-y-4 border border-border bg-surface p-5">
+                  <p className="tg-label">At a glance</p>
+                  <dl className="space-y-3 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-text-muted">Proposal type</dt>
+                      <dd>{drafts.length ? 'Executable' : 'Signal vote'}</dd>
                     </div>
-                  </div>
-                )}
-              </div>
-              {proposalJson && (
-                <div className="border-t border-border pt-4">
-                  <CopyableText
-                    text={proposalJson}
-                    displayText="Copy DAO proposal JSON"
-                    truncate={false}
-                    truncateOnMobile={false}
-                    alwaysShowCopyIcon
-                    className="min-h-11 border border-border px-3 py-2 text-xs"
-                  />
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-text-muted">Actions</dt>
+                      <dd>{drafts.length}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-text-muted">Contract calls</dt>
+                      <dd>{previewActions.length}</dd>
+                    </div>
+                  </dl>
+                  {highImpactCount > 0 && (
+                    <p className="flex items-start gap-2 border-t border-border pt-4 text-xs leading-relaxed text-warn">
+                      <Shield className="size-4 shrink-0" aria-hidden="true" />
+                      {highImpactCount} high-impact{' '}
+                      {highImpactCount === 1
+                        ? 'action changes'
+                        : 'actions change'}{' '}
+                      authority or execution safeguards. Review these carefully.
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
-            <aside className="min-w-0 space-y-5 lg:sticky lg:top-6">
-              <div className="space-y-4 border border-border bg-surface p-5">
-                <p className="tg-label">At a glance</p>
-                <dl className="space-y-3 text-sm">
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-text-muted">Proposal type</dt>
-                    <dd>{drafts.length ? 'Executable' : 'Signal vote'}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-text-muted">Actions</dt>
-                    <dd>{drafts.length}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-text-muted">Contract calls</dt>
-                    <dd>{previewActions.length}</dd>
-                  </div>
-                </dl>
-                {highImpactCount > 0 && (
-                  <p className="flex items-start gap-2 border-t border-border pt-4 text-xs leading-relaxed text-warn">
-                    <Shield className="size-4 shrink-0" aria-hidden="true" />
-                    {highImpactCount} high-impact{' '}
-                    {highImpactCount === 1
-                      ? 'action changes'
-                      : 'actions change'}{' '}
-                    authority or execution safeguards. Review these carefully.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-4 border border-border bg-surface p-5 [&_[role=radiogroup]]:flex-col">
-                <label className="flex cursor-pointer items-start gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    aria-label="Include my vote"
-                    className="mt-0.5 size-4 shrink-0 accent-ink"
-                    checked={castVoteOnCreate}
-                    onChange={(event) =>
-                      setCastVoteOnCreate(event.target.checked)
-                    }
-                  />
-                  <span>
-                    Include my vote
-                    <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-                      Cast your vote in the same transaction.
+                <div className="space-y-4 border border-border bg-surface p-5 [&_[role=radiogroup]]:flex-col">
+                  <label className="flex cursor-pointer items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label="Include my vote"
+                      className="mt-0.5 size-4 shrink-0 accent-ink"
+                      checked={castVoteOnCreate}
+                      onChange={(event) =>
+                        setCastVoteOnCreate(event.target.checked)
+                      }
+                    />
+                    <span>
+                      Include my vote
+                      <span className="mt-1 block text-xs leading-relaxed text-text-muted">
+                        Cast your vote in the same transaction.
+                      </span>
                     </span>
-                  </span>
-                </label>
-                {castVoteOnCreate && (
+                  </label>
+                  {castVoteOnCreate && (
+                    <>
+                      <p className="text-xs text-text-muted">
+                        Your voting power:{' '}
+                        {userVotingPower
+                          ? formatBigNumber(BigInt(userVotingPower), 18)
+                          : '0'}
+                      </p>
+                      <VoteButtons
+                        isLoading={isSubmitting}
+                        selected={voteType}
+                        onSelect={setVoteType}
+                      />
+                    </>
+                  )}
+                </div>
+                <p className="text-xs leading-relaxed text-text-muted">
+                  Submitting publishes this proposal for the network to vote on.
+                  Your wallet will ask you to confirm the transaction.
+                </p>
+              </aside>
+            </section>
+          )}
+        </fieldset>
+
+        {error && (
+          <div
+            role="alert"
+            className="border border-error/40 bg-error-soft p-4 text-sm text-error"
+          >
+            {error}
+          </div>
+        )}
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-hairline-strong bg-background py-4">
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm">
+              {step === 'review'
+                ? 'Your proposal is ready to submit.'
+                : drafts.length
+                  ? `${drafts.length} ${drafts.length === 1 ? 'action' : 'actions'} in your proposal`
+                  : 'A decision starts here.'}
+            </p>
+            <p className="text-xs text-text-muted">
+              {step === 'review'
+                ? canCreateProposal
+                  ? 'Confirm the transaction in your wallet.'
+                  : isConnected
+                    ? 'You need voting power in this network to submit.'
+                    : 'Connect a wallet with voting power to submit.'
+                : attemptedReview && !actionsReady
+                  ? 'Complete the action fields marked above to continue.'
+                  : 'Review everything before it goes to a vote.'}
+            </p>
+          </div>
+          <div className="flex w-full gap-2 sm:w-auto">
+            {step === 'review' && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => changeStep('compose')}
+              >
+                <ArrowLeft />
+                Back
+              </Button>
+            )}
+            {step === 'review' && !isConnected ? (
+              <Button
+                type="button"
+                className="min-h-11 flex-1 sm:flex-none"
+                onClick={openConnectWallet}
+              >
+                Connect wallet
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                className="min-h-11 flex-1 sm:flex-none"
+                disabled={
+                  step === 'review'
+                    ? busy || !canCreateProposal || !actionsReady
+                    : previewPending
+                }
+              >
+                {isSubmitting ? (
                   <>
-                    <p className="text-xs text-text-muted">
-                      Your voting power:{' '}
-                      {userVotingPower
-                        ? formatBigNumber(BigInt(userVotingPower), 18)
-                        : '0'}
-                    </p>
-                    <VoteButtons
-                      isLoading={isSubmitting}
-                      selected={voteType}
-                      onSelect={setVoteType}
-                    />
+                    <LoaderCircle className="animate-spin" />
+                    Submitting…
+                  </>
+                ) : step === 'review' ? (
+                  'Submit proposal'
+                ) : (
+                  <>
+                    Review proposal
+                    <ArrowRight />
                   </>
                 )}
-              </div>
-              <p className="text-xs leading-relaxed text-text-muted">
-                Submitting publishes this proposal for the network to vote on.
-                Your wallet will ask you to confirm the transaction.
-              </p>
-            </aside>
-          </section>
-        )}
-      </fieldset>
-
-      {error && (
-        <div
-          role="alert"
-          className="border border-error/40 bg-error-soft p-4 text-sm text-error"
-        >
-          {error}
+              </Button>
+            )}
+          </div>
         </div>
-      )}
-      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-hairline-strong bg-background py-4">
-        <div className="min-w-0 space-y-1">
-          <p className="text-sm">
-            {step === 'review'
-              ? 'Your proposal is ready to submit.'
-              : drafts.length
-                ? `${drafts.length} ${drafts.length === 1 ? 'action' : 'actions'} in your proposal`
-                : 'A decision starts here.'}
-          </p>
-          <p className="text-xs text-text-muted">
-            {step === 'review'
-              ? canCreateProposal
-                ? 'Confirm the transaction in your wallet.'
-                : isConnected
-                  ? 'You need voting power in this network to submit.'
-                  : 'Connect a wallet with voting power to submit.'
-              : attemptedReview && !actionsReady
-                ? 'Complete the action fields marked above to continue.'
-                : 'Review everything before it goes to a vote.'}
-          </p>
-        </div>
-        <div className="flex w-full gap-2 sm:w-auto">
-          {step === 'review' && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isSubmitting}
-              onClick={() => changeStep('compose')}
-            >
-              <ArrowLeft />
-              Back
-            </Button>
-          )}
-          {step === 'review' && !isConnected ? (
-            <Button
-              type="button"
-              className="min-h-11 flex-1 sm:flex-none"
-              onClick={openConnectWallet}
-            >
-              Connect wallet
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              className="min-h-11 flex-1 sm:flex-none"
-              disabled={
-                step === 'review'
-                  ? busy || !canCreateProposal || !actionsReady
-                  : previewPending
-              }
-            >
-              {isSubmitting ? (
-                <>
-                  <LoaderCircle className="animate-spin" />
-                  Submitting…
-                </>
-              ) : step === 'review' ? (
-                'Submit proposal'
-              ) : (
-                <>
-                  Review proposal
-                  <ArrowRight />
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
-    </form>
+      </form>
+    </GovernanceComposerProvider>
   )
 }

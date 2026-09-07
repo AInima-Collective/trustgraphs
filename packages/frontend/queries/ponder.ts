@@ -813,4 +813,36 @@ export const ponderQueryFns = {
     db.query.gnosisSafe.findFirst({
       where: (t, { eq }) => eq(t.address, address),
     }),
+  /** Active role holders on one snapshot, for the composer's membership pickers. */
+  getSnapshotRoleMembers:
+    (snapshot: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.snapshotRoleMember.findMany({
+        where: (t, { and, eq }) =>
+          and(eq(t.snapshot, snapshot), eq(t.active, true)),
+        orderBy: (t, { desc }) => desc(t.updatedBlock),
+        limit: 200,
+      }),
+  /** Recent proven roots, newest first, so a reward pool can be bound to one by choice. */
+  getMerkleSnapshots:
+    (snapshot: Hex, limit: number = 12) =>
+    (db: Client<ResolvedSchema>['db']) =>
+      db.query.merkleSnapshot.findMany({
+        where: (t, { eq }) => eq(t.address, snapshot),
+        orderBy: (t, { desc }) => desc(t.timestamp),
+        limit,
+      }),
+  getPendingWeightedPriorVersion:
+    (instanceId: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.weightedPriorVersion.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.instanceId, instanceId), eq(t.status, 'pending')),
+        orderBy: (t, { desc }) => desc(t.version),
+      }),
+  getPendingCompositionPolicyVersion:
+    (instanceId: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.compositionPolicyVersion.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.instanceId, instanceId), eq(t.status, 'pending')),
+        orderBy: (t, { desc }) => desc(t.version),
+      }),
 }
