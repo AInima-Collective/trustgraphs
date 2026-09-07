@@ -1,12 +1,25 @@
 'use client'
 
-import { formatEther, formatUnits, isAddressEqual, zeroAddress } from 'viem'
+import { useMemo } from 'react'
+import { formatEther, isAddress, isAddressEqual, zeroAddress } from 'viem'
 
+import { Address } from '@/components/Address'
 import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import { useNetwork } from '@/contexts/NetworkContext'
+import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import {
+  type TokenDisplay,
+  formatBlockCount,
+  formatBps,
+  formatPercent18,
+  formatTokenAmount,
+  formatUnixSeconds,
+  formatUsd8,
+  formatWei,
   governanceActionContextFor,
+  governanceContractLabels,
   normalizeSafeActions,
+  shortenHex,
   walkGovernanceActions,
 } from '@/lib/actions'
 import type {
@@ -41,6 +54,7 @@ import type {
   VaultWithdrawalRequestActionValues,
   WeightedPriorRotationActionValues,
 } from '@/lib/actions'
+import { blockTimeSeconds } from '@/lib/blocks'
 import { paramsHash } from '@/lib/pagerank/encode'
 import { formatFixed } from '@/lib/scoring-params'
 import { cn } from '@/lib/utils'
@@ -68,6 +82,13 @@ type ActionKind =
   | 'programs'
   | 'custom'
 
+/** One labelled value under the card title, rendered by kind (an address gets ENS and a link). */
+type ActionDetail = {
+  label: string
+  value: string
+  kind: 'address' | 'hash' | 'uri' | 'text'
+}
+
 type ActionPresentation = {
   kind: ActionKind
   title: string
@@ -77,12 +98,48 @@ type ActionPresentation = {
   evidenceURI?: string
   resultingSettings?: string[]
   coordinated?: boolean
-  detailLabel?: string
-  detailValue?: string
+  details?: ActionDetail[]
 }
 
+/** What the viewer knows beyond calldata: token metadata, contract names, the block time. */
+type Formatting = {
+  token: (address: string) => TokenDisplay | undefined
+  contractLabel: (address: string) => string | undefined
+  blockTime: number
+}
+
+const USDC: TokenDisplay = { decimals: 6, symbol: 'USDC' }
+
+const groupDigits = (value: string) =>
+  /^\d+$/.test(value) ? value.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : value
+
+const isEth = (token: string) =>
+  isAddress(token) && isAddressEqual(token, zeroAddress)
+
+const tokenName = (fmt: Formatting, token: string) =>
+  isEth(token) ? 'ETH' : (fmt.token(token)?.symbol ?? shortenHex(token))
+
+const amountOf = (fmt: Formatting, amount: string, token: string) =>
+  isEth(token) ? formatWei(amount) : formatTokenAmount(amount, fmt.token(token))
+
+const addressDetail = (label: string, value: string): ActionDetail => ({
+  label,
+  value,
+  kind: 'address',
+})
+const hashDetail = (label: string, value: string): ActionDetail => ({
+  label,
+  value,
+  kind: 'hash',
+})
+const tokenDetail = (fmt: Formatting, token: string): ActionDetail =>
+  isEth(token)
+    ? { label: 'Token', value: 'ETH (native)', kind: 'text' }
+    : addressDetail('Token', token)
+
 const presentAction = (
-  matched: MatchedGovernanceAction
+  matched: MatchedGovernanceAction,
+  fmt: Formatting
 ): ActionPresentation => {
   switch (matched.definition.key) {
     case 'update-scoring-params': {
@@ -119,41 +176,42 @@ const presentAction = (
       const values = matched.values as EthTransferActionValues
       return {
         kind: 'transfer',
-        title: `Send ${formatEther(BigInt(values.value))} ETH`,
-        summary: 'Transfer ETH from the DAO treasury.',
+        title: `Send ${formatWei(values.value)}`,
+        summary: 'Transfer ETH from the network treasury.',
         badge: 'Treasury transfer',
+        details: [addressDetail('Recipient', values.recipient)],
       }
     }
     case 'send-erc20': {
       const values = matched.values as Erc20TransferActionValues
       return {
         kind: 'transfer',
-        title: `Send ${values.amount} token base units`,
-        summary: `Call transfer to ${values.recipient} on the explicitly shown token contract.`,
+        title: `Send ${amountOf(fmt, values.amount, values.token)}`,
+        summary: `Transfer ${tokenName(fmt, values.token)} from the network treasury.`,
         badge: 'Treasury transfer',
-        detailLabel: 'Token contract',
-        detailValue: values.token,
+        details: [
+          addressDetail('Recipient', values.recipient),
+          tokenDetail(fmt, values.token),
+        ],
       }
     }
     case 'fund-rewards': {
       const values = matched.values as RewardDistributionActionValues
-      const asset = isAddressEqual(values.token, zeroAddress)
-        ? 'native ETH wei'
-        : 'token base units'
       return {
         kind: 'treasury',
-        title: `Fund rewards with ${values.amount} ${asset}`,
+        title: `Fund rewards with ${amountOf(fmt, values.amount, values.token)}`,
         summary:
           'Create a reward pool bound to one exact proven score root and fee quote.',
         badge: 'Rewards funding',
-        detailLabel: 'Expected score root',
-        detailValue: values.expectedRoot,
         resultingSettings: [
-          `Token: ${values.token}`,
-          `Expected total score: ${values.expectedTotalMerkleValue}`,
-          `Maximum fee: ${values.maxFeeAmount} base units`,
-          `Claim deadline: ${values.claimDeadline === '0' ? 'No expiry' : values.claimDeadline}`,
-          `Expected fee recipient: ${values.expectedFeeRecipient}`,
+          `Total score under the root: ${groupDigits(values.expectedTotalMerkleValue)}`,
+          `Maximum fee: ${amountOf(fmt, values.maxFeeAmount, values.token)}`,
+          `Claim deadline: ${formatUnixSeconds(values.claimDeadline, { zeroLabel: 'No expiry' })}`,
+        ],
+        details: [
+          hashDetail('Score root', values.expectedRoot),
+          addressDetail('Expected fee recipient', values.expectedFeeRecipient),
+          tokenDetail(fmt, values.token),
         ],
       }
     }
@@ -175,15 +233,14 @@ const presentAction = (
         title: 'Change the rewards fee recipient',
         summary: 'Route future distributor fees to a new address.',
         badge: 'Rewards control',
-        detailLabel: 'New fee recipient',
-        detailValue: values.recipient,
+        details: [addressDetail('New fee recipient', values.recipient)],
       }
     }
     case 'set-rewards-fee-percentage': {
       const values = matched.values as RewardsFeePercentageActionValues
       return {
         kind: 'treasury',
-        title: `Set rewards fee to ${formatUnits(BigInt(values.feePercentage), 16)}%`,
+        title: `Set rewards fee to ${formatPercent18(values.feePercentage)}`,
         summary:
           'A decrease applies immediately; an increase enters the distributor’s delayed schedule.',
         badge: 'Rewards control',
@@ -209,8 +266,7 @@ const presentAction = (
           ? 'Permit this address to fund rewards while the allowlist is enabled.'
           : 'Remove this address from the rewards funder allowlist.',
         badge: 'Rewards control',
-        detailLabel: 'Funder address',
-        detailValue: values.distributor,
+        details: [addressDetail('Funder', values.distributor)],
       }
     }
     case 'update-network-profile': {
@@ -221,8 +277,9 @@ const presentAction = (
         summary:
           'Point the network snapshot at the reviewed metadata revision.',
         badge: 'Network profile',
-        detailLabel: 'New metadata URI',
-        detailValue: values.metadataURI,
+        details: [
+          { label: 'New metadata URI', value: values.metadataURI, kind: 'uri' },
+        ],
       }
     }
     case 'set-operational-role': {
@@ -234,8 +291,7 @@ const presentAction = (
           ? 'Allow this account to publish operational parameter hashes.'
           : 'Remove this account’s operational parameter authority.',
         badge: 'Membership',
-        detailLabel: 'Account',
-        detailValue: values.account,
+        details: [addressDetail('Account', values.account)],
       }
     }
     case 'propose-constitutional-transfer': {
@@ -246,8 +302,7 @@ const presentAction = (
         summary:
           'Begin a two-step handoff. Acceptance gives the successor constitutional control and removes this Safe’s role.',
         badge: 'Constitutional authority',
-        detailLabel: 'Proposed successor',
-        detailValue: values.successor,
+        details: [addressDetail('Proposed successor', values.successor)],
       }
     }
     case 'cancel-constitutional-transfer':
@@ -261,7 +316,7 @@ const presentAction = (
       const values = matched.values as GovernanceQuorumActionValues
       return {
         kind: 'governance',
-        title: `Set quorum to ${formatUnits(BigInt(values.quorum), 16)}%`,
+        title: `Set quorum to ${formatPercent18(values.quorum)}`,
         summary:
           'Set the share of decisive voting power required for future proposals.',
         badge: 'Governance settings',
@@ -279,7 +334,7 @@ const presentAction = (
       const label = labels[matched.definition.key as keyof typeof labels]
       return {
         kind: 'governance',
-        title: `Set ${label} to ${values.blocks} blocks`,
+        title: `Set ${label} to ${formatBlockCount(values.blocks, fmt.blockTime)}`,
         summary: `Change the network’s ${label} for future proposals.`,
         badge: 'Governance settings',
       }
@@ -293,15 +348,14 @@ const presentAction = (
           ? 'Permit proposal code at this address to execute inside the Safe’s storage context.'
           : 'Prevent future proposals from delegatecalling this target.',
         badge: 'Execution safety',
-        detailLabel: 'Delegatecall target',
-        detailValue: values.target,
+        details: [addressDetail('Delegatecall target', values.target)],
       }
     }
     case 'cancel-governance-proposal': {
       const values = matched.values as GovernanceCancelProposalActionValues
       return {
         kind: 'governance',
-        title: `Cancel governance proposal ${values.proposalId}`,
+        title: `Cancel proposal #${values.proposalId}`,
         summary: 'Mark the referenced, unexecuted proposal as cancelled.',
         badge: 'Governance control',
       }
@@ -325,8 +379,9 @@ const presentAction = (
         summary:
           'Propose a reviewed weighted-prior manifest for delayed activation.',
         badge: 'Scoring settings',
-        detailLabel: 'Manifest metadata digest',
-        detailValue: values.metadataDigest,
+        details: [
+          hashDetail('Manifest metadata digest', values.metadataDigest),
+        ],
       }
     }
     case 'cancel-weighted-prior':
@@ -344,9 +399,8 @@ const presentAction = (
         summary:
           'Propose reviewed source weights and adapters for delayed activation.',
         badge: 'Composition policy',
-        detailLabel: 'Metadata digest',
-        detailValue: values.metadataDigest,
         resultingSettings: [`Source adapters: ${values.adapters.length}`],
+        details: [hashDetail('Metadata digest', values.metadataDigest)],
       }
     }
     case 'cancel-composition-policy':
@@ -383,8 +437,11 @@ const presentAction = (
         summary:
           'This changes a proof or Safe execution boundary. Review the exact address carefully.',
         badge: 'Safety control',
-        detailLabel,
-        detailValue: values.address,
+        details: [
+          isEth(values.address)
+            ? { label: detailLabel, value: 'None (zero address)', kind: 'text' }
+            : addressDetail(detailLabel, values.address),
+        ],
       }
     }
     case 'disable-safe-module': {
@@ -394,8 +451,7 @@ const presentAction = (
         title: 'Disable a Safe module',
         summary: 'Remove this module’s authority to execute Safe transactions.',
         badge: 'Safety control',
-        detailLabel: 'Module',
-        detailValue: values.module,
+        details: [addressDetail('Module', values.module)],
       }
     }
     case 'swap-safe-owner': {
@@ -403,10 +459,12 @@ const presentAction = (
       return {
         kind: 'safety',
         title: 'Replace a Safe owner',
-        summary: `Replace ${values.oldOwner} with the new owner shown below.`,
+        summary: 'Replace one owner of the network Safe with a new one.',
         badge: 'Safety control',
-        detailLabel: 'New owner',
-        detailValue: values.newOwner,
+        details: [
+          addressDetail('Owner to replace', values.oldOwner),
+          addressDetail('New owner', values.newOwner),
+        ],
       }
     }
     case 'set-recovery-proposer': {
@@ -417,8 +475,7 @@ const presentAction = (
         summary:
           'Replace the identity allowed to queue arbitrary delayed Safe recovery actions.',
         badge: 'Recovery control',
-        detailLabel: 'New recovery proposer',
-        detailValue: values.address,
+        details: [addressDetail('New recovery proposer', values.address)],
       }
     }
     case 'cancel-recovery-action': {
@@ -429,8 +486,7 @@ const presentAction = (
         summary:
           'Veto this exact action before delayed recovery can execute it.',
         badge: 'Recovery control',
-        detailLabel: 'Recovery action ID',
-        detailValue: values.actionId,
+        details: [hashDetail('Recovery action ID', values.actionId)],
       }
     }
     case 'set-vault-policy': {
@@ -442,8 +498,8 @@ const presentAction = (
           'Change when and how much successful score proofs may be paid.',
         badge: 'Proving vault',
         resultingSettings: [
-          `Minimum paid interval: ${values.minPaidIntervalBlocks} blocks`,
-          `Maximum per root: ${values.maxPerRootUsd} USD × 1e8`,
+          `Minimum time between paid roots: ${formatBlockCount(values.minPaidIntervalBlocks, fmt.blockTime)}`,
+          `Maximum payout per root: ${formatUsd8(values.maxPerRootUsd)}`,
         ],
       }
     }
@@ -456,8 +512,8 @@ const presentAction = (
           'Start the withdrawal notice period while funds remain available for bounties.',
         badge: 'Proving vault',
         resultingSettings: [
-          `ETH: ${values.ethAmount} wei`,
-          `USDC: ${values.usdcAmount} base units`,
+          `ETH: ${formatWei(values.ethAmount)}`,
+          `USDC: ${formatTokenAmount(values.usdcAmount, USDC)}`,
         ],
       }
     }
@@ -475,8 +531,7 @@ const presentAction = (
         title: 'Execute proving-fund withdrawal',
         summary: 'Send the remaining requested funds after the notice period.',
         badge: 'Proving vault',
-        detailLabel: 'Recipient',
-        detailValue: values.recipient,
+        details: [addressDetail('Recipient', values.recipient)],
       }
     }
     case 'create-contribution-round': {
@@ -488,21 +543,27 @@ const presentAction = (
           'Create a child funding round attached to this authenticated parent network.',
         badge: 'Contribution program',
         resultingSettings: [
-          `Window: ${values.roundStart}–${values.roundEnd}`,
-          `Pool shares: ${values.totalPool}`,
-          `Rater reward: ${values.evaluatorCarveoutBps} bps`,
-          `Payout token: ${values.distributorToken}`,
+          `Opens: ${formatUnixSeconds(values.roundStart)}`,
+          `Closes: ${formatUnixSeconds(values.roundEnd)}`,
+          `Pool shares: ${groupDigits(values.totalPool)}`,
+          `Rater reward: ${formatBps(values.evaluatorCarveoutBps)}`,
+          `Payout token: ${tokenName(fmt, values.distributorToken)}`,
         ],
       }
     }
     default: {
       const action = matched.actions[0]
+      const known = action ? fmt.contractLabel(action.target) : undefined
       return {
         kind: 'custom',
-        title: 'Execute a contract call',
-        summary:
-          'This action is not recognized by trustgraphs. Review its raw target, value, operation, and calldata.',
+        title: known
+          ? `Call the ${known.toLowerCase()}`
+          : 'Execute a contract call',
+        summary: known
+          ? 'This call targets one of the network’s own contracts but is not a typed action. Review its raw calldata.'
+          : 'This action is not recognized by trustgraphs. Review its raw target, value, operation, and calldata.',
         badge: action?.operation === 1 ? 'Delegate call' : 'Contract call',
+        details: action ? [addressDetail('Target', action.target)] : [],
       }
     }
   }
@@ -519,10 +580,52 @@ const actionValue = (value: string) => {
   }
 }
 
+function DetailValue({
+  detail,
+  contractLabel,
+}: {
+  detail: ActionDetail
+  contractLabel: (address: string) => string | undefined
+}) {
+  if (detail.kind === 'address' && isAddress(detail.value)) {
+    const label = contractLabel(detail.value)
+    return (
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Address
+          address={detail.value}
+          showEns
+          showCopyIcon
+          link="account"
+          monospace
+          displayMode="auto"
+        />
+        {label && (
+          <span className="border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+            {label}
+          </span>
+        )}
+      </div>
+    )
+  }
+  if (detail.kind === 'text') {
+    return <p className="text-sm text-foreground">{detail.value}</p>
+  }
+  return (
+    <CopyableText
+      text={detail.value}
+      truncate
+      alwaysShowCopyIcon
+      className="max-w-full"
+    />
+  )
+}
+
 function TechnicalActionDetails({
   actions,
+  contractLabel,
 }: {
   actions: readonly DisplayProposalAction[]
+  contractLabel: (address: string) => string | undefined
 }) {
   return (
     <details className="border-t border-border pt-1">
@@ -536,6 +639,7 @@ function TechnicalActionDetails({
             action.contractName && action.functionSignature
               ? `${action.contractName}.${action.functionSignature}`
               : null
+          const label = contractLabel(action.target)
           return (
             <div
               key={`${action.target}:${index}`}
@@ -561,7 +665,9 @@ function TechnicalActionDetails({
                 </div>
               )}
               <div className="space-y-1">
-                <p className="text-muted-foreground">Target contract</p>
+                <p className="text-muted-foreground">
+                  Target contract{label ? ` · ${label}` : ''}
+                </p>
                 <CopyableText
                   text={action.target}
                   truncate
@@ -597,13 +703,15 @@ function ProposalActionCard({
   actions,
   index,
   total,
+  fmt,
 }: {
   matched: MatchedGovernanceAction
   actions: readonly DisplayProposalAction[]
   index: number
   total: number
+  fmt: Formatting
 }) {
-  const presentation = presentAction(matched)
+  const presentation = presentAction(matched, fmt)
   const annotations = actions
     .map((action) => action.description?.trim())
     .filter((description): description is string => !!description)
@@ -657,7 +765,9 @@ function ProposalActionCard({
           </p>
           <ul className="mt-2 grid gap-1 text-sm text-foreground/80 sm:grid-cols-2">
             {presentation.resultingSettings.map((setting) => (
-              <li key={setting}>{setting}</li>
+              <li key={setting} className="break-words">
+                {setting}
+              </li>
             ))}
           </ul>
         </div>
@@ -691,19 +801,12 @@ function ProposalActionCard({
         </div>
       )}
 
-      {presentation.detailValue && (
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">
-            {presentation.detailLabel}
-          </p>
-          <CopyableText
-            text={presentation.detailValue}
-            truncate
-            alwaysShowCopyIcon
-            className="max-w-full"
-          />
+      {presentation.details?.map((detail) => (
+        <div key={`${detail.label}:${detail.value}`} className="space-y-1">
+          <p className="text-xs text-muted-foreground">{detail.label}</p>
+          <DetailValue detail={detail} contractLabel={fmt.contractLabel} />
         </div>
-      )}
+      ))}
 
       {annotations.length > 0 && (
         <div className="border border-border bg-surface-2 px-3 py-2">
@@ -721,10 +824,15 @@ function ProposalActionCard({
         </div>
       )}
 
-      <TechnicalActionDetails actions={actions} />
+      <TechnicalActionDetails
+        actions={actions}
+        contractLabel={fmt.contractLabel}
+      />
     </Card>
   )
 }
+
+const TOKEN_KEYS = ['token', 'distributorToken'] as const
 
 export function ProposalActionList({
   actions,
@@ -735,6 +843,43 @@ export function ProposalActionList({
 }) {
   const { network } = useNetwork()
   const normalized = normalizeSafeActions(actions)
+  const displayActions = normalized.ok
+    ? normalized.actions.map((action, index) => ({
+        ...action,
+        ...(actions[index]?.contractName
+          ? { contractName: actions[index].contractName }
+          : {}),
+        ...(actions[index]?.functionSignature
+          ? { functionSignature: actions[index].functionSignature }
+          : {}),
+      }))
+    : []
+  const context = governanceActionContextFor(network)
+  const matched = walkGovernanceActions(displayActions, context)
+  const labels = useMemo(() => governanceContractLabels(network), [network])
+  const tokens = useMemo(
+    () =>
+      matched.flatMap((entry) => {
+        const values =
+          entry.values && typeof entry.values === 'object'
+            ? (entry.values as Record<string, unknown>)
+            : {}
+        return TOKEN_KEYS.flatMap((key) => {
+          const value = values[key]
+          return typeof value === 'string' && isAddress(value) ? [value] : []
+        })
+      }),
+    // Matching is deterministic in its inputs; the token list only changes with them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [actions, network]
+  )
+  const metadata = useTokenMetadata(tokens)
+  const fmt: Formatting = {
+    token: (address) => metadata.get(address),
+    contractLabel: (address) => labels.get(address.toLowerCase()),
+    blockTime: blockTimeSeconds(),
+  }
+
   if (!normalized.ok) {
     return (
       <div
@@ -754,19 +899,8 @@ export function ProposalActionList({
       </div>
     )
   }
-  const displayActions = normalized.actions.map((action, index) => ({
-    ...action,
-    ...(actions[index]?.contractName
-      ? { contractName: actions[index].contractName }
-      : {}),
-    ...(actions[index]?.functionSignature
-      ? { functionSignature: actions[index].functionSignature }
-      : {}),
-  }))
-  const context = governanceActionContextFor(network)
-  const matched = walkGovernanceActions(displayActions, context)
   const coordinatedScoringUpdate = matched.some(
-    (entry) => presentAction(entry).coordinated
+    (entry) => presentAction(entry, fmt).coordinated
   )
 
   return (
@@ -794,6 +928,7 @@ export function ProposalActionList({
               )}
               index={index}
               total={matched.length}
+              fmt={fmt}
             />
           </li>
         ))}
