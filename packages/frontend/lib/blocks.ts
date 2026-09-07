@@ -1,4 +1,5 @@
 import { CHAIN } from '@/lib/config'
+import { formatApproxDuration } from '@/lib/duration'
 
 /**
  * Approximate seconds per block for the chains we deploy to. Times shown to
@@ -18,17 +19,7 @@ export const secondsUntilBlock = (
   currentBlock: bigint | number
 ): number => (Number(targetBlock) - Number(currentBlock)) * blockTimeSeconds()
 
-/**
- * "~2 days", "~3 hours", "~5 minutes", "moments". Coarse on purpose: block
- * math is an estimate and false precision reads as a promise.
- */
-export const formatDuration = (seconds: number): string => {
-  const s = Math.abs(seconds)
-  if (s < 90) return 'moments'
-  if (s < 90 * 60) return `~${Math.round(s / 60)} minutes`
-  if (s < 36 * 3600) return `~${Math.round(s / 3600)} hours`
-  return `~${Math.round(s / 86400)} days`
-}
+export { formatApproxDuration as formatDuration } from '@/lib/duration'
 
 /**
  * The primary display for a block boundary: a time, not a height.
@@ -39,7 +30,7 @@ export const formatBlockEta = (
   currentBlock: bigint | number
 ): string => {
   const seconds = secondsUntilBlock(targetBlock, currentBlock)
-  const duration = formatDuration(seconds)
+  const duration = formatApproxDuration(seconds)
   if (duration === 'moments') return seconds >= 0 ? 'moments away' : 'just now'
   return seconds >= 0 ? `in ${duration}` : `${duration} ago`
 }

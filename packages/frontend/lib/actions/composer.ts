@@ -531,6 +531,19 @@ type RecipientResolver = (
   previewAddress?: Address | null
 ) => Promise<{ address: Address; ensName?: string | null }>
 
+/** A draft problem attributable to one field, so the editor can show it beside that input. */
+export class GovernanceActionFieldError extends Error {
+  readonly field: string
+  constructor(field: string, message: string) {
+    super(message)
+    this.name = 'GovernanceActionFieldError'
+    this.field = field
+  }
+}
+
+const fieldError = (field: string, message: string) =>
+  new GovernanceActionFieldError(field, message)
+
 const record = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Action values are malformed')
@@ -540,46 +553,126 @@ const record = (value: unknown): Record<string, unknown> => {
 
 const stringValue = (values: Record<string, unknown>, key: string) => {
   const value = values[key]
-  if (typeof value !== 'string') throw new Error(`${key} must be a string`)
+  if (typeof value !== 'string') throw fieldError(key, `${key} must be text`)
   return value
 }
 
-const addressValue = (
+/** Addresses the editor already resolved from ENS names, keyed by field, for change detection. */
+const previewAddressFor = (
+  values: Record<string, unknown>,
+  key: string
+): Address | undefined => {
+  const previews = values.resolvedAddresses
+  const candidate =
+    previews && typeof previews === 'object' && !Array.isArray(previews)
+      ? (previews as Record<string, unknown>)[key]
+      : key === 'recipient'
+        ? values.previewAddress
+        : undefined
+  return typeof candidate === 'string' && isAddress(candidate)
+    ? candidate
+    : undefined
+}
+
+/**
+ * A checksummed address, or an ENS name resolved through the caller's resolver. Every address
+ * field accepts names; the encoded transaction always carries the resolved address.
+ */
+const addressValue = async (
   values: Record<string, unknown>,
   key: string,
-  label: string
-) => {
+  label: string,
+  resolveRecipient?: RecipientResolver
+): Promise<{ address: Address; ensName?: string }> => {
   const value = stringValue(values, key).trim()
-  if (!isAddress(value)) throw new Error(`${label} must be a valid address`)
-  return value
+  if (isAddress(value)) return { address: value }
+  if (value && resolveRecipient) {
+    try {
+      const resolved = await resolveRecipient(
+        value,
+        previewAddressFor(values, key)
+      )
+      return {
+        address: resolved.address,
+        ...(resolved.ensName ? { ensName: resolved.ensName } : {}),
+      }
+    } catch (failure) {
+      throw fieldError(
+        key,
+        failure instanceof Error && failure.message
+          ? failure.message
+          : `${label} could not be resolved`
+      )
+    }
+  }
+  throw fieldError(key, `${label} must be a valid address or ENS name`)
 }
 
 const booleanValue = (values: Record<string, unknown>, key: string) => {
   const value = values[key]
   if (typeof value !== 'boolean')
-    throw new Error(`${key} must be true or false`)
+    throw fieldError(key, `${key} must be true or false`)
   return value
 }
 
-const percentageFraction = (input: string, label: string) => {
+const percentageFraction = (
+  values: Record<string, unknown>,
+  key: string,
+  label: string
+) => {
+  const input = stringValue(values, key).trim()
   try {
     return parseUnits(input, 16).toString()
   } catch {
-    throw new Error(`${label} must be a percentage with at most 16 decimals`)
+    throw fieldError(
+      key,
+      `${label} must be a percentage with at most 16 decimals`
+    )
   }
 }
 
-const etherValue = (input: string, label: string, allowZero = false) => {
+const etherValue = (
+  values: Record<string, unknown>,
+  key: string,
+  label: string,
+  allowZero = false
+) => {
+  const input = stringValue(values, key)
   let value: bigint
   try {
     value = parseEther(input || '0')
   } catch {
-    throw new Error(`${label} must be a decimal ETH amount`)
+    throw fieldError(key, `${label} must be a decimal ETH amount`)
   }
   if (value < 0n || (!allowZero && value === 0n)) {
-    throw new Error(
+    throw fieldError(
+      key,
       `${label} must be ${allowZero ? 'zero or more' : 'more than zero'}`
     )
+  }
+  return value
+}
+
+const bytes32Value = (
+  values: Record<string, unknown>,
+  key: string,
+  label: string
+): Hex => {
+  const value = stringValue(values, key).trim()
+  if (value.length !== 66 || !isHex(value, { strict: true })) {
+    throw fieldError(key, `${label} must be 32-byte hex`)
+  }
+  return value
+}
+
+const bytesValue = (
+  values: Record<string, unknown>,
+  key: string,
+  label: string
+): Hex => {
+  const value = stringValue(values, key).trim()
+  if (!isHex(value, { strict: true }) || value.length % 2) {
+    throw fieldError(key, `${label} must be valid byte-aligned hex`)
   }
   return value
 }
@@ -593,26 +686,13 @@ export const encodeGovernanceActionDraft = async (
   const values = record(draft.values)
   switch (draft.actionKey) {
     case 'send-eth': {
-      const identifier = stringValue(values, 'recipient').trim()
-      const wei = etherValue(stringValue(values, 'amountEth'), 'ETH amount')
-      const previewAddress =
-        typeof values.previewAddress === 'string' &&
-        isAddress(values.previewAddress)
-          ? values.previewAddress
-          : undefined
-      let recipient: Address
-      let ensName: string | undefined
-      if (isAddress(identifier)) {
-        recipient = identifier
-      } else if (resolveRecipient) {
-        const resolved = await resolveRecipient(identifier, previewAddress)
-        recipient = resolved.address
-        ensName = resolved.ensName ?? undefined
-      } else {
-        throw new Error(
-          'Recipient must be a valid address or resolved ENS name'
-        )
-      }
+      const wei = etherValue(values, 'amountEth', 'ETH amount')
+      const { address: recipient, ensName } = await addressValue(
+        values,
+        'recipient',
+        'Recipient',
+        resolveRecipient
+      )
       return ethTransferAction.encode(
         {
           recipient,
@@ -625,36 +705,58 @@ export const encodeGovernanceActionDraft = async (
     case 'send-erc20':
       return erc20TransferAction.encode(
         {
-          token: addressValue(values, 'token', 'Token contract'),
-          recipient: addressValue(values, 'recipient', 'Token recipient'),
+          token: (
+            await addressValue(
+              values,
+              'token',
+              'Token contract',
+              resolveRecipient
+            )
+          ).address,
+          recipient: (
+            await addressValue(
+              values,
+              'recipient',
+              'Token recipient',
+              resolveRecipient
+            )
+          ).address,
           amount: stringValue(values, 'amountBaseUnits').trim(),
         },
         context
       )
     case 'fund-rewards': {
-      const expectedRoot = stringValue(values, 'expectedRoot').trim()
-      if (
-        expectedRoot.length !== 66 ||
-        !isHex(expectedRoot, { strict: true })
-      ) {
-        throw new Error('Expected score root must be 32-byte hex')
-      }
+      const expectedRoot = bytes32Value(
+        values,
+        'expectedRoot',
+        'Expected score root'
+      )
       return rewardDistributionAction.encode(
         {
-          token: addressValue(values, 'token', 'Reward token'),
+          token: (
+            await addressValue(
+              values,
+              'token',
+              'Reward token',
+              resolveRecipient
+            )
+          ).address,
           amount: stringValue(values, 'amountBaseUnits').trim(),
-          expectedRoot: expectedRoot as Hex,
+          expectedRoot,
           expectedTotalMerkleValue: stringValue(
             values,
             'expectedTotalMerkleValue'
           ).trim(),
           claimDeadline: stringValue(values, 'claimDeadline').trim(),
           maxFeeAmount: stringValue(values, 'maxFeeAmount').trim(),
-          expectedFeeRecipient: addressValue(
-            values,
-            'expectedFeeRecipient',
-            'Expected fee recipient'
-          ),
+          expectedFeeRecipient: (
+            await addressValue(
+              values,
+              'expectedFeeRecipient',
+              'Expected fee recipient',
+              resolveRecipient
+            )
+          ).address,
         },
         context
       )
@@ -667,17 +769,21 @@ export const encodeGovernanceActionDraft = async (
     case 'set-rewards-fee-recipient':
       return rewardsFeeRecipientAction.encode(
         {
-          recipient: addressValue(values, 'recipient', 'Fee recipient'),
+          recipient: (
+            await addressValue(
+              values,
+              'recipient',
+              'Fee recipient',
+              resolveRecipient
+            )
+          ).address,
         },
         context
       )
     case 'set-rewards-fee-percentage':
       return rewardsFeePercentageAction.encode(
         {
-          feePercentage: percentageFraction(
-            stringValue(values, 'feePercent').trim(),
-            'Fee'
-          ),
+          feePercentage: percentageFraction(values, 'feePercent', 'Fee'),
         },
         context
       )
@@ -689,17 +795,27 @@ export const encodeGovernanceActionDraft = async (
     case 'set-rewards-distributor-allowance':
       return rewardsDistributorAllowanceAction.encode(
         {
-          distributor: addressValue(values, 'distributor', 'Rewards funder'),
+          distributor: (
+            await addressValue(
+              values,
+              'distributor',
+              'Rewards funder',
+              resolveRecipient
+            )
+          ).address,
           allowed: booleanValue(values, 'allowed'),
         },
         context
       )
     case 'update-scoring-params': {
       if (!values.proposed || typeof values.proposed !== 'object') {
-        throw new Error('Proposed scoring parameters are required')
+        throw fieldError('proposed', 'Proposed scoring parameters are required')
       }
       if (typeof values.syncSigner !== 'boolean') {
-        throw new Error('Signer synchronization choice is required')
+        throw fieldError(
+          'syncSigner',
+          'Signer synchronization choice is required'
+        )
       }
       return scoringParamsAction.encode(
         {
@@ -716,7 +832,7 @@ export const encodeGovernanceActionDraft = async (
         snapshot !== undefined &&
         (typeof snapshot !== 'string' || !isAddress(snapshot))
       ) {
-        throw new Error('Network snapshot must be a valid address')
+        throw fieldError('snapshot', 'Network snapshot must be a valid address')
       }
       const snapshotAddress =
         typeof snapshot === 'string' && isAddress(snapshot)
@@ -733,14 +849,30 @@ export const encodeGovernanceActionDraft = async (
     case 'set-operational-role':
       return operationalRoleAction.encode(
         {
-          account: addressValue(values, 'account', 'Operational account'),
+          account: (
+            await addressValue(
+              values,
+              'account',
+              'Operational account',
+              resolveRecipient
+            )
+          ).address,
           granted: booleanValue(values, 'granted'),
         },
         context
       )
     case 'propose-constitutional-transfer':
       return constitutionalTransferAction.encode(
-        { successor: addressValue(values, 'successor', 'Successor') },
+        {
+          successor: (
+            await addressValue(
+              values,
+              'successor',
+              'Successor',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'cancel-constitutional-transfer':
@@ -748,10 +880,7 @@ export const encodeGovernanceActionDraft = async (
     case 'set-governance-quorum':
       return governanceQuorumAction.encode(
         {
-          quorum: percentageFraction(
-            stringValue(values, 'quorumPercent').trim(),
-            'Quorum'
-          ),
+          quorum: percentageFraction(values, 'quorumPercent', 'Quorum'),
         },
         context
       )
@@ -773,7 +902,14 @@ export const encodeGovernanceActionDraft = async (
     case 'set-governance-delegatecall-target':
       return governanceDelegateCallTargetAction.encode(
         {
-          target: addressValue(values, 'target', 'Delegatecall target'),
+          target: (
+            await addressValue(
+              values,
+              'target',
+              'Delegatecall target',
+              resolveRecipient
+            )
+          ).address,
           allowed: booleanValue(values, 'allowed'),
         },
         context
@@ -785,28 +921,25 @@ export const encodeGovernanceActionDraft = async (
       )
     case 'set-signer-sync-paused': {
       if (typeof values.paused !== 'boolean') {
-        throw new Error('Paused state must be true or false')
+        throw fieldError('paused', 'Paused state must be true or false')
       }
       return signerPauseAction.encode({ paused: values.paused }, context)
     }
     case 'rotate-weighted-prior': {
-      const controller = stringValue(values, 'controller')
-      const manifest = stringValue(values, 'manifest')
-      const metadataDigest = stringValue(values, 'metadataDigest')
-      if (!isAddress(controller)) {
-        throw new Error(
-          'Weighted parameters controller must be a valid address'
+      const controller = (
+        await addressValue(
+          values,
+          'controller',
+          'Weighted parameters controller',
+          resolveRecipient
         )
-      }
-      if (!isHex(manifest, { strict: true }) || manifest.length % 2) {
-        throw new Error('Weighted manifest must be valid byte-aligned hex')
-      }
-      if (
-        metadataDigest.length !== 66 ||
-        !isHex(metadataDigest, { strict: true })
-      ) {
-        throw new Error('Weighted metadata digest must be 32-byte hex')
-      }
+      ).address
+      const manifest = bytesValue(values, 'manifest', 'Weighted manifest')
+      const metadataDigest = bytes32Value(
+        values,
+        'metadataDigest',
+        'Weighted metadata digest'
+      )
       return weightedPriorRotationAction.encode(
         { controller, manifest, metadataDigest },
         context
@@ -815,23 +948,21 @@ export const encodeGovernanceActionDraft = async (
     case 'cancel-weighted-prior':
       return weightedPriorCancelAction.encode({}, context)
     case 'propose-composition-policy': {
-      const manifest = stringValue(values, 'manifest')
-      const metadataDigest = stringValue(values, 'metadataDigest')
-      if (!isHex(manifest, { strict: true }) || manifest.length % 2) {
-        throw new Error('Composition manifest must be valid byte-aligned hex')
-      }
-      if (
-        metadataDigest.length !== 66 ||
-        !isHex(metadataDigest, { strict: true })
-      ) {
-        throw new Error('Composition metadata digest must be 32-byte hex')
-      }
+      const manifest = bytesValue(values, 'manifest', 'Composition manifest')
+      const metadataDigest = bytes32Value(
+        values,
+        'metadataDigest',
+        'Composition metadata digest'
+      )
       if (!Array.isArray(values.adapters)) {
-        throw new Error('Composition adapters must be a list')
+        throw fieldError('adapters', 'Composition adapters must be a list')
       }
       const adapters = values.adapters.map((adapter, index) => {
         if (typeof adapter !== 'string' || !isAddress(adapter)) {
-          throw new Error(`Composition adapter ${index + 1} is invalid`)
+          throw fieldError(
+            'adapters',
+            `Composition adapter ${index + 1} is invalid`
+          )
         }
         return adapter
       })
@@ -844,64 +975,142 @@ export const encodeGovernanceActionDraft = async (
       return compositionPolicyCancelAction.encode({}, context)
     case 'set-snapshot-verifier':
       return snapshotVerifierAction.encode(
-        { address: addressValue(values, 'address', 'Proof verifier') },
+        {
+          address: (
+            await addressValue(
+              values,
+              'address',
+              'Proof verifier',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'set-snapshot-accumulator':
       return snapshotAccumulatorAction.encode(
-        { address: addressValue(values, 'address', 'Attestation accumulator') },
+        {
+          address: (
+            await addressValue(
+              values,
+              'address',
+              'Attestation accumulator',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'set-snapshot-anchor-registry':
       return snapshotAnchorRegistryAction.encode(
-        { address: addressValue(values, 'address', 'Anchor registry') },
+        {
+          address: (
+            await addressValue(
+              values,
+              'address',
+              'Anchor registry',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'enable-safe-module':
       return safeEnableModuleAction.encode(
-        { address: addressValue(values, 'address', 'Safe module') },
+        {
+          address: (
+            await addressValue(
+              values,
+              'address',
+              'Safe module',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'set-safe-guard':
       return safeGuardAction.encode(
-        { address: addressValue(values, 'address', 'Safe guard') },
+        {
+          address: (
+            await addressValue(
+              values,
+              'address',
+              'Safe guard',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'disable-safe-module':
       return safeDisableModuleAction.encode(
         {
-          previousModule: addressValue(
-            values,
-            'previousModule',
-            'Previous module'
-          ),
-          module: addressValue(values, 'module', 'Safe module'),
+          previousModule: (
+            await addressValue(
+              values,
+              'previousModule',
+              'Previous module',
+              resolveRecipient
+            )
+          ).address,
+          module: (
+            await addressValue(
+              values,
+              'module',
+              'Safe module',
+              resolveRecipient
+            )
+          ).address,
         },
         context
       )
     case 'swap-safe-owner':
       return safeSwapOwnerAction.encode(
         {
-          previousOwner: addressValue(
-            values,
-            'previousOwner',
-            'Previous owner'
-          ),
-          oldOwner: addressValue(values, 'oldOwner', 'Current owner'),
-          newOwner: addressValue(values, 'newOwner', 'New owner'),
+          previousOwner: (
+            await addressValue(
+              values,
+              'previousOwner',
+              'Previous owner',
+              resolveRecipient
+            )
+          ).address,
+          oldOwner: (
+            await addressValue(
+              values,
+              'oldOwner',
+              'Current owner',
+              resolveRecipient
+            )
+          ).address,
+          newOwner: (
+            await addressValue(
+              values,
+              'newOwner',
+              'New owner',
+              resolveRecipient
+            )
+          ).address,
         },
         context
       )
     case 'set-recovery-proposer':
       return recoveryProposerAction.encode(
-        { address: addressValue(values, 'address', 'Recovery proposer') },
+        {
+          address: (
+            await addressValue(
+              values,
+              'address',
+              'Recovery proposer',
+              resolveRecipient
+            )
+          ).address,
+        },
         context
       )
     case 'cancel-recovery-action': {
-      const actionId = stringValue(values, 'actionId').trim()
-      if (actionId.length !== 66 || !isHex(actionId, { strict: true })) {
-        throw new Error('Recovery action id must be 32-byte hex')
-      }
+      const actionId = bytes32Value(values, 'actionId', 'Recovery action id')
       return recoveryCancelAction.encode({ actionId }, context)
     }
     case 'set-vault-policy':
@@ -928,19 +1137,26 @@ export const encodeGovernanceActionDraft = async (
     case 'execute-vault-withdrawal':
       return vaultWithdrawalExecuteAction.encode(
         {
-          recipient: addressValue(values, 'recipient', 'Withdrawal recipient'),
+          recipient: (
+            await addressValue(
+              values,
+              'recipient',
+              'Withdrawal recipient',
+              resolveRecipient
+            )
+          ).address,
         },
         context
       )
     case 'create-contribution-round': {
       const parentParams = values.parentParams
       if (!parentParams || typeof parentParams !== 'object') {
-        throw new Error('The parent network’s exact parameters are required')
+        throw fieldError(
+          'parentParams',
+          'The parent network’s exact parameters are still loading'
+        )
       }
-      const salt = stringValue(values, 'salt')
-      if (salt.length !== 66 || !isHex(salt, { strict: true })) {
-        throw new Error('Round salt must be 32-byte hex')
-      }
+      const salt = bytes32Value(values, 'salt', 'Round salt')
       return createContributionRoundAction.encode(
         {
           parentParams: parentParams as ExactParamsJson,
@@ -953,30 +1169,35 @@ export const encodeGovernanceActionDraft = async (
             values,
             'evaluatorCarveoutBps'
           ).trim(),
-          distributorToken: addressValue(
-            values,
-            'distributorToken',
-            'Payout token'
-          ),
+          distributorToken: (
+            await addressValue(
+              values,
+              'distributorToken',
+              'Payout token',
+              resolveRecipient
+            )
+          ).address,
           salt,
         },
         context
       )
     }
     case 'custom': {
-      const target = stringValue(values, 'target')
-      const data = stringValue(values, 'data') || '0x'
+      const target = (
+        await addressValue(values, 'target', 'Target', resolveRecipient)
+      ).address
+      const data = stringValue(values, 'data').trim() || '0x'
       const description = stringValue(values, 'description').trim()
       const operation = values.operation
-      if (!isAddress(target)) throw new Error('Target must be a valid address')
-      if (!description) throw new Error('Custom call description is required')
+      if (!description)
+        throw fieldError('description', 'Describe what this call does')
       if (!isHex(data, { strict: true }) || data.length % 2) {
-        throw new Error('Calldata must be valid byte-aligned hex')
+        throw fieldError('data', 'Calldata must be valid byte-aligned hex')
       }
       if (operation !== 0 && operation !== 1) {
-        throw new Error('Operation must be Call or DelegateCall')
+        throw fieldError('operation', 'Operation must be Call or DelegateCall')
       }
-      const wei = etherValue(stringValue(values, 'valueEth'), 'ETH value', true)
+      const wei = etherValue(values, 'valueEth', 'ETH value', true)
       return customAction.encode(
         {
           target,
