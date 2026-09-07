@@ -47,6 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
+import { SubnetworkSettingsCard } from '@/components/SubnetworkSettingsCard'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
@@ -3163,6 +3164,13 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                {subnetworksAvailable && governanceAddress && instanceId && (
+                  <SubnetworkSettingsCard
+                    networkId={network.id}
+                    instanceId={instanceId}
+                  />
+                )}
+
                 {subnetworksAvailable && (
                   <SettingsCard
                     title="Parent network"

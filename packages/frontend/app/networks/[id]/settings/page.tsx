@@ -4,6 +4,7 @@ import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { CompositionNetworkHeader } from '@/components/CompositionNetworkHeader'
 import { NetworkHeader } from '@/components/NetworkHeader'
+import { SubnetworkSettingsCard } from '@/components/SubnetworkSettingsCard'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getInstanceDetails, getNetwork } from '@/lib/catalog.server'
 import { compositionAsNetwork } from '@/lib/composition/network'
@@ -12,6 +13,7 @@ import {
   CONTRIBUTIONS_FACTORY,
   FAST_CONTRIBUTIONS_FACTORY,
   PROVING_VAULT,
+  isSubnetworkFeatureAvailable,
 } from '@/lib/config'
 import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 
@@ -64,6 +66,14 @@ export default async function NetworkSettingsPage({
             network={compositionNetwork}
             instance={null}
           />
+          {isSubnetworkFeatureAvailable() &&
+            compositionNetwork.instanceId &&
+            compositionNetwork.contracts.merkleGovModule && (
+              <SubnetworkSettingsCard
+                networkId={compositionNetwork.id}
+                instanceId={compositionNetwork.instanceId}
+              />
+            )}
           <CompositionWorkspace
             settingsInstanceId={composition.instance.id}
             embedded

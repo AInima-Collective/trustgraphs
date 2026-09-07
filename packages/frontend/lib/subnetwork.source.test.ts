@@ -9,6 +9,7 @@ const wizard = read('../app/create/steps/ReviewStep.tsx')
 const page = read('../app/networks/[id]/subnetworks/component.tsx')
 const header = read('../components/NetworkHeader.tsx')
 const settings = read('../app/networks/[id]/settings/component.tsx')
+const settingsCard = read('../components/SubnetworkSettingsCard.tsx')
 const nav = read('./network-nav.ts')
 const route = read('../app/networks/[id]/subnetworks/page.tsx')
 const buildGuide = read('../../../docs/build/sub-networks.md')
@@ -36,14 +37,19 @@ test('adoption requires child claim and parent acceptance and supports every gov
   assert.match(page, /permissionless\s+and\s+inert/)
 })
 
-test('hierarchy is deployment-gated and visible on parent and child surfaces', () => {
+test('hierarchy is deployment-gated and visible only when configured', () => {
   assert.match(nav, /subnetworksAvailable/)
   assert.match(nav, /label: 'Sub-networks'/)
   assert.match(nav, /instance\.governance && subnetworksAvailable/)
   assert.match(route, /compositionAsNetwork/)
   assert.match(header, /Part of \{activeParent\.name\}/)
+  assert.match(header, /activeChildren\.length > 0/)
+  assert.match(header, /pendingChildren\.length > 0/)
   assert.match(settings, /Parent network/)
   assert.match(settings, /Power verified/)
+  assert.match(settings, /SubnetworkSettingsCard/)
+  assert.match(settingsCard, /Create a sub-network/)
+  assert.match(settingsCard, /Manage relationships/)
 })
 
 test('build guide carries a cold-stack browser walkthrough', () => {

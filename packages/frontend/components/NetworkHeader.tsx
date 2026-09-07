@@ -6,7 +6,10 @@ import Link from 'next/link'
 import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
-import { useSubnetworkParent } from '@/hooks/useSubnetworks'
+import {
+  useSubnetworkChildren,
+  useSubnetworkParent,
+} from '@/hooks/useSubnetworks'
 import { isSubnetworkFeatureAvailable } from '@/lib/config'
 import {
   NetworkTab,
@@ -52,15 +55,40 @@ export function NetworkHeader({
     ? contributionsRoundsFor(trustNetwork, rounds)
     : []
   const subnetworksAvailable = isSubnetworkFeatureAvailable()
+  const candidateTabs =
+    tabs ??
+    trustgraphsTabs(
+      network as Network,
+      contributionRounds,
+      subnetworksAvailable
+    )
+  const hasSubnetworkTab = candidateTabs.some(
+    (candidate) => candidate.icon === 'subnetworks'
+  )
+  const instanceId = (network as Network | ContributionsNetwork).instanceId
+  const subnetworkParentId =
+    subnetworksAvailable && hasSubnetworkTab ? instanceId : undefined
+  const { data: activeChildren = [] } = useSubnetworkChildren(
+    subnetworkParentId,
+    'active'
+  )
+  const { data: pendingChildren = [] } = useSubnetworkChildren(
+    subnetworkParentId,
+    'pending'
+  )
   const { data: parentRelationship } = useSubnetworkParent(
-    subnetworksAvailable
-      ? (network as Network | ContributionsNetwork).instanceId
-      : undefined
+    subnetworksAvailable ? instanceId : undefined
   )
   const activeParent =
     parentRelationship?.status === 'active'
       ? parentRelationship.parent
       : undefined
+  const visibleTabs = candidateTabs.filter(
+    (candidate) =>
+      candidate.icon !== 'subnetworks' ||
+      activeChildren.length > 0 ||
+      pendingChildren.length > 0
+  )
 
   return (
     <div className={cn('flex flex-col items-start gap-4', className)}>
@@ -95,17 +123,7 @@ export function NetworkHeader({
         </Markdown>
       )}
 
-      <NetworkNav
-        tabs={
-          tabs ??
-          trustgraphsTabs(
-            network as Network,
-            contributionRounds,
-            subnetworksAvailable
-          )
-        }
-        className="w-full mt-2"
-      />
+      <NetworkNav tabs={visibleTabs} className="w-full mt-2" />
     </div>
   )
 }
