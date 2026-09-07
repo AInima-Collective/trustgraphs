@@ -28,6 +28,9 @@ export const parentAuthorityModuleAbi = parseAbi([
 
 export const delayedRecoveryModuleAbi = parseAbi([
   'event RecoveryProposerUpdated(address indexed previousProposer,address indexed newProposer)',
+  'event RecoveryScheduled(bytes32 indexed actionId,uint256 indexed nonce,address indexed proposer,address target,uint256 value,bytes data,uint8 operation,uint256 readyAt)',
+  'event RecoveryCancelled(bytes32 indexed actionId,address indexed canceller)',
+  'event RecoveryExecuted(bytes32 indexed actionId,address indexed executor)',
 ])
 
 /** Ownable2Step controllers all share this event and view regardless of program family. */

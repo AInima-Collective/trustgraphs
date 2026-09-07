@@ -1,5 +1,10 @@
 import { ponder } from 'ponder:registry'
-import { gnosisSafe, merkleGovModule, recoveryAuthority } from 'ponder:schema'
+import {
+  gnosisSafe,
+  merkleGovModule,
+  recoveryAction,
+  recoveryAuthority,
+} from 'ponder:schema'
 
 import { readMerkleGovModuleRow } from './gov-module-shared'
 import { revalidateNetwork } from './utils'
@@ -148,4 +153,64 @@ ponder.on(
       })
     await revalidateNetwork(recovery.instanceId)
   }
+)
+
+// Queued recovery actions, so a governance proposal can veto one by choosing it. A module the
+// factory never recorded is out of universe and ignored, like its proposer updates above.
+ponder.on(
+  'delayedRecoveryModule:RecoveryScheduled',
+  async ({ event, context }: any) => {
+    const recovery = await context.db.find(recoveryAuthority, {
+      module: event.log.address,
+    })
+    if (!recovery) return
+    await context.db
+      .insert(recoveryAction)
+      .values({
+        actionId: event.args.actionId,
+        module: event.log.address,
+        instanceId: recovery.instanceId,
+        nonce: BigInt(event.args.nonce),
+        proposer: event.args.proposer,
+        target: event.args.target,
+        value: BigInt(event.args.value),
+        data: event.args.data,
+        safeOperation: Number(event.args.operation),
+        status: 'scheduled',
+        readyAt: BigInt(event.args.readyAt),
+        scheduledBlock: event.block.number,
+        scheduledTimestamp: event.block.timestamp,
+        scheduledTxHash: event.transaction.hash,
+        updatedBlock: event.block.number,
+        updatedTimestamp: event.block.timestamp,
+        updatedTxHash: event.transaction.hash,
+      })
+      .onConflictDoNothing()
+  }
+)
+
+const settleRecoveryAction =
+  (status: 'cancelled' | 'executed') =>
+  async ({ event, context }: any) => {
+    const action = await context.db.find(recoveryAction, {
+      actionId: event.args.actionId,
+    })
+    if (!action) return
+    await context.db
+      .update(recoveryAction, { actionId: event.args.actionId })
+      .set({
+        status,
+        updatedBlock: event.block.number,
+        updatedTimestamp: event.block.timestamp,
+        updatedTxHash: event.transaction.hash,
+      })
+  }
+
+ponder.on(
+  'delayedRecoveryModule:RecoveryCancelled',
+  settleRecoveryAction('cancelled')
+)
+ponder.on(
+  'delayedRecoveryModule:RecoveryExecuted',
+  settleRecoveryAction('executed')
 )

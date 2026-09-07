@@ -287,6 +287,12 @@ export function useGovernanceComposerData(
     ),
     enabled: !!instanceId && !!actionContext.compositionParamsController,
   })
+  const { data: queuedRecovery } = usePonderQuery({
+    queryFn: ponderQueryFns.getQueuedRecoveryActions(
+      recoveryModule ?? zeroAddress
+    ),
+    enabled: !!recoveryModule,
+  })
   const { data: currentBlock = 0n } = useQuery({
     queryKey: ['blockNumber'],
     queryFn: async () => (publicClient ? publicClient.getBlockNumber() : 0n),
@@ -455,6 +461,13 @@ export function useGovernanceComposerData(
         }))
       }
     }
+    if (queuedRecovery?.length) {
+      pickers['recovery-action'] = queuedRecovery.map((entry) => ({
+        value: entry.actionId,
+        label: `#${entry.nonce.toString()} → ${contractLabel(entry.target) ?? shortenHex(getAddress(entry.target))}`,
+        description: `${entry.safeOperation === 1 ? 'delegatecall' : 'call'} with ${formatUnits(entry.value, 18)} ETH, ready ${formatRelativeSeconds(Number(entry.readyAt))}`,
+      }))
+    }
     if (distributor?.allowlist?.length) {
       pickers['rewards-funder'] = distributor.allowlist.map((funder) => ({
         value: getAddress(funder),
@@ -540,6 +553,7 @@ export function useGovernanceComposerData(
     pendingComposition,
     pendingWeighted,
     proposals,
+    queuedRecovery,
     readResults,
     reads,
     roleMembers,

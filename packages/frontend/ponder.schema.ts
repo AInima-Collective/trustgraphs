@@ -113,6 +113,37 @@ export const recoveryAuthority = onchainTable(
   })
 )
 
+/**
+ * Every action queued on a delayed recovery module, with its lifecycle, so governance can veto
+ * one by choosing it rather than by pasting its id.
+ */
+export const recoveryAction = onchainTable(
+  'recovery_action',
+  (t) => ({
+    actionId: t.hex().primaryKey(),
+    module: t.hex().notNull(),
+    instanceId: t.hex().notNull(),
+    nonce: t.bigint().notNull(),
+    proposer: t.hex().notNull(),
+    target: t.hex().notNull(),
+    value: t.bigint().notNull(),
+    data: t.hex().notNull(),
+    safeOperation: t.integer().notNull(),
+    status: t.text().notNull(), // scheduled | cancelled | executed
+    readyAt: t.bigint().notNull(),
+    scheduledBlock: t.bigint().notNull(),
+    scheduledTimestamp: t.bigint().notNull(),
+    scheduledTxHash: t.hex().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    moduleStatusIdx: index().on(t.module, t.status),
+    instanceStatusIdx: index().on(t.instanceId, t.status),
+  })
+)
+
 /*///////////////////////////////////////////////////////////////
        GRAPH LINEAGES / ADVISORY ENDORSEMENT PROVENANCE
 //////////////////////////////////////////////////////////////*/

@@ -845,4 +845,13 @@ export const ponderQueryFns = {
           and(eq(t.instanceId, instanceId), eq(t.status, 'pending')),
         orderBy: (t, { desc }) => desc(t.version),
       }),
+  /** Actions still queued on a recovery module, newest first, for the veto picker. */
+  getQueuedRecoveryActions:
+    (module: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.recoveryAction.findMany({
+        where: (t, { and, eq }) =>
+          and(eq(t.module, module), eq(t.status, 'scheduled')),
+        orderBy: (t, { desc }) => desc(t.scheduledBlock),
+        limit: 50,
+      }),
 }
