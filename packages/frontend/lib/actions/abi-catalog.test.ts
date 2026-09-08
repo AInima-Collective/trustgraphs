@@ -13,8 +13,8 @@ import {
   parseFunctionArgument,
   writableFunctions,
 } from './abi-catalog'
-import { governanceDangerConsequences } from './danger'
 import { governanceComposerRegistry } from './composer'
+import { governanceDangerConsequences } from './danger'
 import type { GovernanceActionContext } from './types'
 
 const address = (byte: string) => `0x${byte.repeat(40)}` as Address

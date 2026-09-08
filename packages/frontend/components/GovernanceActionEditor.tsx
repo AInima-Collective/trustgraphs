@@ -4,9 +4,9 @@ import { useEffect, useId, useRef } from 'react'
 import { type Address, isAddress, toHex } from 'viem'
 
 import { CustomCallEditor } from '@/components/governance/CustomCallEditor'
+import { GovernanceFieldGrid } from '@/components/governance/fields/GovernanceFieldGrid'
 import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { ScoringParamsEditor } from '@/components/governance/ScoringParamsEditor'
-import { GovernanceFieldGrid } from '@/components/governance/fields/GovernanceFieldGrid'
 import {
   type GovernanceActionDraft,
   type GovernanceComposerActionKey,

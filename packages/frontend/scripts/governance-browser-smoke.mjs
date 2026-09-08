@@ -106,7 +106,7 @@ try {
   )
   const recipient = '0x1111111111111111111111111111111111111111'
   await page.getByLabel('Recipient', { exact: true }).fill(recipient)
-  await page.getByLabel('Amount (ETH)', { exact: true }).fill('0.1')
+  await page.getByLabel('Amount', { exact: true }).fill('0.1')
   await page.getByText('1 of 1 ready', { exact: true }).waitFor()
 
   await page
@@ -115,7 +115,7 @@ try {
   await page.getByText('2 of 2 ready', { exact: true }).waitFor()
   await page
     .locator('[id^="action-editor-"]:visible')
-    .getByLabel('Amount (ETH)', { exact: true })
+    .getByLabel('Amount', { exact: true })
     .fill('0.2')
   await page.getByText('2 of 2 ready', { exact: true }).waitFor()
   await page
@@ -125,7 +125,7 @@ try {
     await page
       .locator('article')
       .first()
-      .getByLabel('Amount (ETH)', { exact: true })
+      .getByLabel('Amount', { exact: true })
       .inputValue(),
     '0.2'
   )
@@ -138,7 +138,7 @@ try {
     await page
       .locator('article')
       .first()
-      .getByLabel('Amount (ETH)', { exact: true })
+      .getByLabel('Amount', { exact: true })
       .inputValue(),
     '0.2'
   )
@@ -153,7 +153,7 @@ try {
     await page
       .locator('article')
       .first()
-      .getByLabel('Amount (ETH)', { exact: true })
+      .getByLabel('Amount', { exact: true })
       .inputValue(),
     '0.2'
   )

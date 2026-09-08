@@ -179,12 +179,10 @@ contract PashovInv_DistributorSolvency is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-      INVARIANT BROKEN #2 — pausing across a claim deadline silently
-      converts every unclaimed entitlement into a refund to the
-      funder. `claim` is `whenNotPaused` and closes forever at the
-      deadline; there is no way to extend it.
+      REGRESSION #2 — paused time cannot consume a contributor's
+      claim window or turn an open entitlement into a funder refund.
     //////////////////////////////////////////////////////////////*/
-    function test_PauseAcrossTheDeadlineTurnsClaimantsIntoASweep() public {
+    function test_PauseAcrossTheDeadlinePreservesClaimantEntitlements() public {
         // A tree with one claimant worth the whole round.
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(attacker, uint256(1_000)))));
         snap.set(leaf, 1_000);
@@ -215,13 +213,10 @@ contract PashovInv_DistributorSolvency is Test {
         dist.unpause();
 
         bytes32[] memory emptyProof = new bytes32[](0);
-        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
-        dist.claim(round, attacker, 1_000, emptyProof);
-
-        // ...and the whole round goes back to the funder instead.
-        uint256 swept = dist.sweep(round);
-        assertEq(swept, 100 ether);
-        assertEq(token.balanceOf(funderA), 100 ether);
-        assertEq(token.balanceOf(attacker), 0, "entitled claimant got nothing");
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        dist.sweep(round);
+        assertEq(dist.claim(round, attacker, 1_000, emptyProof), 100 ether);
+        assertEq(token.balanceOf(funderA), 0, "pause cannot refund an open claim to the funder");
+        assertEq(token.balanceOf(attacker), 100 ether, "entitled claimant retains the full claim");
     }
 }

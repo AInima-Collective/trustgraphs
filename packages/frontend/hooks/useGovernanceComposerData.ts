@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import {
   type Address,
-  type Hex,
   erc20Abi,
   formatUnits,
   getAddress,
@@ -536,7 +535,6 @@ export function useGovernanceComposerData(
       pending,
     }
     // `read` is derived from `reads` + `readResults`, which are in this list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     actionContext,
     balanceReads,

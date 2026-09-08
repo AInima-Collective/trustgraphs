@@ -177,6 +177,8 @@ contract GovernedTrustComposeFactoryTest is Test {
 
     function test_CompositionSignerSyncIsRejectedAtomically() public {
         uint256 countBefore = registry.instanceCount();
+        // Build args before expectRevert: the policy builder reads source adapter contracts.
+        TrustComposeFactory.CreateArgs memory args = _args("unsupported composition signer");
         vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -184,7 +186,7 @@ contract GovernedTrustComposeFactoryTest is Test {
             )
         );
         governedFactory.createGovernedInstance(
-            _args("unsupported composition signer"),
+            args,
             GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
             GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000})
         );

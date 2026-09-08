@@ -195,7 +195,7 @@ contract SignerSyncZkModule is Module {
     ///      The high-water state is explicitly cleared on the sole safe (both-empty) rotation path.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyOwner {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
-        if (_accumulator == accumulator) {
+        if (address(_accumulator) == address(accumulator)) {
             emit AccumulatorUpdated(address(_accumulator));
             return;
         }
@@ -223,7 +223,7 @@ contract SignerSyncZkModule is Module {
 
     function setActivitySource(ISignerActivitySource activitySource_) external onlyOwner {
         if (address(activitySource_) == address(0)) revert ZeroAddress();
-        if (activitySource_ != activitySource) lastAppliedActivityCheckpoint = 0;
+        if (address(activitySource_) != address(activitySource)) lastAppliedActivityCheckpoint = 0;
         activitySource = activitySource_;
         emit ActivitySourceUpdated(address(activitySource_));
     }

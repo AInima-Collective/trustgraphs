@@ -62,7 +62,7 @@ const same = previewScoringChange({
 })
 assert.equal(
   same.currentRoot,
-  '0x28487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f'
+  '0xfce3dd62ed0649524a718391dafd651189c94f7b27a7d652d2a65d6d83e722e4'
 )
 assert.equal(same.currentRoot, same.proposedRoot)
 assert.equal(same.gained, 0)

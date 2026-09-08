@@ -53,6 +53,7 @@ export type EnvOverrides = {
   ipfsGateway?: string
   stage?: DeploymentStage
   target?: ChainTarget
+  newGeneration?: string
 }
 
 export type ProgramContext = {

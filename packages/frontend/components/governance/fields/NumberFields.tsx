@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatUnits, parseUnits } from 'viem'
 
+import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { Input } from '@/components/Input'
 import { Slider } from '@/components/Slider'
-import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { BPS_DECIMALS, USD_DECIMALS, formatUsd8 } from '@/lib/actions'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +68,6 @@ const useScaledText = (
     lastEmitted.current = stored
     setLocalError(null)
     setText(render(stored))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stored])
   const update = (next: string) => {
     setText(next)

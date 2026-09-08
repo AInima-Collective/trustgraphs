@@ -9,7 +9,7 @@
 # guest build, which is immutable and cost a redeploy of two contracts. Everything below is
 # either that failure or a neighbour of it.
 #
-# Usage:  bash scripts/sepolia-preflight.sh
+# Usage:  bash scripts/sepolia-preflight.sh [--new-generation NAME]
 # Exit code is the number of failed checks, so it composes with `&&`.
 
 set -uo pipefail
@@ -17,6 +17,15 @@ cd "$(dirname "$0")/.."
 
 if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
   exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
+fi
+
+NEW_GENERATION=''
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -ne 2 ] || [ "$1" != '--new-generation' ] || ! [[ "$2" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]]; then
+    echo 'Usage: sepolia-preflight.sh [--new-generation NAME]' >&2
+    exit 1
+  fi
+  NEW_GENERATION=$2
 fi
 
 # One candidate identity: the archived guest manifest. Checkout and env must agree with it.
@@ -97,6 +106,17 @@ else
 fi
 
 echo "=== 3. scratch artifacts cannot steer the continuation ==="
+if [ -n "$NEW_GENERATION" ]; then
+  if [ -e "deployments/generations/$NEW_GENERATION" ]; then
+    bad "generation already exists; reconcile its receipts before retrying"
+  else
+    ok "generation name is unused"
+  fi
+  for file in .docker/*_deploy.json; do
+    [ -f "$file" ] || continue
+    bad "$file is from an earlier attempt; use a fresh checkout for the new generation"
+  done
+else
 # The continuation ignores all five core artifacts and preserves those addresses from the tracked
 # manifest. Matching originals are useful deployment evidence, so do not demand their deletion.
 # Every scratch artifact either has to agree with a recorded live address or be absent. An artifact
@@ -130,6 +150,7 @@ for item in \
     bad "$file disagrees with manifest.contracts.$key (the continuation will ignore it)"
   fi
 done
+fi
 
 echo "=== 4. .env.sepolia points at the chain we mean ==="
 # `pnpm deploy:contracts` with no flags follows these. A demo once inherited them and deployed
@@ -215,8 +236,12 @@ fi
 echo "=== 10. the record this deploy will overwrite ==="
 STATUS=$(jq -r .status deployments/sepolia.json)
 if [ "$STATUS" = "deployed" ]; then
+  if [ -n "$NEW_GENERATION" ]; then
+    ok "active deployment is preserved; candidate writes deployments/generations/$NEW_GENERATION/sepolia.json"
+  else
   note "deployments/sepolia.json already records a deploy. It is the release manifest file, so"
   note "the next run writes straight over it. Keep a copy if that record still matters."
+  fi
 else
   ok "deployments/sepolia.json is '$STATUS', so nothing is lost by deploying"
 fi

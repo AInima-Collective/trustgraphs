@@ -395,18 +395,18 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         );
     }
 
-    function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
+    function test_UnsupportedSignerProgramTakesPrecedenceOverSelectionValidation() public {
         GovernedFactoryBase.SignerSyncConfig memory signerConfig =
             GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000});
 
         vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(2), uint32(5000)
+                GovernedFactoryBase.UnsupportedSignerSyncProgram.selector, keccak256("trust-graph-weighted")
             )
         );
         governedFactory.createGovernedInstance(_args("unsafe weighted selection", 2), _unpaidPolicy(), signerConfig);
-        assertEq(registry.instanceCount(), 0, "invalid signer policy must roll back base creation");
+        assertEq(registry.instanceCount(), 0, "unsupported signer program must roll back base creation");
     }
 
     function test_CreatorCannotExecuteAnyOwnerTransactionAfterAtomicGraduation() public {

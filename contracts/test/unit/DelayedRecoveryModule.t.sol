@@ -43,8 +43,8 @@ contract DelayedRecoveryModuleTest is Test {
             vm.expectRevert(abi.encodeWithSelector(DelayedRecoveryModule.UnknownAction.selector, id));
             recovery.execute(nonce, target, 0, hex"abcd", Enum.Operation.Call);
         }
-        _schedule();
-        vm.warp(block.timestamp + 14 days);
+        bytes32 currentId = _schedule();
+        vm.warp(recovery.readyAt(currentId));
         recovery.execute(2, target, 0, hex"abcd", Enum.Operation.Call);
         assertEq(safe.executions(), 1);
     }

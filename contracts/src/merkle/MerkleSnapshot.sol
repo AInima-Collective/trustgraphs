@@ -314,7 +314,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     ///      binary-search history. Recovery is a fresh snapshot with a fresh vault binding.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
-        if (_accumulator == accumulator) {
+        if (address(_accumulator) == address(accumulator)) {
             emit AccumulatorUpdated(address(_accumulator));
             return;
         }
@@ -349,7 +349,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Set (or clear) the lane-2 anchor registry (constitutional — it changes which
     ///         inputs "the graph" means, exactly like the accumulator knob).
     function setAnchorRegistry(IAnchorRegistry _anchorRegistry) external onlyRole(CONSTITUTIONAL_ROLE) {
-        if (_anchorRegistry == anchorRegistry) {
+        if (address(_anchorRegistry) == address(anchorRegistry)) {
             emit AnchorRegistryUpdated(address(_anchorRegistry));
             return;
         }

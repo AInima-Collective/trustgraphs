@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { formatUnits, isAddress, parseUnits, zeroAddress } from 'viem'
 
 import { Button } from '@/components/Button'
-import { Input } from '@/components/Input'
 import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
+import { Input } from '@/components/Input'
 import { type TokenDisplay, formatTokenAmount } from '@/lib/actions'
 import { cn } from '@/lib/utils'
 

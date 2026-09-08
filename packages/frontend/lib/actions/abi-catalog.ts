@@ -23,8 +23,8 @@ import {
 } from '../contract-abis'
 import { contributionsFactoryAbi } from '../contributions-factory'
 import { trustgraphsParamsControllerAbi } from '../scoring-params'
-import { weightedPriorParamsControllerAbi } from '../weighted-prior/contracts'
 import type { GovernanceActionContext } from './types'
+import { weightedPriorParamsControllerAbi } from '../weighted-prior/contracts'
 
 export const delayedRecoveryModuleAbi = parseAbi([
   'function schedule(address target,uint256 value,bytes data,uint8 operation) returns (bytes32 actionId)',

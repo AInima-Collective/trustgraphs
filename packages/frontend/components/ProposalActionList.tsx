@@ -8,28 +8,12 @@ import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import {
-  type GovernanceActionContext,
-  type TokenDisplay,
-  decodeKnownCall,
-  formatBlockCount,
-  formatBps,
-  formatPercent18,
-  formatTokenAmount,
-  formatUnixSeconds,
-  formatUsd8,
-  formatWei,
-  governanceActionContextFor,
-  governanceContractLabels,
-  normalizeSafeActions,
-  shortenHex,
-  walkGovernanceActions,
-} from '@/lib/actions'
-import type {
   CompositionPolicyActionValues,
   ConstitutionalTransferActionValues,
   ContributionRoundActionValues,
   Erc20TransferActionValues,
   EthTransferActionValues,
+  type GovernanceActionContext,
   GovernanceCancelProposalActionValues,
   GovernanceDelayActionValues,
   GovernanceDelegateCallTargetActionValues,
@@ -51,10 +35,24 @@ import type {
   ScoringParamsActionValues,
   SignerParamsActionValues,
   SignerPauseActionValues,
+  type TokenDisplay,
   VaultPolicyActionValues,
   VaultWithdrawalExecuteActionValues,
   VaultWithdrawalRequestActionValues,
   WeightedPriorRotationActionValues,
+  decodeKnownCall,
+  formatBlockCount,
+  formatBps,
+  formatPercent18,
+  formatTokenAmount,
+  formatUnixSeconds,
+  formatUsd8,
+  formatWei,
+  governanceActionContextFor,
+  governanceContractLabels,
+  normalizeSafeActions,
+  shortenHex,
+  walkGovernanceActions,
 } from '@/lib/actions'
 import { blockTimeSeconds } from '@/lib/blocks'
 import { paramsHash } from '@/lib/pagerank/encode'
@@ -900,7 +898,6 @@ export function ProposalActionList({
         })
       }),
     // Matching is deterministic in its inputs; the token list only changes with them.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [actions, network]
   )
   const metadata = useTokenMetadata(tokens)

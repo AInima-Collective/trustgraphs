@@ -5,6 +5,7 @@ import { Command } from 'commander'
 import type { Hex } from 'viem'
 
 import { CHAIN_PROFILES, resolveDeploymentSelection } from './profiles'
+import { generationManifestPath, planGeneration } from './generation'
 import {
   type DeploymentRecord,
   type ReleaseManifest,
@@ -1072,11 +1073,12 @@ export class DevEnv extends EnvBase {
  * the hosted operator's explicit scope fence.
  */
 export class SepoliaEnv extends EnvBase {
-  private readonly releaseManifestFile = 'deployments/sepolia.json'
+  readonly releaseBase: ReleaseManifest
 
   constructor({
     rpcUrl,
     ipfsGateway = 'https://gateway.pinata.cloud/ipfs/',
+    newGeneration,
   }: EnvOverrides) {
     if (!rpcUrl) {
       throw new Error(
@@ -1092,7 +1094,20 @@ export class SepoliaEnv extends EnvBase {
     if (!['http:', 'https:'].includes(parsedRpc.protocol)) {
       throw new Error('Sepolia RPC URL must use http or https')
     }
-    const manifest = loadReleaseManifest('deployments/sepolia.json')
+    const activeManifest = loadReleaseManifest('deployments/sepolia.json')
+    if (newGeneration) requireReleaseVkeys()
+    const manifest = newGeneration
+      ? planGeneration(
+          activeManifest,
+          JSON.parse(
+            fs.readFileSync(
+              process.env.GUEST_MANIFEST || 'guest-manifest.json',
+              'utf8'
+            )
+          ),
+          requireReleaseCommit()
+        )
+      : activeManifest
     const continuing = (ctx: ProgramContext): boolean =>
       Boolean(ctx.options.continueExisting)
     const skipExisting =
@@ -1120,15 +1135,46 @@ export class SepoliaEnv extends EnvBase {
       }
       return value
     }
-    const existingAddress = (key: keyof ReleaseManifest['contracts']): string =>
-      requiredAddress(
-        `manifest.contracts.${key}`,
-        manifest.contracts[key]?.address
+    const artifactAddresses: Partial<
+      Record<keyof ReleaseManifest['contracts'], [string, string]>
+    > = {
+      schemaRegistrar: ['eas', 'schema_registrar'],
+      rootVerifier: ['zk_verifier', 'zk_verifier'],
+      instanceRegistry: ['instance_registry', 'instance_registry'],
+      provingVault: ['proving_vault', 'proving_vault'],
+      trustgraphsFactory: ['factory', 'factory'],
+      importedTrustgraphsFactory: ['imported_factory', 'imported_factory'],
+      signerVerifier: ['zk_verifier_signer', 'zk_verifier'],
+      governedTrustgraphsFactory: ['governed_factory', 'governed_factory'],
+      weightedVerifier: ['zk_verifier_weighted', 'zk_verifier'],
+      weightedTrustgraphsFactory: ['weighted_factory', 'weighted_factory'],
+      compositionVerifier: ['zk_verifier_composition', 'zk_verifier'],
+      trustComposeFactory: ['trust_compose_factory', 'trust_compose_factory'],
+    }
+    const existingAddress = (
+      key: keyof ReleaseManifest['contracts']
+    ): string => {
+      const artifact = artifactAddresses[key]
+      return requiredAddress(
+        `deployment.contracts.${key}`,
+        manifest.contracts[key]?.address ||
+          (artifact
+            ? readJsonKeyIfFileExists<string>(
+                `.docker/${artifact[0]}_deploy.json`,
+                artifact[1]
+              )
+            : undefined)
       )
+    }
     const registrarGrant = (label: string, file: string, key: string) => () => {
       const factory = readJsonKeyIfFileExists<string>(file, key) || `<${label}>`
       const registry =
-        manifest.contracts.instanceRegistry.address || '<InstanceRegistry>'
+        manifest.contracts.instanceRegistry.address ||
+        readJsonKeyIfFileExists<string>(
+          '.docker/instance_registry_deploy.json',
+          'instance_registry'
+        ) ||
+        '<InstanceRegistry>'
       const admin = process.env.INSTANCE_REGISTRY_ADMIN || '<registry admin>'
       console.log(
         [
@@ -1175,7 +1221,12 @@ export class SepoliaEnv extends EnvBase {
 
     super({
       stage: 'production',
-      profile: CHAIN_PROFILES.sepolia,
+      profile: {
+        ...CHAIN_PROFILES.sepolia,
+        releaseManifestFile: newGeneration
+          ? generationManifestPath(newGeneration)
+          : CHAIN_PROFILES.sepolia.releaseManifestFile,
+      },
       rpcUrl,
       registry: process.env.SERVICE_REGISTRY_URL || '',
       serviceName: 'trust-graph',
@@ -1187,6 +1238,11 @@ export class SepoliaEnv extends EnvBase {
       },
       networksConfigFile: 'config/networks.sepolia.json',
       validateDeployment: () => {
+        if (newGeneration && process.env.SKIP_PROVING_VAULT === 'true') {
+          throw new Error(
+            'A new hosted Sepolia generation requires its own ProvingVault'
+          )
+        }
         requireReleaseCommit()
         requireReleaseDigest()
         requireReleaseVkeys()
@@ -1422,17 +1478,8 @@ export class SepoliaEnv extends EnvBase {
             'contracts/script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory',
           sig: 'run(string,string,bytes32,string,string)',
           args: () => [
-            requiredAddress(
-              'manifest.contracts.trustgraphsFactory.address',
-              manifest.contracts.trustgraphsFactory.address
-            ),
-            requiredAddress(
-              'signer verifier',
-              readJsonKeyIfFileExists<string>(
-                '.docker/zk_verifier_signer_deploy.json',
-                'zk_verifier'
-              ) || manifest.contracts.signerVerifier.address
-            ),
+            existingAddress('trustgraphsFactory'),
+            existingAddress('signerVerifier'),
             requireProdBytes32('SP1_SIGNER_PROGRAM_VKEY'),
             requiredAddress(
               'manifest.contracts.safeSingleton.address',
@@ -1454,20 +1501,8 @@ export class SepoliaEnv extends EnvBase {
             'contracts/script/DeployGovernedImportedTrustgraphsFactory.s.sol:DeployGovernedImportedTrustgraphsFactory',
           sig: 'run(string,string)',
           args: () => [
-            requiredAddress(
-              'manifest.contracts.importedTrustgraphsFactory.address',
-              readJsonKeyIfFileExists<string>(
-                '.docker/imported_factory_deploy.json',
-                'imported_factory'
-              ) || manifest.contracts.importedTrustgraphsFactory?.address
-            ),
-            requiredAddress(
-              'manifest.contracts.governedTrustgraphsFactory.address',
-              readJsonKeyIfFileExists<string>(
-                '.docker/governed_factory_deploy.json',
-                'governed_factory'
-              ) || manifest.contracts.governedTrustgraphsFactory.address
-            ),
+            existingAddress('importedTrustgraphsFactory'),
+            existingAddress('governedTrustgraphsFactory'),
           ],
           skip: (ctx) =>
             continuing(ctx) &&
@@ -1605,10 +1640,11 @@ export class SepoliaEnv extends EnvBase {
         },
       ],
     })
+    this.releaseBase = manifest
   }
 
   generateReleaseManifest(ctx?: ProgramContext): object {
-    const base = loadReleaseManifest(this.releaseManifestFile)
+    const base = this.releaseBase
     const continuing = Boolean(ctx?.options.continueExisting)
     const broadcasts = readBroadcastDeployments('.', this.profile.chainId)
     // A continuation treats the tracked manifest as the sole source of truth for the original
@@ -1990,6 +2026,14 @@ export const initProgram = (program: Command): ProgramContext => {
     stage: options.stage || process.env.DEPLOY_STAGE,
     target: options.chain || process.env.DEPLOY_TARGET,
   })
+  if (options.newGeneration !== undefined) {
+    if (selection.target !== 'sepolia' || options.continueExisting) {
+      throw new Error(
+        '--new-generation requires Sepolia and cannot be combined with --continue-existing'
+      )
+    }
+    generationManifestPath(options.newGeneration)
+  }
   options.env = selection.envName
   options.stage = selection.stage
   options.chain = selection.target

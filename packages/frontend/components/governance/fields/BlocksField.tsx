@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-import { Input } from '@/components/Input'
 import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
+import { Input } from '@/components/Input'
 import { blocksForSeconds, formatBlockCount } from '@/lib/actions'
 import { formatApproxDuration } from '@/lib/duration'
 

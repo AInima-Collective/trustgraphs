@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type Hex, isAddress } from 'viem'
 
+import { AddressListField } from '@/components/governance/fields/TextFields'
+import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { Textarea } from '@/components/Textarea'
-import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
-import { AddressListField } from '@/components/governance/fields/TextFields'
 import type { GovernanceFieldSpec } from '@/lib/actions'
 import type { Params } from '@/lib/pagerank/types'
 import {

@@ -4,9 +4,9 @@ import { Plus, X } from 'lucide-react'
 import { isAddress, isHex } from 'viem'
 
 import { Button } from '@/components/Button'
+import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { Input } from '@/components/Input'
 import { Textarea } from '@/components/Textarea'
-import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { APIS } from '@/lib/config'
 
 import { FieldShell, PickerOptions, describedBy } from './FieldShell'

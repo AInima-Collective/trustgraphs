@@ -10,7 +10,7 @@
 # Run it after the broadcast, again after the registrar grant, and again after the vault
 # handoff. The checks that are meant to fail before those steps say so.
 #
-# Usage:  bash scripts/sepolia-postdeploy-check.sh
+# Usage:  bash scripts/sepolia-postdeploy-check.sh [--manifest PATH]
 # Exit code is the number of failed checks.
 
 set -uo pipefail
@@ -21,8 +21,24 @@ if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
 fi
 
 MANIFEST=deployments/sepolia.json
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -ne 2 ] || [ "$1" != '--manifest' ]; then
+    echo 'Usage: sepolia-postdeploy-check.sh [--manifest PATH]' >&2
+    exit 1
+  fi
+  MANIFEST=$2
+fi
+if ! jq -e '.status == "deployed" and .chain == "sepolia" and .chainId == 11155111' "$MANIFEST" >/dev/null; then
+  echo 'Postcheck requires a deployed Sepolia manifest' >&2
+  exit 1
+fi
 R=--rpc-url
 U="${RPC_URL:-}"
+GUEST_MANIFEST="${GUEST_MANIFEST:-guest-manifest.json}"
+if [ -z "$U" ] || [ "$(cast chain-id --rpc-url "$U" 2>/dev/null)" != '11155111' ]; then
+  echo 'Postcheck requires an RPC_URL connected to Sepolia (11155111)' >&2
+  exit 1
+fi
 
 pass=0; fail=0
 ok()   { echo "  ok    $1"; pass=$((pass+1)); }
@@ -78,8 +94,8 @@ echo "=== the verifier pins the released guest, and nothing else ==="
 PVK=$(call "$VERIFIER" "programVKey()(bytes32)")
 same "$PVK" "${SP1_PROGRAM_VKEY:-}" && ok "programVKey is SP1_PROGRAM_VKEY" \
   || bad "programVKey is $PVK, .env says ${SP1_PROGRAM_VKEY:-unset}"
-if [ -f guest-manifest.json ]; then
-  RELEASED=$(jq -r '.programs[] | select(.program=="trust-graph") | .vkey' guest-manifest.json)
+if [ -f "$GUEST_MANIFEST" ]; then
+  RELEASED=$(jq -r '.programs[] | select(.program=="trust-graph") | .vkey' "$GUEST_MANIFEST")
   same "$PVK" "$RELEASED" && ok "programVKey is the vkey the release published" \
     || bad "programVKey is $PVK, the release published $RELEASED"
 fi

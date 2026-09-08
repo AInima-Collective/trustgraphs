@@ -454,13 +454,13 @@ contract SignerSyncZkModuleTest is Test {
     }
 
     function test_ActivityCheckpointAcceptanceClosesAfterOneDayOfBlocks() public {
-        uint256 activityBlock = block.number;
+        uint256 activityBlock = vm.getBlockNumber();
         vm.roll(activityBlock + module.MAX_ACTIVITY_CHECKPOINT_AGE());
         module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
-        vm.roll(block.number + 1);
+        vm.roll(activityBlock + module.MAX_ACTIVITY_CHECKPOINT_AGE() + 1);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncZkModule.ActivityCheckpointStale.selector, uint64(activityBlock), block.number
+                SignerSyncZkModule.ActivityCheckpointStale.selector, uint64(activityBlock), vm.getBlockNumber()
             )
         );
         module.submitSignerProof(1, 0, _arr(A, B, C), 2, PROOF);
@@ -469,10 +469,12 @@ contract SignerSyncZkModuleTest is Test {
     function test_ShortInactivityPolicyAlsoShortensProofAcceptance() public {
         vm.prank(owner);
         module.setSelectionParams(5, 2, 5_000, 10, 2);
-        uint64 activityBlock = uint64(block.number);
-        vm.roll(block.number + 11);
+        uint64 activityBlock = uint64(vm.getBlockNumber());
+        vm.roll(uint256(activityBlock) + 11);
         vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.ActivityCheckpointStale.selector, activityBlock, block.number)
+            abi.encodeWithSelector(
+                SignerSyncZkModule.ActivityCheckpointStale.selector, activityBlock, vm.getBlockNumber()
+            )
         );
         module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
     }

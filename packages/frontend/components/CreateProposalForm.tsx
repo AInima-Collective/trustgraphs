@@ -21,10 +21,10 @@ import { useAccount } from 'wagmi'
 
 import { Button } from '@/components/Button'
 import { CopyableText } from '@/components/CopyableText'
-import { GovernanceActionEditor } from '@/components/GovernanceActionEditor'
-import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import { GovernanceComposerProvider } from '@/components/governance/GovernanceComposerContext'
 import { ProposalSimulationPanel } from '@/components/governance/ProposalSimulationPanel'
+import { GovernanceActionEditor } from '@/components/GovernanceActionEditor'
+import { GovernanceActionEmoji } from '@/components/GovernanceActionEmoji'
 import {
   GovernanceActionLibrary,
   governanceCategoryLabels,
@@ -35,8 +35,8 @@ import { VoteButtons } from '@/components/VoteButtons'
 import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useEnsResolver } from '@/hooks/useEns'
-import { useProposalSimulation } from '@/hooks/useProposalSimulation'
 import { type ProposalAction, VoteType } from '@/hooks/useGovernance'
+import { useProposalSimulation } from '@/hooks/useProposalSimulation'
 import {
   type GovernanceActionDraft,
   GovernanceActionFieldError,

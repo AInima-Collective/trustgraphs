@@ -203,15 +203,10 @@ contract PashovTrust_DistributorSeams is Test {
 
     /*//////////////////////////////////////////////////////////////
         SEAM 3 — access x economics x asymmetry:
-        `pause()` stops claims but does NOT stop the claim deadline.
-
-        `claim` is `whenNotPaused` and closes hard at `claimDeadline`; `sweep`
-        returns the remainder to the FUNDER. So an owner who pauses across the
-        deadline converts every unclaimed contributor entitlement into a refund to
-        the funder - a value transfer between two user classes produced purely by
-        an owner-only safety lever.
+        Regression: pause stops claims and the claim clock together. The owner-only
+        safety lever cannot convert an open contributor entitlement into a funder refund.
     //////////////////////////////////////////////////////////////*/
-    function test_Seam3_PauseAcrossDeadlineConvertsClaimsIntoAFunderRefund() public {
+    function test_Seam3_PauseAcrossDeadlinePreservesClaimsBeforeFunderRefund() public {
         uint64 deadline = uint64(block.timestamp + 7 days);
         uint256 amount = 100 ether;
 
@@ -233,19 +228,21 @@ contract PashovTrust_DistributorSeams is Test {
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         dist.claim(idx, alice, 60, proofA);
 
-        // The deadline keeps running while paused.
+        // Only the original wall-clock deadline passes while paused.
         vm.warp(uint256(deadline) + 1);
         vm.prank(owner);
         dist.unpause();
 
-        // Claims are now permanently closed - Alice's 60 ether entitlement is gone.
-        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
-        dist.claim(idx, alice, 60, proofA);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        dist.sweep(idx);
+        assertEq(dist.claim(idx, alice, 60, proofA), 60 ether);
+        assertEq(token.balanceOf(alice), 60 ether);
 
-        // ...and anyone may hand the whole pot back to the funder.
+        // Only the unclaimed remainder returns after the extended window closes.
+        vm.warp(dist.effectiveClaimDeadline(idx) + 1);
         uint256 before = token.balanceOf(funder);
         uint256 swept = dist.sweep(idx);
-        assertEq(swept, amount, "100% of the round returned to the funder");
-        assertEq(token.balanceOf(funder) - before, amount);
+        assertEq(swept, 40 ether);
+        assertEq(token.balanceOf(funder) - before, 40 ether);
     }
 }

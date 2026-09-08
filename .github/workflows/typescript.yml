@@ -30,4 +30,4 @@ jobs:
         run: pnpm --dir packages/frontend test
 
       - name: Public deployment manifest regression tests
-        run: pnpm exec tsx --test contracts/deploy/release-manifest.test.ts
+        run: pnpm test:deploy

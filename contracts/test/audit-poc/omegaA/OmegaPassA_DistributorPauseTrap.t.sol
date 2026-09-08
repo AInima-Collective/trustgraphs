@@ -66,14 +66,16 @@ contract OmegaPassA_DistributorPauseTrap is Test {
         );
         assertEq(token.balanceOf(address(dist)), 1_000);
 
+        // A window already closed before incident response must retain its funder exit.
+        vm.warp(dist.effectiveClaimDeadline(index) + 1);
         dist.pause();
 
         bytes32[] memory noProof = new bytes32[](0);
         vm.expectRevert(); // EnforcedPause
         dist.claim(index, member, 100, noProof);
 
-        // Wait past the claim deadline: the sweep path is the funder's documented exit.
-        vm.warp(block.timestamp + 2 days);
+        // A long pause cannot trap an already-expired round.
+        vm.warp(vm.getBlockTimestamp() + 2 days);
         vm.prank(funder);
         uint256 swept = dist.sweep(index);
 

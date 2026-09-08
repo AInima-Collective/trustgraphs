@@ -3,11 +3,11 @@
 import { useMemo, useState } from 'react'
 import { type Abi, type AbiFunction, isAddress } from 'viem'
 
+import { GovernanceFieldGrid } from '@/components/governance/fields/GovernanceFieldGrid'
+import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { Textarea } from '@/components/Textarea'
-import { useGovernanceComposer } from '@/components/governance/GovernanceComposerContext'
-import { GovernanceFieldGrid } from '@/components/governance/fields/GovernanceFieldGrid'
 import {
   type GovernanceActionContext,
   decodeKnownCall,

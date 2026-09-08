@@ -5,14 +5,6 @@ import { join } from 'node:path'
 import type { Address } from 'viem'
 
 import {
-  type GovernanceActionContext,
-  type GovernanceActionDraft,
-  GovernanceActionFieldError,
-  defaultGovernanceActionValues,
-  encodeGovernanceActionDraft,
-  governanceComposerRegistry,
-} from './index'
-import {
   formatGovernanceFieldValue,
   governanceActionFields,
   validateGovernanceActionDraft,
@@ -28,6 +20,14 @@ import {
   formatUsd8,
   formatWei,
 } from './format'
+import {
+  type GovernanceActionContext,
+  type GovernanceActionDraft,
+  GovernanceActionFieldError,
+  defaultGovernanceActionValues,
+  encodeGovernanceActionDraft,
+  governanceComposerRegistry,
+} from './index'
 
 const address = (byte: string) => `0x${byte.repeat(40)}` as Address
 
