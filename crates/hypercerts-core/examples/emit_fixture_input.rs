@@ -110,7 +110,18 @@ fn main() {
             },
         ],
         witnesses: vec![wa, wb],
-        strongref_targets: BTreeMap::new(),
+        strongref_targets: envelopes::atproto::carset::Car::parse(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tests/fixtures/atproto/hypercerts/fixtures/bob.car"
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+        .blocks
+        .into_iter()
+        .map(|(cid, bytes)| (cid.to_string(), bytes))
+        .collect(),
         binding: Default::default(),
     };
 

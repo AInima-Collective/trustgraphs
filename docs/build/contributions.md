@@ -6,6 +6,8 @@ and the allocation together; it does not consume a previously published reputati
 
 A contribution record has its own meaning. Claims describe work and attribution, responses accept
 or reject being named, and valuations assess eligible claims. None is treated as a vouch.
+Contribution records must use zero expiration time. Withdraw a claim, response, or valuation with
+an explicit EAS revocation so its removal enters the authenticated history.
 
 ## Supported parent
 
@@ -41,6 +43,8 @@ After a proof is accepted, the distributor verifies an account's value and Merkl
 round root, then sends funds to the address named in that leaf. A caller cannot redirect another
 account's allocation. A round may also set a deadline after which its Safe can recover unclaimed
 funds.
+Pausing the distributor stops the claim-window clock. Read `effectiveClaimDeadline` for the deadline
+after paused-time extensions; the stored `claimDeadline` is the original configured timestamp.
 
 Contribution records remain distinct from the resulting payment claim: submitting evidence or an
 evaluation does not by itself grant a payout.

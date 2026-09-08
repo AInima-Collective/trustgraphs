@@ -177,6 +177,8 @@ contract QuillStateInv_ProvingVaultLedger is Test {
             address(this),
             ""
         );
+        vm.prank(address(handler));
+        snapshot.enableStateProvenance();
         handler.bindSnapshot(snapshot);
 
         vm.prank(registryAdmin);

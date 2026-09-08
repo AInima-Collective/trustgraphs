@@ -175,6 +175,22 @@ contract GovernedTrustComposeFactoryTest is Test {
         assertGt(24_576 - address(governedFactory).code.length, 3_000, "wrapper runtime margin");
     }
 
+    function test_CompositionSignerSyncIsRejectedAtomically() public {
+        uint256 countBefore = registry.instanceCount();
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GovernedFactoryBase.UnsupportedSignerSyncProgram.selector, keccak256("trust-compose")
+            )
+        );
+        governedFactory.createGovernedInstance(
+            _args("unsupported composition signer"),
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000})
+        );
+        assertEq(registry.instanceCount(), countBefore, "unsupported configuration must not create an instance");
+    }
+
     function test_CreateGovernedCompositionSubnetworkUsesTheSharedAtomicInstallPath() public {
         // `_createSources` registered source 1 with this test contract as its bare authority.
         bytes32 parentInstanceId = bytes32(uint256(1));

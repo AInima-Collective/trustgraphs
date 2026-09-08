@@ -229,17 +229,14 @@ jobs:
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       - name: Build pinned guest ELFs
-        run: |
-          (cd zk/program && cargo prove build)
-          (cd zk/trust-graph-program && cargo prove build)
-          (cd zk/weighted-program && cargo prove build)
-          (cd zk/composition-program && cargo prove build)
-          (cd zk/nostr-program/program && cargo prove build)
+        env:
+          TRUSTGRAPHS_RELEASE_BUILD: '1'
+        run: sh scripts/build-guests.sh
 
       - name: Build network prover host
         env:
           SP1_SKIP_PROGRAM_BUILD: 'true'
-        run: cargo build --release --features network --manifest-path zk/prover/Cargo.toml
+        run: cargo build --release --locked --features network --manifest-path zk/prover/Cargo.toml
 
       - name: Prove and submit the next strict hybrid checkpoint
         run: tests/e2e/eas-offchain-testnet-real.sh

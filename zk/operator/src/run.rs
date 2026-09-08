@@ -1443,6 +1443,52 @@ fn act(
                 }),
             );
 
+            if entry.program == Program::Signer {
+                let window = crate::chain::read_signer_activity_window(
+                    rpc,
+                    entry.submit_to,
+                    built.activity_checkpoint_id,
+                )?;
+                let head = rpc.block_number()?;
+                anyhow::ensure!(
+                    window.checkpoint_block <= head,
+                    "signer activity checkpoint is in the future"
+                );
+                if window.needs_refresh(head) {
+                    // A newer checkpoint already exists: rebuild on the next tick. Otherwise
+                    // refresh permissionlessly before the spend intent, then rebuild inputs.
+                    if window.latest_id == built.activity_checkpoint_id
+                        && window.refresh_allowed(head)
+                    {
+                        health.enter(Phase::Sending);
+                        let (tx, receipt) = sender.send_watched(
+                            rpc,
+                            window.source,
+                            crate::chain::checkpoint_signer_activity_calldata(),
+                            200_000,
+                            max_fee,
+                            cfg.gas.simulate_before_send,
+                            cfg.gas.replacement_after_s,
+                            600,
+                        )?;
+                        anyhow::ensure!(
+                            receipt.success,
+                            "signer activity refresh {tx:#x} reverted"
+                        );
+                        logger.event("signer_activity_refreshed", json!({
+                            "instance": format!("{:#x}", entry.instance_id), "tx": format!("{tx:#x}"),
+                            "block": receipt.block_number, "gas_used": receipt.gas_used,
+                        }));
+                    } else {
+                        logger.event("signer_activity_rebuild_pending", json!({
+                            "instance": format!("{:#x}", entry.instance_id), "checkpoint": built.activity_checkpoint_id,
+                            "latest_activity_checkpoint": window.latest_id,
+                        }));
+                    }
+                    return Ok(());
+                }
+            }
+
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".
             // What this is about to cost us, priced from the size we are about to prove. Recorded

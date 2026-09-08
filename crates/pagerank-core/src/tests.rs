@@ -196,9 +196,9 @@ fn current_fixed_point_kernel_matches_frozen_pull_oracle() {
 /// The retired floating-point implementation's deterministic seed-0 input remains frozen here.
 /// Params schema v3 intentionally rotates its output: seed-only starting mass and the
 /// reachability gate remove one disconnected account. Keep both expectations so that change
-/// remains explicit.
+/// remains explicit. Full-precision Hamilton allocation also preserves a separate frozen output.
 #[test]
-fn retired_float_fixture_records_the_intentional_schema_v3_rotation() {
+fn retired_float_fixture_records_the_full_precision_policy_rotation() {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self, bound: u64) -> u64 {
@@ -261,5 +261,22 @@ fn retired_float_fixture_records_the_intentional_schema_v3_rotation() {
     .collect();
 
     assert_ne!(actual, legacy);
-    assert_eq!(actual, expected_m2);
+    assert_ne!(actual, expected_m2);
+    let expected_full_precision: Vec<U256> = [
+        185701523999697126000000u128,
+        169625537389633714000000,
+        40975951643001232000000,
+        66185249850947981000000,
+        83308023921618099000000,
+        70906153290097137000000,
+        72675108466135021000000,
+        39868878001162665000000,
+        79469776577344733000000,
+        143929762210179374000000,
+        47354034650182918000000,
+    ]
+    .into_iter()
+    .map(U256::from)
+    .collect();
+    assert_eq!(actual, expected_full_precision);
 }

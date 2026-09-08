@@ -21,6 +21,11 @@ overrides:
   vite: 6.4.3
   ws: 8.21.0
 
+patchedDependencies:
+  '@ethereum-attestation-service/eas-contracts@1.9.0':
+    hash: 4e297beb1730d4f9144254f320b24957bc219b072e55d17ce566b10c6da6c271
+    path: patches/@ethereum-attestation-service__eas-contracts@1.9.0.patch
+
 importers:
 
   .:
@@ -33,7 +38,7 @@ importers:
         version: 19.2.2
       '@ethereum-attestation-service/eas-contracts':
         specifier: ^1.9.0
-        version: 1.9.0(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        version: 1.9.0(patch_hash=4e297beb1730d4f9144254f320b24957bc219b072e55d17ce566b10c6da6c271)(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@ethereum-attestation-service/eas-sdk':
         specifier: 2.10.0
         version: 2.10.0(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)(zod@4.5.4)
@@ -10789,7 +10794,7 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@ethereum-attestation-service/eas-contracts@1.9.0(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
+  '@ethereum-attestation-service/eas-contracts@1.9.0(patch_hash=4e297beb1730d4f9144254f320b24957bc219b072e55d17ce566b10c6da6c271)(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
     dependencies:
       hardhat: 2.23.0(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     transitivePeerDependencies:

@@ -322,4 +322,101 @@ contract SubnetworkRegistryTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ISubnetworkRegistry.NoParent.selector, CHILD));
         subnetworks.release(CHILD);
     }
+
+    function test_BuildingFromLeavesCannotExceedSixteenAncestorsAndReleaseRestoresCapacity() public {
+        bytes32[18] memory ids;
+        for (uint256 i; i < ids.length; ++i) {
+            ids[i] = bytes32(uint256(1_000 + i));
+            _register(ids[i], address(childController));
+        }
+        for (uint256 i; i < 16; ++i) {
+            _claimAndAccept(ids[i], ids[i + 1], childAuthority, childAuthority);
+        }
+        assertEq(subnetworks.subtreeHeight(ids[16]), 16);
+        vm.expectRevert(
+            abi.encodeWithSelector(ISubnetworkRegistry.MaximumDepthExceeded.selector, ids[16], ids[17], uint256(16))
+        );
+        vm.prank(childAuthority);
+        subnetworks.claimParent(ids[16], ids[17]);
+
+        vm.prank(childAuthority);
+        subnetworks.release(ids[0]);
+        assertEq(subnetworks.subtreeHeight(ids[16]), 15);
+        _claimAndAccept(ids[16], ids[17], childAuthority, childAuthority);
+        assertEq(subnetworks.subtreeHeight(ids[17]), 16);
+        assertEq(subnetworks.parentOf(ids[0]), bytes32(0));
+    }
+
+    function test_AcceptanceRechecksDescendantsAddedAfterTheClaim() public {
+        bytes32[18] memory ids;
+        for (uint256 i; i < ids.length; ++i) {
+            ids[i] = bytes32(uint256(1_000 + i));
+            _register(ids[i], address(childController));
+        }
+        vm.prank(childAuthority);
+        subnetworks.claimParent(ids[16], ids[17]);
+        for (uint256 i; i < 16; ++i) {
+            _claimAndAccept(ids[i], ids[i + 1], childAuthority, childAuthority);
+        }
+        vm.expectRevert(
+            abi.encodeWithSelector(ISubnetworkRegistry.MaximumDepthExceeded.selector, ids[16], ids[17], uint256(16))
+        );
+        vm.prank(childAuthority);
+        subnetworks.acceptChild(ids[16]);
+        assertEq(subnetworks.parentOf(ids[16]), bytes32(0));
+        assertEq(subnetworks.pendingParentOf(ids[16]), ids[17]);
+    }
+
+    function test_HeightRemovalPreservesEqualHeightSiblings() public {
+        _claimAndAccept(CHILD, PARENT, childAuthority, parentAuthority);
+        _claimAndAccept(OTHER_PARENT, PARENT, address(0x07AE4), parentAuthority);
+        assertEq(subnetworks.subtreeHeight(PARENT), 1);
+        vm.prank(parentAuthority);
+        subnetworks.release(CHILD);
+        assertEq(subnetworks.subtreeHeight(PARENT), 1);
+        vm.prank(parentAuthority);
+        subnetworks.release(OTHER_PARENT);
+        assertEq(subnetworks.subtreeHeight(PARENT), 0);
+    }
+
+    function testFuzz_MutationSequencesPreserveDepthAndExactSubtreeHeights(uint256 seed) public {
+        uint256 count = 24;
+        for (uint256 i; i < count; ++i) {
+            _register(bytes32(uint256(1_000 + i)), address(childController));
+        }
+        vm.startPrank(childAuthority);
+        for (uint256 i; i < 128; ++i) {
+            seed = uint256(keccak256(abi.encode(seed, i)));
+            bytes32 child = bytes32(uint256(1_000 + seed % count));
+            bytes32 parent = bytes32(uint256(1_000 + (seed >> 16) % count));
+            uint256 action = (seed >> 32) % 4;
+            if (action == 0) {
+                try subnetworks.claimParent(child, parent) {} catch {}
+            } else if (action == 1) {
+                try subnetworks.acceptChild(child) {} catch {}
+            } else if (action == 2) {
+                try subnetworks.release(child) {} catch {}
+            } else {
+                try subnetworks.cancelParentClaim(child) {} catch {}
+            }
+        }
+        vm.stopPrank();
+
+        // Independent model: walk every accepted path and derive each ancestor's longest path.
+        uint256[] memory heights = new uint256[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes32 ancestor = subnetworks.parentOf(bytes32(uint256(1_000 + i)));
+            uint256 depth;
+            while (ancestor != bytes32(0)) {
+                ++depth;
+                assertLe(depth, 16, "every accepted node must obey the global ancestor limit");
+                uint256 index = uint256(ancestor) - 1_000;
+                if (depth > heights[index]) heights[index] = depth;
+                ancestor = subnetworks.parentOf(ancestor);
+            }
+        }
+        for (uint256 i; i < count; ++i) {
+            assertEq(subnetworks.subtreeHeight(bytes32(uint256(1_000 + i))), heights[i]);
+        }
+    }
 }

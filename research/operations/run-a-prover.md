@@ -331,7 +331,7 @@ There are four distinct ceilings; treating them as one was the H-1 defect:
 
 | ceiling                                                      |        shipped value | meaning                               | default binding order                                                                     |
 | ------------------------------------------------------------ | -------------------: | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `InputCapacity.MAX_TOTAL_INPUTS` / vault `MAX_PRICED_INPUTS` |       200,000 inputs | protocol ingress/payment ceiling      | last; not a host-capacity claim                                                           |
+| `InputCapacity.MAX_TOTAL_INPUTS` / vault `MAX_PRICED_INPUTS` |       200,000 inputs | bounded registry/payment ceiling; native ingress is not capped | last; not a host-capacity claim                                                           |
 | profile `max_unique_nodes`                                   |          3,600 nodes | cheap bound is `2 * raw + seeds`      | co-binds near 1,800 raw inputs                                                            |
 | profile `max_raw_records`                                    |        1,800 records | largest calibrated raw/live graph row | **first (co-binding)**                                                                    |
 | `prover.cycle_limit`                                         | 8,000,000,000 cycles | local cost-model refusal              | would accept 3,467 and refuse 3,468 max-iteration trust inputs if the profile were raised |

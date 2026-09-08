@@ -73,7 +73,10 @@ fn bfs_distances<K: Ord + Copy>(
     while let Some(current) = queue.pop_front() {
         let distance = distances[&current];
         if let Some(edges) = outgoing.get(&current) {
-            for neighbor in edges.keys() {
+            for (neighbor, weight) in edges {
+                if *neighbor == current || weight.is_zero() {
+                    continue;
+                }
                 if !distances.contains_key(neighbor) {
                     distances.insert(*neighbor, distance + 1);
                     queue.push_back(*neighbor);

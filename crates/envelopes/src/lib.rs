@@ -2,8 +2,9 @@
 //!
 //! An envelope implements one contract (OFFCHAIN_ATTESTATIONS_ZK §4.2): *given a head and
 //! witness bytes, either produce the COMPLETE, authenticated edge set behind that head, or
-//! fail.* The guest never partially accepts an envelope — a failure trips rule Φ for that
-//! node and is committed in `skippedDigest`, never silently dropped.
+//! fail.* The guest never partially accepts an envelope. Programs decide which heads are
+//! required from committed history and abort when a required envelope fails verification;
+//! private witness omission must never select a different successful output.
 //!
 //! One module per substrate; this crate carries envelope 1 (atproto repo commit). Envelope 0
 //! (EAS offchain) lives in `eas-offchain` and envelope 2 (Nostr) in `nostr-envelope`, each
@@ -36,8 +37,8 @@ pub struct AuthedEdge {
     pub data: Vec<u8>,
 }
 
-/// Why an envelope failed verification. Every variant maps to a closed rule-Φ skip reason in
-/// the program crate — failure is a *provable event*, not an abort.
+/// Why an envelope failed verification. The consuming program determines whether this
+/// envelope is required; verification failure cannot justify silently omitting a required head.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EnvelopeError {
     /// The witness does not re-fold to the anchored head (incomplete or reordered log).

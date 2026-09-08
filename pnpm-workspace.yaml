@@ -9,3 +9,6 @@ onlyBuiltDependencies:
   - secp256k1
   - sharp
   - utf-8-validate
+
+patchedDependencies:
+  '@ethereum-attestation-service/eas-contracts@1.9.0': patches/@ethereum-attestation-service__eas-contracts@1.9.0.patch

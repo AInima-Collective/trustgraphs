@@ -11,6 +11,7 @@ use operator_core::catalog::{
     ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor,
     WeightedControllerParams, WeightedCreatedParams,
 };
+use operator_core::guard::SignerActivityWindow;
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::{Params, SelectionParams};
 use serde_json::{json, Value};
@@ -194,6 +195,14 @@ sol! {
     function paused() external view returns (bool);
     function selectionParamsHash() external view returns (bytes32);
     function scoreSnapshot() external view returns (address);
+    function activitySource() external view returns (address);
+    function maxInactiveBlocks() external view returns (uint64);
+    function MAX_ACTIVITY_CHECKPOINT_AGE() external view returns (uint64);
+    function MIN_ACTIVITY_CHECKPOINT_INTERVAL() external view returns (uint64);
+    function activityCheckpointCount() external view returns (uint256);
+    struct SignerActivityCheckpoint { bytes32 acc; uint64 count; uint64 blockNumber; }
+    function getActivityCheckpoint(uint256 id) external view returns (SignerActivityCheckpoint);
+    function checkpointSignerActivity() external returns (uint256);
     function submitSignerProof(
         uint256 checkpointId, uint256 activityCheckpointId, address[] signers,
         uint256 targetThreshold, bytes proof
@@ -1766,6 +1775,49 @@ mod weighted_calldata_tests {
 pub fn verifier_vkey(rpc: &Rpc, verifier: Address) -> Result<B256> {
     let ret = rpc.eth_call(verifier, programVKeyCall {}.abi_encode())?;
     word32(&ret, "programVKey")
+}
+
+pub fn read_signer_activity_window(
+    rpc: &Rpc,
+    module: Address,
+    checkpoint_id: u64,
+) -> Result<SignerActivityWindow> {
+    let source = word_addr(
+        &rpc.eth_call(module, activitySourceCall {}.abi_encode())?,
+        "signer.activitySource",
+    )?;
+    let maximum_age = word_u64(
+        &rpc.eth_call(module, MAX_ACTIVITY_CHECKPOINT_AGECall {}.abi_encode())?,
+        "signer.maximumAge",
+    )?
+    .min(word_u64(
+        &rpc.eth_call(module, maxInactiveBlocksCall {}.abi_encode())?,
+        "signer.maxInactiveBlocks",
+    )?);
+    let count = word_u64(
+        &rpc.eth_call(source, activityCheckpointCountCall {}.abi_encode())?,
+        "activityCheckpointCount",
+    )?;
+    anyhow::ensure!(count > 0, "signer activity source has no checkpoint");
+    let checkpoint = getActivityCheckpointCall::abi_decode_returns(&rpc.eth_call(
+        source,
+        getActivityCheckpointCall { id: U256::from(checkpoint_id) }.abi_encode(),
+    )?)?;
+    let refresh_interval = word_u64(
+        &rpc.eth_call(source, MIN_ACTIVITY_CHECKPOINT_INTERVALCall {}.abi_encode())?,
+        "activity.refreshInterval",
+    )?;
+    Ok(SignerActivityWindow {
+        source,
+        checkpoint_block: checkpoint.blockNumber,
+        latest_id: count - 1,
+        maximum_age,
+        refresh_interval,
+    })
+}
+
+pub fn checkpoint_signer_activity_calldata() -> Vec<u8> {
+    checkpointSignerActivityCall {}.abi_encode()
 }
 
 /// Calldata for `trigger()`.

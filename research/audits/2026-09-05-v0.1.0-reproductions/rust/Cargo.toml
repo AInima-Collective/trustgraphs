@@ -1,0 +1,13 @@
+[package]
+name = "trustgraphs-zk-repro"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+alloy-primitives = {version="1.0.0", features=["serde"]}
+pagerank-core = {path="../../../../crates/pagerank-core"}
+nostr-workspace-core = {path="../../../../crates/nostr-workspace-core"}
+nostr-envelope = {path="../../../../crates/nostr-envelope"}
+sha2="0.10"
+serde_json="1"
+
+[workspace]

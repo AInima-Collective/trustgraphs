@@ -19,9 +19,10 @@ if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
   exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
 fi
 
-# The release the deploy is pinned to. Bump both together.
-RELEASE_TAG=v0.0.5
-RELEASE_COMMIT=f64a4c7c9b5e552e2392894a2e0d6f6c40973549
+# One candidate identity: the archived guest manifest. Checkout and env must agree with it.
+GUEST_MANIFEST=${GUEST_MANIFEST:-guest-manifest.json}
+RELEASE_TAG=$(jq -r '.tag // "untagged candidate"' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
+RELEASE_COMMIT=$(jq -r '.commit // empty' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
 
 # The expansion adds weighted, composition and contributions factory families. Their latest local
 # receipts total 39,406,718 gas with registry grants enabled; Sepolia disables those grants, but
@@ -55,15 +56,18 @@ echo "=== 1. the checkout is the release we mean to deploy ==="
 [ "${DEPLOYMENT_COMMIT:-}" = "$RELEASE_COMMIT" ] \
   && ok "DEPLOYMENT_COMMIT is $RELEASE_TAG ($RELEASE_COMMIT)" \
   || bad "DEPLOYMENT_COMMIT=${DEPLOYMENT_COMMIT:-unset}, expected $RELEASE_COMMIT"
-note "HEAD is $(git rev-parse HEAD)"
-note "working tree: $(git status --porcelain | wc -l | tr -d ' ') modified path(s)"
+if node scripts/release-checkout.cjs; then
+  ok "checkout and release build inputs match DEPLOYMENT_COMMIT"
+else
+  bad "checkout is not the clean release source"
+fi
 
 echo "=== 2. every vkey came from that release, not from this machine ==="
 # The one that failed. A locally built vkey is well-formed bytes32 and passes every shape check,
 # so the only thing that can tell it apart from a real one is the table the release published.
-if [ -f guest-manifest.json ]; then
-  GM_TAG=$(jq -r .tag guest-manifest.json)
-  GM_COMMIT=$(jq -r .commit guest-manifest.json)
+if [ -f "$GUEST_MANIFEST" ]; then
+  GM_TAG=$(jq -r .tag "$GUEST_MANIFEST")
+  GM_COMMIT=$(jq -r .commit "$GUEST_MANIFEST")
   [ "$GM_TAG" = "$RELEASE_TAG" ] && ok "guest-manifest.json is $GM_TAG" \
     || bad "guest-manifest.json is $GM_TAG, expected $RELEASE_TAG"
   [ "$GM_COMMIT" = "${DEPLOYMENT_COMMIT:-}" ] && ok "manifest commit matches DEPLOYMENT_COMMIT" \
@@ -74,16 +78,20 @@ if [ -f guest-manifest.json ]; then
               "signer-sync:SP1_SIGNER_PROGRAM_VKEY" \
               "contributions:CONTRIBUTIONS_PROGRAM_VKEY"; do
     prog=${pair%%:*}; var=${pair##*:}
-    want=$(jq -r --arg p "$prog" '.programs[] | select(.program==$p) | .vkey' guest-manifest.json)
+    want=$(jq -r --arg p "$prog" '.programs[] | select(.program==$p) | .vkey' "$GUEST_MANIFEST")
     eval "have=\${$var:-unset}"
     { [ -n "$want" ] && [ "$want" = "$have" ]; } \
       && ok "$var is the released $prog vkey" \
       || bad "$var is $have, release says $want"
   done
-  ELF=$(jq -r '.programs[] | select(.program=="trust-graph") | .elf_sha256' guest-manifest.json)
+  ELF=$(jq -r '.programs[] | select(.program=="trust-graph") | .elf_sha256' "$GUEST_MANIFEST")
   [ "0x$ELF" = "${SP1_PROGRAM_ELF_SHA256:-}" ] \
     && ok "SP1_PROGRAM_ELF_SHA256 describes the same ELF as the vkey" \
     || bad "SP1_PROGRAM_ELF_SHA256=${SP1_PROGRAM_ELF_SHA256:-unset}, release says 0x$ELF"
+  jq -e --arg image "$(cat zk/sp1-builder-image.txt)" \
+    '.guest_build == "docker" and .builder_image == $image' "$GUEST_MANIFEST" >/dev/null \
+    && ok "manifest uses the pinned reproducible builder" \
+    || bad "manifest lacks the pinned reproducible builder identity"
 else
   bad "guest-manifest.json absent: gh release download $RELEASE_TAG -R AInima-Collective/trustgraphs -p guest-manifest.json"
 fi

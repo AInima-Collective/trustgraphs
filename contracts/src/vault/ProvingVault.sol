@@ -12,6 +12,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IEthUsdFeed} from "interfaces/vault/IEthUsdFeed.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
+import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {InputCapacity} from "src/limits/InputCapacity.sol";
 
@@ -177,6 +178,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
         IInstanceRegistry.Instance memory record = REGISTRY.getInstance(instanceId);
         if (record.snapshot == address(0)) revert UnknownInstance(instanceId);
+        _requireProvenance(record.snapshot);
         a.snapshot = record.snapshot;
         a.program = record.program;
         emit AccountBound(instanceId, record.snapshot, record.program);
@@ -194,6 +196,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         Account storage a = _accounts[instanceId];
         IInstanceRegistry.Instance memory record = REGISTRY.getInstance(instanceId);
         if (record.snapshot == address(0)) revert UnknownInstance(instanceId);
+        _requireProvenance(record.snapshot);
         // Either field may be the one that moved. Refusing when only the PROGRAM changed left
         // `a.program` stale forever, and a stale label bands at zero — a funded tank that can
         // never pay a fee again, with no recovery short of a 7-day withdrawal.
@@ -237,7 +240,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         if (a.snapshot == address(0)) revert UnknownInstance(instanceId);
         _requireUnclaimed(instanceId, a.snapshot, args.checkpointId);
 
-        Terms memory t = _terms(instanceId, a, args.checkpointId, args.outputRoot);
+        Terms memory t = _terms(instanceId, a, args.checkpointId);
 
         // Measure only the forwarded call. Deliberately excludes this function's own prologue, the
         // transaction's intrinsic gas, and everything after — every omission under-pays.
@@ -258,6 +261,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         if (!snapshot.hasAppliedCheckpoint() || snapshot.lastAppliedCheckpoint() != args.checkpointId) {
             revert CheckpointNotApplied(args.checkpointId, snapshot.lastAppliedCheckpoint());
         }
+        t.statement = _acceptedStatement(snapshot, args.checkpointId);
 
         (feeUsd, gasUsd) = _settle(instanceId, a, t, args.checkpointId, args.recipient, gasUsed, args.minPayoutUsd);
     }
@@ -277,11 +281,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         address recipient = snapshot.checkpointRecipient(checkpointId);
         if (recipient == address(0)) revert CheckpointNotApplied2(checkpointId);
 
-        // Read the state accepted for THIS checkpoint. The latest state may belong to a newer
-        // checkpoint, and combining its root with this checkpoint's input commitment would burn
-        // the newer checkpoint's bounty when an older root is claimed first.
-        (IMerkleSnapshot.MerkleState memory acceptedState,) = snapshot.getAcceptedCheckpoint(checkpointId);
-        Terms memory t = _terms(instanceId, a, checkpointId, acceptedState.root);
+        Terms memory t = _terms(instanceId, a, checkpointId);
+        t.statement = _acceptedStatement(snapshot, checkpointId);
         (feeUsd,) = _settle(instanceId, a, t, checkpointId, recipient, 0, 0);
     }
 
@@ -290,7 +291,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     /// Freeze the terms of the claim.
-    function _terms(bytes32 instanceId, Account storage a, uint256 checkpointId, bytes32 outputRoot)
+    function _terms(bytes32 instanceId, Account storage a, uint256 checkpointId)
         internal
         view
         returns (Terms memory t)
@@ -301,14 +302,51 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         t.maxPerRootUsd = p.maxPerRootUsd;
         t.minPaidIntervalBlocks = p.minPaidIntervalBlocks;
         t.lastPaidBlock = p.lastPaidBlock;
-        bytes32 checkpointAcc;
-        (checkpointAcc, t.leafCount, t.anchorCount, t.sizeKnown) = _sizeOf(a.snapshot, checkpointId);
-        // What was actually proven, independent of which checkpoint id carried it. The input
-        // accumulator is part of the journal and therefore part of proof identity. Counts plus
-        // output root alone collide on compose checkpoints whose source count and allocation are
-        // unchanged even though each checkpoint has a distinct accumulator and requires a
-        // distinct proof.
-        t.statement = keccak256(abi.encode(t.snapshot, checkpointAcc, t.leafCount, t.anchorCount, outputRoot));
+        (, t.leafCount, t.anchorCount, t.sizeKnown) = _sizeOf(a.snapshot, checkpointId);
+    }
+
+    /// Payment identity comes from the immutable accepted checkpoint, including the verifier that
+    /// actually accepted it, not the verifier currently configured or the one present at trigger.
+    /// Checkpoint numbers and recipients are deliberately excluded: changing either is not new work.
+    /// Returning to old parameters/verifiers cannot repay an already-paid statement, while a new
+    /// configuration over quiet inputs remains independently payable even if its allocation is equal.
+    function _acceptedStatement(MerkleSnapshot snapshot, uint256 checkpointId) private view returns (bytes32) {
+        (IMerkleSnapshot.MerkleState memory state, IMerkleSnapshotProvenance.StateProvenance memory provenance) =
+            snapshot.getAcceptedCheckpoint(checkpointId);
+        IAttestationAccumulator.Checkpoint memory c = snapshot.accumulator().getCheckpoint(checkpointId);
+        (bytes32 anchorAcc, uint64 anchorCount) = snapshot.anchorCheckpoints(checkpointId);
+        // SP1 wrappers with the same guest key can verify the same proof. Replacing only that
+        // wrapper must not create another bounty. Generic verifiers have no program identity seam,
+        // so their accepted address and bytecode define the fallback verification domain.
+        bool hasProgramKey = provenance.programVKey != bytes32(0);
+        bytes32 programIdentity = keccak256(
+            abi.encode(
+                provenance.programVKey,
+                hasProgramKey ? address(0) : provenance.verifier,
+                hasProgramKey ? bytes32(0) : provenance.verifierCodehash
+            )
+        );
+        return keccak256(
+            abi.encode(
+                address(snapshot),
+                c.acc,
+                c.leafCount,
+                anchorAcc,
+                anchorCount,
+                provenance.paramsHash,
+                programIdentity,
+                state.root,
+                state.ipfsHash,
+                keccak256(bytes(state.ipfsHashCid)),
+                state.totalValue
+            )
+        );
+    }
+
+    /// Both direct and fallback claims need append-only accepted history. Check before accepting
+    /// funds or migrating them because provenance cannot be enabled after the first root.
+    function _requireProvenance(address snapshot) private view {
+        if (!IMerkleSnapshotProvenance(snapshot).provenanceEnabled()) revert SnapshotProvenanceRequired(snapshot);
     }
 
     /// The money.

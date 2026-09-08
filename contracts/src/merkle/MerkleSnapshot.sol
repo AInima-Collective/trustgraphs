@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
@@ -25,7 +26,7 @@ import {IAnchorWorkRegistry} from "interfaces/registry/IAnchorWorkRegistry.sol";
 ///      on-chain EAS attestation accumulator, and lane 2 is an optional anchored off-chain
 ///      envelope log (`anchorRegistry`). See research/ZK_ARCHITECTURE.md and
 ///      research/OFFCHAIN_ATTESTATIONS_ZK.md.
-contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessControl {
+contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessControl, ReentrancyGuard {
     /// @notice Owns `zkVerifier` and `accumulator` — changes what "correct PageRank" means.
     bytes32 public constant CONSTITUTIONAL_ROLE = keccak256("CONSTITUTIONAL_ROLE");
     /// @notice Owns `paramsHash` — governance-cadence parameter changes.
@@ -98,6 +99,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     ///         deliberately NOT pinned: rotating it is the emergency response to an SP1 soundness
     ///         bug (§5.5), and pinning would let proofs under a known-broken verifier keep landing.
     mapping(uint256 checkpointId => bytes32 paramsHash) public checkpointParamsHash;
+
+    /// @notice Verifier configured when a checkpoint froze, used only to detect configuration changes.
+    /// @dev This is NOT an acceptance pin: proofs always use the live verifier, including emergency
+    ///      replacements. Replacing the verifier permits recomputation even when both lanes are quiet.
+    mapping(uint256 checkpointId => address verifier) public checkpointVerifier;
 
     /// @notice Next checkpoint id this snapshot requires its accumulator to return.
     /// @dev Prevents a malformed/re-pointed accumulator from reusing or skipping ids and thereby
@@ -397,7 +403,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     ///         schedule is set, only at or past a fixed boundary. A late trigger consumes the
     ///         boundary for its current epoch rather than moving every future boundary.
     /// @return checkpointId The id of the new checkpoint (provers watch InputsCheckpointed).
-    function trigger() external returns (uint256 checkpointId) {
+    function trigger() external nonReentrant returns (uint256 checkpointId) {
         if (epochLength > 0 && block.number < uint256(lastTriggerBlock) + epochLength) {
             revert EpochNotElapsed(lastTriggerBlock, epochLength);
         }
@@ -408,7 +414,10 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             consumedBoundary = uint64(uint256(epochOriginBlock) + elapsedEpochs * epochLength);
         }
 
-        // Refuse to freeze a checkpoint identical to the last one, across BOTH lanes.
+        // Refuse an unchanged input/configuration checkpoint. New parameters or a replacement
+        // verifier are legitimate reasons to recompute a quiet graph. Vault payment identity is
+        // separately derived from the accepted statement, so rotating back to an already-proven
+        // configuration cannot pay twice for the same work.
         //
         // Lane accumulators deliberately do not make this decision: a strict lane-2 append must
         // checkpoint even when lane 1 is byte-identical, `TrustAccumulatorMirror` must let a
@@ -432,6 +441,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             if (
                 accumulator.acc() == prev.acc && accumulator.leafCount() == prev.leafCount
                     && liveAnchorAcc == prevAnchor.anchorAcc && liveAnchorCount == prevAnchor.anchorCount
+                    && paramsHash == checkpointParamsHash[nextCheckpointId - 1]
+                    && address(zkVerifier) == checkpointVerifier[nextCheckpointId - 1]
             ) {
                 revert IAttestationAccumulator.NoNewInputs();
             }
@@ -448,6 +459,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
 
         // Pin the params this checkpoint must be proven under, at the block its inputs froze.
         checkpointParamsHash[checkpointId] = paramsHash;
+        checkpointVerifier[checkpointId] = address(zkVerifier);
         emit CheckpointParamsPinned(checkpointId, paramsHash);
 
         // Checkpoint BOTH lanes at the same boundary. No registry ⇒ the empty
@@ -487,7 +499,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         bytes32 skippedDigest,
         address recipient,
         bytes calldata proof
-    ) external {
+    ) external nonReentrant {
         // Monotonic: an older (or equal) checkpoint cannot clobber a newer applied one.
         if (hasAppliedCheckpoint && checkpointId <= lastAppliedCheckpoint) {
             revert StaleCheckpoint(checkpointId, lastAppliedCheckpoint);
@@ -570,6 +582,10 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
 
         emit MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue);
         emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender, recipient);
+
+        // Consumers observe the complete accepted state, including its immutable provenance.
+        // Reentrancy protection prevents a callback from interleaving another checkpoint lifecycle.
+        _notifyHooks(stateIndex);
     }
 
     /// @notice Whether this instance has ever frozen a checkpoint.
@@ -644,7 +660,9 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             ipfsHashCid: ipfsHashCid,
             totalValue: totalValue
         });
+    }
 
+    function _notifyHooks(uint256 stateIndex) private {
         // Call the hooks. A hook is a consumer-installed side effect (governance, signer-sync, ...);
         // it must never be able to block the core job of landing a proven root. We isolate each call
         // in try/catch with a fixed gas stipend so a reverting or gas-guzzling hook is skipped (and

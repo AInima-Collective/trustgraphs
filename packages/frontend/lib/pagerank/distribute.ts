@@ -1,68 +1,50 @@
-//! Point distribution — the integer port of `pagerank_core::distribute`.
-//!
-//! Scores (scaled by S) are re-scaled to the fixed 1e6 payout quantum, sorted descending (ties broken by
-//! address ascending), and paid out proportionally; the last account absorbs the remainder so the
-//! total equals `totalPool` exactly.
+//! Full-precision Hamilton allocation, matching `pagerank_core::distribute`.
 
 import { type Hex } from 'viem'
 
-import { mulDiv } from './fixed'
+import { checkedAdd } from './fixed'
 import { type Params } from './types'
 import { cmpBig, cmpHex } from './words'
 
-/** The fixed payout quantum: scores are scaled to `u64` by 1e6 before distribution. Consensus-frozen. */
-const QUANTUM = 1_000_000n
-
-/**
- * Distribute `totalPool` across `scoresFp` (normalized PageRank scores, scaled by S, `value > 0`).
- * Returns `{ assigned, totalValue }` where `assigned` holds only `value > 0` entries and
- * `totalValue === totalPool` whenever anything is distributed.
- */
+/** Exact proportional floors plus largest remainders; ties use ascending keys. */
 export const distributePoints = (
   scoresFp: Array<[Hex, bigint]>,
   p: Params
 ): { assigned: Array<[Hex, bigint]>; totalValue: bigint } => {
-  if (scoresFp.length === 0) return { assigned: [], totalValue: 0n }
-  const s = p.precisionScale
-
-  // score * 1e6 (truncating), kept as bigint.
-  const scaled: Array<[Hex, bigint]> = scoresFp.map(([a, sc]) => [
-    a,
-    mulDiv(sc, QUANTUM, s),
-  ])
-
-  let totalScaled = 0n
-  for (const [, v] of scaled) totalScaled += v
-  if (totalScaled === 0n) return { assigned: [], totalValue: 0n }
-
-  // Sort by scaled score descending, then address ascending (deterministic tie-break).
-  scaled.sort((a, b) => {
-    const c = cmpBig(b[1], a[1])
-    return c !== 0 ? c : cmpHex(a[0], b[0])
-  })
-
-  const totalPool = p.totalPool
-  let remaining = totalPool
-  const assigned: Array<[Hex, bigint]> = []
-  const len = scaled.length
-
-  for (const [i, [addr, sc]] of scaled.entries()) {
-    let points: bigint
-    if (i === len - 1) {
-      points = remaining
-    } else {
-      const proportional = mulDiv(sc, totalPool, totalScaled)
-      points = proportional > remaining ? remaining : proportional
-    }
-    const actual = points > remaining ? remaining : points
-    if (actual !== 0n) {
-      remaining -= actual
-      assigned.push([addr, actual])
-    }
-    if (remaining === 0n) break
+  const scores = scoresFp
+    .filter(([, value]) => value > 0n)
+    .sort((a, b) => cmpHex(a[0], b[0]))
+  if (
+    scores.some(
+      ([key], index) => index > 0 && cmpHex(key, scores[index - 1]![0]) === 0
+    )
+  ) {
+    throw new Error('duplicate allocation key')
   }
-
-  let totalValue = 0n
-  for (const [, v] of assigned) totalValue += v
-  return { assigned, totalValue }
+  if (scores.length === 0 || p.totalPool === 0n)
+    return { assigned: [], totalValue: 0n }
+  const total = scores.reduce(
+    (sum, [, value]) => checkedAdd(sum, value, 'allocation score sum'),
+    0n
+  )
+  const rows = scores.map(([key, score]) => {
+    const product = score * p.totalPool
+    return { key, value: product / total, remainder: product % total }
+  })
+  const floors = rows.reduce((sum, row) => sum + row.value, 0n)
+  const missing = p.totalPool - floors
+  if (missing < 0n || missing >= BigInt(rows.length))
+    throw new Error('invalid Hamilton remainder')
+  const order = rows
+    .map((_, index) => index)
+    .sort(
+      (a, b) =>
+        cmpBig(rows[b]!.remainder, rows[a]!.remainder) ||
+        cmpHex(rows[a]!.key, rows[b]!.key)
+    )
+  for (const index of order.slice(0, Number(missing))) rows[index]!.value += 1n
+  const assigned: Array<[Hex, bigint]> = rows
+    .filter((row) => row.value > 0n)
+    .map(({ key, value }) => [key, value])
+  return { assigned, totalValue: p.totalPool }
 }

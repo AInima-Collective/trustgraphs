@@ -4,7 +4,7 @@
 //! (`tests/fixtures/atproto/hypercerts`) so `execute`/`prove` run with no external witness.
 
 use alloy_primitives::{B256, U256};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Subcommand;
 use envelopes::atproto::{plc::PlcOpWitness, AtprotoWitness};
 use hypercerts_core::compute::{compute, params_hash, GuestInput, Params, ENVELOPE_ATPROTO};
@@ -115,7 +115,18 @@ pub fn sample_input() -> GuestInput {
             block_timestamp: 1_000,
         }],
         witnesses: vec![AtprotoWitness { did: seed_did.clone(), car, plc_ops }],
-        strongref_targets: BTreeMap::new(),
+        strongref_targets: envelopes::atproto::carset::Car::parse(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tests/fixtures/atproto/hypercerts/fixtures/bob.car"
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+        .blocks
+        .into_iter()
+        .map(|(cid, bytes)| (cid.to_string(), bytes))
+        .collect(),
         // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays
         // byte-identical to tests/golden/hypercerts.json.
         binding: pagerank_core::Binding {
@@ -308,6 +319,7 @@ fn cmd_buildinput(
             node_id: did_node_id(&w.did),
             envelope_kind: ENVELOPE_ATPROTO,
             head: B256::from(head),
+            count: 0,
             data_commitment: B256::ZERO,
             block_timestamp: 0,
         });
@@ -317,7 +329,7 @@ fn cmd_buildinput(
     // Resolve badge-definition strongRefs across the witness set: collect every
     // `app.certified.badge.award`'s referenced `badge.cid`, then supply the target block if any
     // witness CAR holds it (keyed by the record's own cid string — what the guest looks up).
-    // A miss is not an error: an unwitnessed definition means open-vocabulary semantics (§3.3).
+    // Every referenced definition is required; missing bytes must hold input construction.
     let cars: Vec<Car> = witnesses
         .iter()
         .map(|w| Car::parse(&w.car).map_err(|e| anyhow!("re-parse CAR for {}: {e}", w.did)))
@@ -337,7 +349,7 @@ fn cmd_buildinput(
         }
     }
     let mut strongref_targets = BTreeMap::new();
-    let (mut hits, mut misses) = (0u32, 0u32);
+    let mut hits = 0u32;
     for cid_str in &wanted {
         let found = Cid::try_from(cid_str.as_str())
             .ok()
@@ -347,7 +359,7 @@ fn cmd_buildinput(
                 strongref_targets.insert(cid_str.clone(), bytes.clone());
                 hits += 1;
             }
-            None => misses += 1,
+            None => return Err(anyhow!("missing required badge definition {cid_str}")),
         }
     }
 
@@ -358,12 +370,10 @@ fn cmd_buildinput(
     }
     std::fs::write(out, serde_json::to_string(&input)?)?;
     eprintln!(
-        "wrote {}: {} witnesses, {} badge-definition strongRef target(s) resolved, {} left \
-         to open-vocabulary",
+        "wrote {}: {} witnesses, {} required badge-definition strongRef target(s) resolved",
         out.display(),
         input.witnesses.len(),
-        hits,
-        misses
+        hits
     );
     eprintln!(
         "anchor timestamps are 0 placeholders — after anchor(), rewrite each with the tx's real \
@@ -414,7 +424,7 @@ fn write_bundle(
 }
 
 fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
-    let native = compute(&input);
+    let native = compute(&input).map_err(|error| anyhow!("invalid hypercerts witness: {error}"))?;
     let native_pub = encode::journal_encoded(&native.journal);
 
     common::execute_and_check(elf(), &input, &native_pub)?;
@@ -447,7 +457,7 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
 }
 
 fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
-    let native = compute(&input);
+    let native = compute(&input).map_err(|error| anyhow!("invalid hypercerts witness: {error}"))?;
 
     let (public_values, seal) = common::prove_and_verify(elf(), &input, groth16)?;
 

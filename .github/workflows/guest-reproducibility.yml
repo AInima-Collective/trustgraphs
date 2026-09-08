@@ -20,6 +20,8 @@ on:
       - 'crates/**'
       - 'zk/**'
       - 'taskfile/zk.yml'
+      - 'scripts/build-guests.sh'
+      - 'scripts/guest-elf-dirs.sh'
       - 'scripts/guest-elf-digests.sh'
       - '.github/workflows/guest-reproducibility.yml'
   workflow_dispatch:
@@ -34,6 +36,9 @@ on:
 concurrency:
   group: guest-reproducibility-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  TRUSTGRAPHS_RELEASE_BUILD: '1'
 
 jobs:
   build:
@@ -93,7 +98,7 @@ jobs:
         with:
           name: guest-digests-${{ matrix.id }}
           path: digests-${{ matrix.id }}.txt
-          retention-days: 7
+          retention-days: 90
 
       - name: Keep the ELFs from one of the builds
         if: matrix.id == 'alpha'
@@ -112,7 +117,7 @@ jobs:
         with:
           name: sp1-guest-elfs
           path: sp1-guest-elfs.tar.gz
-          retention-days: 7
+          retention-days: 90
 
   compare:
     name: The two builds must agree

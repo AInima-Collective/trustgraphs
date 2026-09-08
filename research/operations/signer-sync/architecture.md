@@ -23,15 +23,27 @@ events and refresh the checkpoint block without changing anybody's last-activity
 
 An RPC or operator can withhold logs from one prover, and a block producer can delay a vote
 transaction. Neither can produce a valid incomplete proof: the guest reconstructs the complete
-ordered hash chain, while `SignerSyncZkModule` compares the proven checkpoint with the activity
-source's live accumulator and count. Another RPC or prover can supply the same public history.
+ordered hash chain against one immutable checkpoint returned by the activity source. Another RPC
+or prover can supply the same public history. New votes do not invalidate a proof in progress;
+selection is explicitly evaluated as of the committed checkpoint.
 
 **Freshness and absence.** An account is active when its latest authenticated direct vote is no
-more than `maxInactiveBlocks` before the activity checkpoint. The checkpoint itself must still be
-within that window when submitted. With no activity checkpoint, stale activity, or fewer than two
+more than `maxInactiveBlocks` before the activity checkpoint. The checkpoint itself must be at most
+`min(maxInactiveBlocks, 7200)` blocks old when submitted. Accepted checkpoint IDs cannot regress
+(equal activity IDs may serve newer score checkpoints); changing the activity source resets its
+ID namespace. With no activity checkpoint, stale activity, or fewer than two
 distinct authenticated witnesses, the deterministic result is the Safe's exact current owner set
 and threshold: absence means **no change**, never “assume dead.” The operator detects that result
-before its spend intent and does not buy a no-op proof.
+before its spend intent and does not buy a no-op proof. The proof entry point rejects these
+ineligible previews, so a different permissionless prover cannot consume the checkpoint or mark
+the singleton bootstrap initialized. Eligible selections that already match the owner set remain
+provable. The journal remains thirteen words; this guest validity change still requires a new vkey.
+
+The operator reserves half the checkpoint acceptance window for proving and submission. It
+refreshes an older reference through `checkpointSignerActivity` before its proof spend intent and
+reconstructs inputs on the next tick. The complete lifetime history is still required; bounded
+authenticated activity state is a future protocol change, not solved by a cap that would
+permanently disable selection after enough votes.
 
 For the first rotation, the witnesses must be fresh scored members. Thereafter at least two must
 be current Safe owners. This is the safety/liveness boundary: one account cannot activate removals,

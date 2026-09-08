@@ -14,6 +14,7 @@ import { Command } from 'commander'
 
 import { DEPLOYMENT_SUMMARY_FILE } from './constants'
 import { initProgram } from './env'
+import { assertReleaseCheckout } from '../../scripts/release-checkout.cjs'
 import {
   type ReleaseManifest,
   loadReleaseManifest,
@@ -148,6 +149,7 @@ const main = async () => {
   } = context
 
   await env.validateDeployment?.()
+  if (env.profile.public) assertReleaseCheckout(process.env.DEPLOYMENT_COMMIT)
 
   const sepoliaManifest =
     env.profile.target === 'sepolia'
@@ -198,6 +200,8 @@ const main = async () => {
 
     console.log(chalk.blueBright(`🚀 Deploying ${contract.name}...`))
 
+    // Recheck after asynchronous RPC/continuation work, immediately before compiling/broadcasting.
+    if (env.profile.public) assertReleaseCheckout(process.env.DEPLOYMENT_COMMIT)
     await execFull({
       cmd: [
         'forge',

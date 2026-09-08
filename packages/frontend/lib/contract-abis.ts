@@ -926,6 +926,13 @@ export const contributionResolverAbi = [
   { type: 'error', inputs: [], name: 'AccessDenied' },
   { type: 'error', inputs: [], name: 'AlreadyBound' },
   { type: 'error', inputs: [], name: 'DuplicateSchemaUid' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expirationTime', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'ExpirationNotSupported',
+  },
   { type: 'error', inputs: [], name: 'InsufficientValue' },
   { type: 'error', inputs: [], name: 'InvalidEAS' },
   { type: 'error', inputs: [], name: 'InvalidLength' },
@@ -3271,6 +3278,7 @@ export const governedTrustgraphsFactoryAbi = [
     name: 'SafeExecutionFailed',
   },
   { type: 'error', inputs: [], name: 'SafeFundingFailed' },
+  { type: 'error', inputs: [], name: 'SafeProxyReferenceDeploymentFailed' },
   {
     type: 'error',
     inputs: [
@@ -3286,6 +3294,11 @@ export const governedTrustgraphsFactoryAbi = [
       { name: 'actual', internalType: 'address', type: 'address' },
     ],
     name: 'SubnetworkRegistryMismatch',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'program', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'UnsupportedSignerSyncProgram',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
@@ -3392,6 +3405,15 @@ export const merkleFundDistributorAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'distributionPausedDuration',
+    outputs: [{ name: 'duration', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     name: 'distributions',
     outputs: [
@@ -3410,6 +3432,15 @@ export const merkleFundDistributorAbi = [
       { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
       { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
     ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'effectiveClaimDeadline',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -3517,6 +3548,13 @@ export const merkleFundDistributorAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'pauseStartedAt',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'paused',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
@@ -3593,6 +3631,13 @@ export const merkleFundDistributorAbi = [
       { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'totalPausedDuration',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -5218,6 +5263,15 @@ export const merkleSnapshotAbi = [
     inputs: [
       { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
     ],
+    name: 'checkpointVerifier',
+    outputs: [{ name: 'verifier', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
     name: 'checkpointWorkCount',
     outputs: [{ name: 'workCount', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
@@ -6282,6 +6336,7 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'stateCount', internalType: 'uint256', type: 'uint256' }],
     name: 'ProvenanceEnableAfterState',
   },
+  { type: 'error', inputs: [], name: 'ReentrancyGuardReentrantCall' },
   {
     type: 'error',
     inputs: [
@@ -6519,6 +6574,20 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'MAX_ACTIVITY_CHECKPOINT_AGE',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_SIGNERS',
+    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'accumulator',
     outputs: [
       {
@@ -6554,6 +6623,13 @@ export const signerSyncZkModuleAbi = [
     inputs: [],
     name: 'hasAppliedCheckpoint',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'lastAppliedActivityCheckpoint',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -6900,9 +6976,24 @@ export const signerSyncZkModuleAbi = [
       { name: 'checkpointBlock', internalType: 'uint64', type: 'uint64' },
       { name: 'currentBlock', internalType: 'uint256', type: 'uint256' },
     ],
+    name: 'ActivityCheckpointInFuture',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'submitted', internalType: 'uint256', type: 'uint256' },
+      { name: 'lastApplied', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ActivityCheckpointRegression',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointBlock', internalType: 'uint64', type: 'uint64' },
+      { name: 'currentBlock', internalType: 'uint256', type: 'uint256' },
+    ],
     name: 'ActivityCheckpointStale',
   },
-  { type: 'error', inputs: [], name: 'ActivityCheckpointSuperseded' },
   { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'EmptySignerSet' },
   { type: 'error', inputs: [], name: 'InvalidSelectionParams' },
@@ -6910,6 +7001,11 @@ export const signerSyncZkModuleAbi = [
     type: 'error',
     inputs: [{ name: 'signer', internalType: 'address', type: 'address' }],
     name: 'InvalidSigner',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidSignerCount',
   },
   {
     type: 'error',

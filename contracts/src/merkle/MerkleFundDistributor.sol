@@ -16,9 +16,9 @@ import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 /// @title MerkleFundDistributor
 /// @notice A contract for distributing funds from a merkle tree.
 /// @dev Expiry + sweep (resolved): each distribution may carry a `claimDeadline`
-///      (0 = no expiry, the original behavior — such distributions can never be
-///      swept). Claims are accepted while `block.timestamp <= claimDeadline`;
-///      once `block.timestamp > claimDeadline` claims revert and anyone may call
+///      (0 = no expiry, such distributions can never be swept). Pauses stop the claim-window
+///      clock, preserving the time contributors were given. `effectiveClaimDeadline` adds the
+///      paused duration since funding to the configured deadline. After that deadline anyone may call
 ///      `sweep(distributionIndex)` to return the unclaimed remainder
 ///      (`amountFunded - feeAmount - amountDistributed`, which also captures
 ///      per-claim rounding dust) to the round funder (`distribution.distributor`).
@@ -78,6 +78,12 @@ contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, Reentran
     /// @notice The `amount` claimed by `account` for a given distribution.
     mapping(uint256 distributionIndex => mapping(address account => uint256 amount)) public claimed;
 
+    /// @notice Completed paused seconds, and the start of the current pause when paused.
+    uint256 public totalPausedDuration;
+    uint256 public pauseStartedAt;
+    /// @notice Pause-clock baseline when each distribution was funded.
+    mapping(uint256 distributionIndex => uint256 duration) public distributionPausedDuration;
+
     /* MODIFIERS */
 
     /// @notice Reverts if the caller cannot distribute funds.
@@ -124,6 +130,18 @@ contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, Reentran
     /// @return distribution The distribution.
     function getDistribution(uint256 distributionIndex) external view returns (DistributionState memory) {
         return distributions[distributionIndex];
+    }
+
+    /// @notice Deadline including paused claim time, or zero for a non-expiring distribution.
+    /// @dev During a pause both this deadline and block.timestamp advance together. A window that
+    ///      was already closed stays closed and sweepable; an open window cannot expire while paused.
+    function effectiveClaimDeadline(uint256 distributionIndex) public view returns (uint256) {
+        if (distributionIndex >= distributions.length) revert DistributionNotFound();
+        uint64 deadline = distributions[distributionIndex].claimDeadline;
+        if (deadline == 0) return 0;
+        uint256 duration = totalPausedDuration;
+        if (paused()) duration += block.timestamp - pauseStartedAt;
+        return uint256(deadline) + duration - distributionPausedDuration[distributionIndex];
     }
 
     /// @notice Returns the total number of distributions.
@@ -229,11 +247,14 @@ contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, Reentran
     /// @dev Expired sweeps remain available so pausing cannot remove a funder's only exit.
     function pause() external onlyOwner {
         _pause();
+        pauseStartedAt = block.timestamp;
     }
 
     /// @notice Unpauses the contract.
     function unpause() external onlyOwner {
         _unpause();
+        totalPausedDuration += block.timestamp - pauseStartedAt;
+        pauseStartedAt = 0;
     }
 
     /// @notice Distributes funds against fully pinned state. Every guard is mandatory: the round
@@ -333,6 +354,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, Reentran
 
         // Create new distribution.
         distributionIndex = distributions.length;
+        distributionPausedDuration[distributionIndex] = totalPausedDuration;
         distributions.push(
             DistributionState({
                 blockNumber: block.number,
@@ -396,7 +418,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, Reentran
         }
 
         // Claims close strictly after the deadline (deadline 0 = no expiry).
-        uint64 claimDeadline = distribution.claimDeadline;
+        uint256 claimDeadline = effectiveClaimDeadline(distributionIndex);
         if (claimDeadline != 0 && block.timestamp > claimDeadline) {
             revert ClaimWindowClosed();
         }
@@ -467,7 +489,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, Ownable2Step, Reentran
         }
 
         // Distributions without a deadline can never be swept.
-        uint64 claimDeadline = distribution.claimDeadline;
+        uint256 claimDeadline = effectiveClaimDeadline(distributionIndex);
         if (claimDeadline == 0) {
             revert NoClaimDeadline();
         }

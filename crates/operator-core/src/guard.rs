@@ -82,3 +82,46 @@ pub fn before_submit(read: GuardRead, expected_verifier: Address) -> Verdict {
     }
     Verdict::Clear
 }
+
+/// Facts used before purchasing signer proofs. Keep at least half the contract's acceptance
+/// window available for proving/submission; refreshing never invents a direct-vote record.
+pub struct SignerActivityWindow {
+    pub source: Address,
+    pub checkpoint_block: u64,
+    pub latest_id: u64,
+    pub maximum_age: u64,
+    pub refresh_interval: u64,
+}
+
+impl SignerActivityWindow {
+    pub fn needs_refresh(&self, head: u64) -> bool {
+        head.saturating_sub(self.checkpoint_block) > self.maximum_age / 2
+    }
+
+    pub fn refresh_allowed(&self, head: u64) -> bool {
+        head.saturating_sub(self.checkpoint_block) >= self.refresh_interval
+    }
+}
+
+#[cfg(test)]
+mod signer_activity_window_tests {
+    use super::*;
+
+    #[test]
+    fn reserves_half_the_proof_acceptance_window_and_respects_refresh_cadence() {
+        let mut window = SignerActivityWindow {
+            source: Address::ZERO,
+            checkpoint_block: 1_000,
+            latest_id: 0,
+            maximum_age: 7_200,
+            refresh_interval: 300,
+        };
+        assert!(!window.needs_refresh(4_600));
+        assert!(window.needs_refresh(4_601));
+        assert!(window.refresh_allowed(4_601));
+        window.maximum_age = 10;
+        assert!(window.needs_refresh(1_006));
+        assert!(!window.refresh_allowed(1_006));
+        assert!(window.refresh_allowed(1_300));
+    }
+}

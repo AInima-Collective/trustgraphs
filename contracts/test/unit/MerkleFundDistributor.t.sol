@@ -1484,6 +1484,72 @@ contract MerkleFundDistributorTest is Test {
         distributor.sweep(0);
     }
 
+    function test_PausePreservesRemainingClaimTimeAndTheClaimSweepBoundary() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+        vm.warp(uint256(deadline) - 2 days);
+        vm.prank(owner);
+        distributor.pause();
+        vm.warp(block.timestamp + 10 days);
+        assertEq(distributor.effectiveClaimDeadline(0), uint256(deadline) + 10 days);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        distributor.sweep(0);
+        vm.prank(owner);
+        distributor.unpause();
+        uint256 effective = distributor.effectiveClaimDeadline(0);
+        assertEq(effective - block.timestamp, 2 days);
+
+        vm.warp(effective);
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = _generateLeaf(bob, 400);
+        assertGt(distributor.claim(0, alice, 600, proof), 0);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        distributor.sweep(0);
+        vm.warp(effective + 1);
+        assertGt(distributor.sweep(0), 0);
+    }
+
+    function test_PausingAnExpiredRoundDoesNotReopenIt() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+        vm.warp(uint256(deadline) + 1);
+        vm.prank(owner);
+        distributor.pause();
+        vm.warp(block.timestamp + 30 days);
+        assertLt(distributor.effectiveClaimDeadline(0), block.timestamp);
+        assertGt(distributor.sweep(0), 0, "expired funders retain their exit during a pause");
+        vm.prank(owner);
+        distributor.unpause();
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = _generateLeaf(bob, 400);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
+        distributor.claim(0, alice, 600, proof);
+    }
+
+    function test_MultiplePausesOnlyExtendRoundsFundedBeforeEachPause() public {
+        uint64 firstDeadline = uint64(block.timestamp + 20 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, firstDeadline);
+        vm.prank(owner);
+        distributor.pause();
+        vm.warp(block.timestamp + 3 days);
+        vm.prank(owner);
+        distributor.unpause();
+        uint64 secondDeadline = uint64(block.timestamp + 20 days);
+        _createERC20DistributionWithDeadline(bob, 100 ether, secondDeadline);
+        _createERC20DistributionWithDeadline(alice, 100 ether, 0);
+        vm.prank(owner);
+        distributor.pause();
+        vm.warp(block.timestamp + 5 days);
+        vm.prank(owner);
+        distributor.unpause();
+        assertEq(distributor.effectiveClaimDeadline(0), uint256(firstDeadline) + 8 days);
+        assertEq(distributor.effectiveClaimDeadline(1), uint256(secondDeadline) + 5 days);
+        assertEq(distributor.effectiveClaimDeadline(2), 0);
+        assertEq(distributor.totalPausedDuration(), 8 days);
+    }
+
     function test_Claim_AfterSweep_RevertsClaimWindowClosed() public {
         _setupTwoLeafTree();
         uint64 deadline = uint64(block.timestamp + 7 days);

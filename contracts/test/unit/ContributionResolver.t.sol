@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.29;
+pragma solidity 0.8.36;
 
 import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -101,6 +101,30 @@ contract ContributionResolverTest is Test {
     function _revoke(address attester, bytes32 schemaUid, bytes32 uid) internal {
         vm.prank(attester);
         eas.revoke(RevocationRequest({schema: schemaUid, data: RevocationRequestData({uid: uid, value: 0})}));
+    }
+
+    function test_AllContributionSchemasRejectExpirationWithoutChangingTheAccumulator() public {
+        bytes32[3] memory schemas = [claimUid, responseUid, valuationUid];
+        uint64 expiration = uint64(block.timestamp + 1 days);
+        for (uint256 i; i < schemas.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(ContributionResolver.ExpirationNotSupported.selector, expiration));
+            vm.prank(alice);
+            eas.attest(
+                AttestationRequest({
+                    schema: schemas[i],
+                    data: AttestationRequestData({
+                        recipient: address(0),
+                        expirationTime: expiration,
+                        revocable: true,
+                        refUID: EMPTY_UID,
+                        data: bytes(""),
+                        value: 0
+                    })
+                })
+            );
+            assertEq(resolver.acc(), bytes32(0));
+            assertEq(resolver.leafCount(), 0);
+        }
     }
 
     function _claimData() internal view returns (bytes memory) {

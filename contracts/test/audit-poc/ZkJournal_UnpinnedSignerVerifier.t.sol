@@ -117,12 +117,13 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
 
         // A COMPLETE STRANGER — not the creator, not a role holder — rotates the Safe's owner set
         // to an address of their choosing, with `hex"00"` as the "proof".
-        address[] memory desired = new address[](1);
+        address[] memory desired = new address[](2);
         desired[0] = stranger;
+        desired[1] = address(uint160(stranger) + 1);
 
         vm.prank(stranger);
         vm.expectRevert(bytes("canonical verifier rejected proof"));
-        signer.submitSignerProof(checkpointId, 0, desired, 1, hex"00");
+        signer.submitSignerProof(checkpointId, 0, desired, 2, hex"00");
 
         assertFalse(Safe(payable(safe)).isOwner(stranger), "attacker proof must not alter owners");
         assertTrue(Safe(payable(safe)).isOwner(creator), "the real member remains owner");

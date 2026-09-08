@@ -12,8 +12,18 @@ prover supplies the corresponding witness package. The guest verifies signed eve
 and identity rules, replacements and deletions, and the supported workspace signals before
 computing scores.
 
-The current roster defines who is eligible. Conflicting or invalid identity bindings are rejected,
+The current roster defines which activity participants are eligible. Governance-configured seeds
+remain in the scoring universe even when absent from that roster; a roster change cannot switch
+a seeded network into unseeded scoring. Conflicting or invalid identity bindings are rejected,
 and deleted or superseded events do not reappear through older history.
+
+For each anchored identity, the guest selects the latest anchor at its highest committed count
+before inspecting witness availability. Every fresh selected head requires its complete valid
+witness. Missing or invalid bytes abort proving; an older head cannot substitute for it. Expired
+heads are dropped using only committed anchor timestamps and the configured maximum age, with
+the drop included in the proof's skipped digest. Operators must retain required witness data:
+an unavailable current head can stop proving until a valid replacement is anchored or the head
+expires relative to later anchor timestamps.
 
 ## Privacy and verification
 

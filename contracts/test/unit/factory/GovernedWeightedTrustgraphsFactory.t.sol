@@ -356,87 +356,19 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         assertLt(discoveryIndex, bindingIndex, "discovery must precede the binding announcement");
     }
 
-    function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
+    function test_WeightedSignerSyncIsRejectedAtomically() public {
         GovernedFactoryBase.SignerSyncConfig memory signerConfig =
             GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000});
-
-        WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted signer sync", 2);
+        WeightedTrustgraphsFactory.CreateArgs memory args = _args("unsupported weighted signer", 2);
+        uint256 countBefore = registry.instanceCount();
         vm.prank(creator);
-        (bytes32 instanceId, address safe,, address snapshot) =
-            governedFactory.createGovernedInstance(args, _unpaidPolicy(), signerConfig);
-
-        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
-        SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
-        assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
-        assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
-        assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
-        assertTrue(Safe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
-        assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
-        assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
-        assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
-        assertEq(address(signer.zkVerifier()), address(signerVerifier), "immutable signer verifier");
-
-        (address[] memory modules, address next) = Safe(payable(safe)).getModulesPaginated(address(0x1), 10);
-        assertEq(modules.length, 3, "gov, recovery and signer are the only enabled modules");
-        assertEq(next, address(0x1));
-
-        MerkleSnapshot scoreSnapshot = MerkleSnapshot(snapshot);
-        vm.roll(uint256(scoreSnapshot.epochOriginBlock()) + EPOCH_FLOOR);
-        uint256 checkpointId = scoreSnapshot.trigger();
-        IAttestationAccumulator.Checkpoint memory checkpoint = scoreSnapshot.accumulator().getCheckpoint(checkpointId);
-
-        address[] memory desired = new address[](2);
-        desired[0] = address(0xB0B);
-        desired[1] = address(0xCAFE);
-        bytes32 firstLeaf = keccak256(abi.encode(desired[0]));
-        bytes32 secondLeaf = keccak256(abi.encode(desired[1]));
-        bytes32 signerSetRoot = firstLeaf < secondLeaf
-            ? keccak256(abi.encode(firstLeaf, secondLeaf))
-            : keccak256(abi.encode(secondLeaf, firstLeaf));
-        bytes32 activityAcc = keccak256("weighted factory activity");
-        uint64 activityBlock = uint64(block.number);
-        vm.mockCall(
-            authority.governanceModule,
-            abi.encodeWithSelector(bytes4(keccak256("activityAccumulator()"))),
-            abi.encode(activityAcc)
-        );
-        vm.mockCall(
-            authority.governanceModule,
-            abi.encodeWithSelector(bytes4(keccak256("activityCount()"))),
-            abi.encode(uint64(2))
-        );
-        vm.mockCall(
-            authority.governanceModule,
-            abi.encodeWithSelector(MerkleGovModule.getActivityCheckpoint.selector, uint256(0)),
-            abi.encode(MerkleGovModule.ActivityCheckpoint(activityAcc, 2, activityBlock))
-        );
-        signerVerifier.setExpectedDigest(
-            keccak256(
-                abi.encode(
-                    checkpoint.acc,
-                    checkpoint.leafCount,
-                    scoreSnapshot.checkpointParamsHash(checkpointId),
-                    signer.selectionParamsHash(),
-                    activityAcc,
-                    uint64(2),
-                    activityBlock,
-                    false,
-                    keccak256(abi.encode(creator)),
-                    uint256(1),
-                    signerSetRoot,
-                    uint256(2),
-                    keccak256(abi.encode(address(signer), block.chainid))
-                )
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GovernedFactoryBase.UnsupportedSignerSyncProgram.selector, keccak256("trust-graph-weighted")
             )
         );
-
-        vm.prank(address(0xBEEF));
-        signer.submitSignerProof(checkpointId, 0, desired, 2, hex"1234");
-
-        assertTrue(Safe(payable(safe)).isOwner(desired[0]));
-        assertTrue(Safe(payable(safe)).isOwner(desired[1]));
-        assertFalse(Safe(payable(safe)).isOwner(creator));
-        assertEq(Safe(payable(safe)).getThreshold(), 2);
+        governedFactory.createGovernedInstance(args, _unpaidPolicy(), signerConfig);
+        assertEq(registry.instanceCount(), countBefore, "unsupported configuration must not create an instance");
     }
 
     function test_ConstructorRejectsSignerVerifierProgramMismatch() public {

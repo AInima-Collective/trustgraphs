@@ -8,6 +8,12 @@ import { type Graph } from './reconcile'
 import { type Params, hasTrustEnabled } from './types'
 import { cmpHex } from './words'
 
+const eligibleEdge = (
+  source: string,
+  target: string,
+  weight: bigint
+): boolean => source !== target && weight > 0n
+
 const isSeed = (seeds: Set<string>, a: string): boolean => seeds.has(a)
 
 /**
@@ -79,9 +85,10 @@ const bfsDecays = (
     const edges = graph.outgoing.get(current)
     if (edges) {
       let childDecay: bigint | undefined
-      const neighbors = Array.from(edges.keys()).sort((a, b) =>
-        cmpHex(a as Hex, b as Hex)
-      )
+      const neighbors = Array.from(edges.entries())
+        .filter(([neighbor, weight]) => eligibleEdge(current, neighbor, weight))
+        .map(([neighbor]) => neighbor)
+        .sort((a, b) => cmpHex(a as Hex, b as Hex))
       for (const neighbor of neighbors) {
         if (!decays.has(neighbor)) {
           childDecay ??= fpMul(parentDecay, baseFp, scale)
@@ -194,14 +201,14 @@ export const calculateDetailed = (graph: Graph, p: Params): RankResult => {
 
     let totalBase = 0n
     for (const [target, weight] of edges) {
-      if (target === attester || weight === 0n) continue
+      if (!eligibleEdge(attester, target, weight)) continue
       totalBase = checkedAdd(totalBase, weight, 'rank: outgoing-weight sum')
     }
     if (totalBase === 0n) continue
 
     const row: Array<[string, bigint]> = []
     for (const [target, baseWeight] of edges) {
-      if (target === attester || baseWeight === 0n) continue
+      if (!eligibleEdge(attester, target, baseWeight)) continue
       if (decays && !decays.has(target)) continue
       row.push([target, fpDiv(baseWeight, totalBase, s)])
     }

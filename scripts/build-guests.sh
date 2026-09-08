@@ -16,6 +16,7 @@
 # UNTRUSTWORTHY vkey: fine for running tests, never for deriving a value that gets pinned on chain.
 
 set -eu
+unset CARGO_TARGET_DIR
 
 # Run from the repository root whatever directory this was invoked from — the guest paths below
 # are relative to it, and so is the bind mount.
@@ -25,19 +26,32 @@ cd "$ROOT"
 # Pinned deliberately and separately from the sp1-build crate version, so a dependency bump cannot
 # silently change every vkey in the system. Moving it is a decision, and it is one that changes
 # every deployed verifier.
-SP1_DOCKER_TAG="${SP1_DOCKER_TAG:-v6.6.0}"
+PINNED_IMAGE=$(cat zk/sp1-builder-image.txt)
+SP1_DOCKER_TAG=${PINNED_IMAGE#ghcr.io/succinctlabs/sp1:}
+if [ "${SP1_DOCKER_IMAGE:-$PINNED_IMAGE}" != "$PINNED_IMAGE" ]; then
+  echo "SP1_DOCKER_IMAGE must match zk/sp1-builder-image.txt" >&2
+  exit 1
+fi
+export SP1_DOCKER_IMAGE="$PINNED_IMAGE"
 
-GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program"
-LOCKED_GUESTS="zk/nostr-program/program"
+GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program zk/nostr-program/program"
 
 command -v cargo-prove >/dev/null 2>&1 || {
   echo "✗ cargo-prove not found. The guests build with the SP1 \`succinct\` toolchain:" >&2
-  echo "    curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version $SP1_DOCKER_TAG" >&2
+  echo "    Install cargo-prove v6.6.0 using the official SP1 toolchain installer." >&2
   echo "    export PATH=\"\$HOME/.sp1/bin:\$PATH\"" >&2
   exit 1
 }
 
 DOCKER=no
+case "${TRUSTGRAPH_GUEST_BUILD:-docker}" in
+  docker|local) ;;
+  *) echo "TRUSTGRAPH_GUEST_BUILD must be docker or local" >&2; exit 1 ;;
+esac
+if [ "${TRUSTGRAPHS_RELEASE_BUILD:-0}" = 1 ] && [ "${TRUSTGRAPH_GUEST_BUILD:-docker}" != docker ]; then
+  echo "Release builds require the pinned Docker builder" >&2
+  exit 1
+fi
 if [ "${TRUSTGRAPH_GUEST_BUILD:-docker}" = "local" ]; then
   echo "⚠ building guests WITHOUT --docker. The resulting vkeys are a property of this machine" >&2
   echo "  as much as of the source, and must not be pinned into a verifier." >&2
@@ -66,6 +80,8 @@ build_one() { # build_one <guest dir> [extra cargo prove args…]
   dir=$1
   shift
   echo "  $dir"
+  # SP1 discovers metadata before applying --locked to its build. Freeze resolution first.
+  cargo metadata --locked --format-version 1 --manifest-path "$dir/Cargo.toml" >/dev/null
   if [ "$DOCKER" = yes ]; then
     ( cd "$dir" && cargo prove build "$@" \
         --docker --tag "$SP1_DOCKER_TAG" --workspace-directory "$ROOT" )
@@ -75,15 +91,12 @@ build_one() { # build_one <guest dir> [extra cargo prove args…]
 }
 
 for dir in $GUESTS; do
-  build_one "$dir"
-done
-for dir in $LOCKED_GUESTS; do
   build_one "$dir" --locked
 done
 
 # STALE-ELF DEFENCE: `sp1_build` does not watch path dependencies, so after an edit under crates/
 # cargo will happily reuse an ELF that predates the change. Touching the host's build script is
 # what forces it to pick up what was just built.
-touch zk/prover/build.rs
+# build.rs watches shared source paths and the archived ELF files; no tracked source is touched.
 
 echo "✓ guests built"

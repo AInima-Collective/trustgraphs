@@ -84,6 +84,14 @@ contract VaultWorkAnchorRegistry is IAnchorRegistry {
     }
 }
 
+contract VaultProgramVerifier is MockZkVerifier {
+    bytes32 public immutable programVKey;
+
+    constructor(bytes32 key) {
+        programVKey = key;
+    }
+}
+
 contract ProvingVaultTest is Test {
     ProvingVault vault;
     InstanceRegistry registry;
@@ -113,6 +121,7 @@ contract ProvingVaultTest is Test {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
         snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
+        _enableProvenance();
         // Only the bound snapshot may mint checkpoints (issue #10).
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
@@ -224,6 +233,89 @@ contract ProvingVaultTest is Test {
         assertEq(a.ethBalance, 1 ether);
     }
 
+    function test_FundingRequiresProvenanceBeforeTakingEitherToken() public {
+        MerkleSnapshot bare = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
+        IInstanceRegistry.Instance memory record = registry.getInstance(INSTANCE);
+        record.snapshot = address(bare);
+        registry.update(INSTANCE, record);
+        bytes memory expected = abi.encodeWithSelector(IProvingVault.SnapshotProvenanceRequired.selector, address(bare));
+        vm.deal(address(this), 1 ether);
+        vm.expectRevert(expected);
+        vault.depositETH{value: 1 ether}(INSTANCE);
+        usdc.mint(address(this), 1e6);
+        usdc.approve(address(vault), 1e6);
+        vm.expectRevert(expected);
+        vault.depositUSDC(INSTANCE, 1e6);
+        assertEq(vault.accountOf(INSTANCE).snapshot, address(0));
+        assertEq(usdc.balanceOf(address(this)), 1e6);
+    }
+
+    function test_QuietParameterChangesPayDistinctStatementsButRoundTripDoesNotRepay() public {
+        _fund(1 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+        uint256 first = _mint(bytes32(uint256(1)), 5, 100);
+        (uint256 firstFee,) = _claim(first, alice, alice);
+        assertGt(firstFee, 0);
+
+        vm.prank(operational);
+        snapshot.setParamsHash(keccak256("new parameters"));
+        vm.roll(200);
+        uint256 second = snapshot.trigger();
+        (uint256 secondFee,) = _claim(second, alice, alice);
+        assertGt(secondFee, 0, "changed parameters are new work even when the allocation is equal");
+
+        vm.prank(operational);
+        snapshot.setParamsHash(PARAMS);
+        vm.roll(300);
+        uint256 third = snapshot.trigger();
+        uint256 balanceBefore = vault.accountOf(INSTANCE).ethBalance;
+        (uint256 fee, uint256 gasFee) = _claim(third, mallory, mallory);
+        assertEq(fee, 0);
+        assertEq(gasFee, 0);
+        assertEq(vault.accountOf(INSTANCE).ethBalance, balanceBefore);
+        assertEq(snapshot.lastAppliedCheckpoint(), third, "duplicate payout must not reject the root");
+        assertFalse(vault.isClaimed(INSTANCE, third));
+        assertEq(vault.claim(INSTANCE, third), 0, "fallback cannot repay a duplicate statement either");
+    }
+
+    function test_VerifierPaymentIdentityUsesAcceptedGuestKeyAndDeduplicatesEquivalentWrappers() public {
+        _fund(1 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+        VaultProgramVerifier keyA = new VaultProgramVerifier(keccak256("guest A"));
+        VaultProgramVerifier equivalentA = new VaultProgramVerifier(keccak256("guest A"));
+        VaultProgramVerifier keyB = new VaultProgramVerifier(keccak256("guest B"));
+        vm.prank(constitutional);
+        snapshot.setZkVerifier(keyA);
+        uint256 first = _mint(bytes32(uint256(1)), 5, 100);
+        IProvingVault.SubmitArgs memory args = _args(first, alice);
+        snapshot.submitProof(
+            first,
+            args.outputRoot,
+            args.ipfsHash,
+            args.ipfsHashCid,
+            args.totalValue,
+            args.skippedDigest,
+            args.recipient,
+            args.proof
+        );
+        // Claim after a live verifier replacement must still use A, the actual accepted guest.
+        vm.prank(constitutional);
+        snapshot.setZkVerifier(keyB);
+        assertGt(vault.claim(INSTANCE, first), 0);
+        vm.roll(200);
+        uint256 second = snapshot.trigger();
+        (uint256 feeB,) = _claim(second, alice, alice);
+        assertGt(feeB, 0, "guest B is new work over the same inputs and parameters");
+
+        vm.prank(constitutional);
+        snapshot.setZkVerifier(equivalentA);
+        vm.roll(300);
+        uint256 third = snapshot.trigger();
+        (uint256 duplicateFee, uint256 duplicateGas) = _claim(third, mallory, mallory);
+        assertEq(duplicateFee, 0, "another wrapper for guest A must not repay its proof");
+        assertEq(duplicateGas, 0);
+    }
+
     /// The registry's OPERATOR_ROLE can rewrite a directory row. It must not be able to redirect a
     /// funded community's balance to a snapshot of its choosing.
     function test_AHostileRegistryUpdateCannotRedirectAFundedBalance() public {
@@ -275,18 +367,23 @@ contract ProvingVaultTest is Test {
         // Mallory copies alice's transaction verbatim — the recipient is IN the journal, so
         // changing it would make the proof fail to verify (see MerkleSnapshot.t.sol). All Mallory
         // can change is who sends it.
+        uint256 gasBefore = gasleft();
         (uint256 feeUsd, uint256 gasUsd) = _claim(id, mallory, alice);
+        uint256 measuredGas = gasBefore - gasleft();
 
         assertGt(feeUsd, 0, "the fee was paid");
         assertGt(vault.creditOf(alice, address(0)), 0, "alice is owed the fee she never sent a tx for");
         assertEq(
             vault.creditOf(mallory, address(0)), _weiFor(gasUsd), "mallory is owed exactly her gas, and nothing else"
         );
-        assertLt(
+        // Gas can cost more than the proving fee. The economic invariant is that the copier
+        // cannot profit after paying for submission, regardless of the absolute fee/gas ratio.
+        assertLe(
             vault.creditOf(mallory, address(0)),
-            vault.creditOf(alice, address(0)),
-            "copying is strictly worse than proving"
+            measuredGas * 4 / 5 * block.basefee,
+            "the copier's reimbursement must not exceed refund-adjusted submission cost"
         );
+        assertEq(vault.creditOf(alice, address(0)), _weiFor(vault.feePerRootUsd(PROGRAM, 1)));
     }
 
     function _weiFor(uint256 usdAmount) internal view returns (uint256) {
@@ -839,6 +936,8 @@ contract ProvingVaultTest is Test {
         // The community deploys a replacement and updates the directory.
         MockAccumulator acc2 = new MockAccumulator();
         MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational, "");
+        vm.prank(constitutional);
+        next.enableStateProvenance();
         registry.update(
             INSTANCE,
             IInstanceRegistry.Instance({
@@ -875,6 +974,8 @@ contract ProvingVaultTest is Test {
 
         MockAccumulator acc2 = new MockAccumulator();
         MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational, "");
+        vm.prank(constitutional);
+        next.enableStateProvenance();
         registry.update(
             INSTANCE,
             IInstanceRegistry.Instance({

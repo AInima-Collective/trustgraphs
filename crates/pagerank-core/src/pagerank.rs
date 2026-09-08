@@ -26,6 +26,11 @@ pub struct RankConfig<K> {
     pub seeds: BTreeSet<K>,
 }
 
+/// An influence-carrying edge participates in both reachability and rank transitions.
+fn eligible_edge<K: Eq>(source: &K, target: &K, weight: U256) -> bool {
+    source != target && !weight.is_zero()
+}
+
 fn is_seed<K: Ord>(seeds: &BTreeSet<K>, a: &K) -> bool {
     seeds.contains(a)
 }
@@ -101,7 +106,10 @@ fn bfs_decays<K: Ord + Copy>(
     while let Some(current) = queue.pop_front() {
         if let Some(edges) = outgoing.get(&current) {
             let mut child_decay = None;
-            for neighbor in edges.keys() {
+            for (neighbor, weight) in edges {
+                if !eligible_edge(&current, neighbor, *weight) {
+                    continue;
+                }
                 if !decays.contains_key(neighbor) {
                     let value = *child_decay
                         .get_or_insert_with(|| fp_mul(decays[&current], base_fp, scale));
@@ -218,7 +226,7 @@ pub fn calculate_generic_detailed<K: Ord + Copy>(
         let Some(edges) = outgoing.get(attester) else { continue };
         let mut total_base = U256::ZERO;
         for (target, weight) in edges {
-            if target == attester || weight.is_zero() {
+            if !eligible_edge(attester, target, *weight) {
                 continue;
             }
             total_base = total_base
@@ -231,7 +239,7 @@ pub fn calculate_generic_detailed<K: Ord + Copy>(
 
         let mut row = Vec::new();
         for (target, base_weight) in edges {
-            if target == attester || base_weight.is_zero() {
+            if !eligible_edge(attester, target, *base_weight) {
                 continue;
             }
             if decays.as_ref().is_some_and(|reachable| !reachable.contains_key(target)) {

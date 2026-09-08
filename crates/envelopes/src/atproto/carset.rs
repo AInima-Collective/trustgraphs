@@ -54,11 +54,9 @@ fn checked_tail(buf: &[u8], start: usize) -> Result<&[u8], String> {
 }
 
 impl Car {
-    /// Parse a CARv1 buffer. Verifies every dag-cbor / raw block's CID against
-    /// SHA-256 of its bytes (fail-closed content addressing). Every length read from the
-    /// buffer is bounds-checked BEFORE slicing (M-12): a malformed or truncated CAR returns
-    /// `Err` — which the program crate converts into a per-node rule-Φ skip — never a panic
-    /// that would abort the whole epoch.
+    /// Parse a CARv1 buffer. Accepts only dag-cbor / raw blocks whose CID is the SHA-256
+    /// of their bytes. Every length read from the buffer is bounds-checked BEFORE slicing
+    /// (M-12): malformed, truncated or unsupported content returns `Err`, never a panic.
     pub fn parse(buf: &[u8]) -> Result<Car, String> {
         let mut off = 0usize;
 
@@ -108,14 +106,15 @@ impl Car {
             let cid = Cid::read_bytes(block).map_err(|e| format!("bad CID in CAR: {e}"))?;
             let data = checked_tail(block, cid_len)?;
 
-            // content-address check for the codecs we handle
-            if mhcode == SHA2_256 {
-                let digest = Sha256::digest(data);
-                if digest.as_slice() != stored {
-                    return Err(format!("CID/content mismatch for {cid}"));
-                }
+            // Every block the verifier may follow must be content-addressed. Unsupported
+            // hashes cannot be treated as opaque CIDs: that would leave their bytes unbound.
+            if mhcode != SHA2_256 || mhsize != 32 || !matches!(codec, DAG_CBOR | RAW) {
+                return Err(format!("unsupported CAR CID profile for {cid}"));
             }
-            let _ = codec;
+            let digest = Sha256::digest(data);
+            if digest.as_slice() != stored {
+                return Err(format!("CID/content mismatch for {cid}"));
+            }
             blocks.insert(cid, data.to_vec());
             num_blocks += 1;
         }
@@ -177,6 +176,34 @@ mod tests {
         let car = Car::parse(&tiny_car()).unwrap();
         assert_eq!(car.num_blocks, 1);
         assert_eq!(car.roots.len(), 1);
+    }
+
+    #[test]
+    fn unsupported_hash_or_codec_cannot_leave_block_bytes_unbound() {
+        for (codec, hash) in [(DAG_CBOR, 0x13), (0x70, SHA2_256), (DAG_CBOR, 0)] {
+            let data = b"unchecked block bytes";
+            let multihash = ipld_core::cid::multihash::Multihash::wrap(hash, &[7u8; 32]).unwrap();
+            let cid = Cid::new_v1(codec, multihash);
+            let header = serde_ipld_dagcbor::to_vec(&ipld_core::ipld::Ipld::Map(
+                [
+                    ("version".into(), ipld_core::ipld::Ipld::Integer(1)),
+                    (
+                        "roots".into(),
+                        ipld_core::ipld::Ipld::List(vec![ipld_core::ipld::Ipld::Link(cid)]),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            ))
+            .unwrap();
+            let block = [cid.to_bytes(), data.to_vec()].concat();
+            assert!(header.len() < 128 && block.len() < 128);
+            let mut bytes = vec![header.len() as u8];
+            bytes.extend_from_slice(&header);
+            bytes.push(block.len() as u8);
+            bytes.extend_from_slice(&block);
+            assert!(Car::parse(&bytes).is_err(), "unsupported CID profile accepted");
+        }
     }
 
     /// M-12 regression: EVERY truncation point of a valid CAR must return Err, never panic.

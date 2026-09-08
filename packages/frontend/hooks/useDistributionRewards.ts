@@ -2,17 +2,22 @@
 
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { type Hex, zeroAddress } from 'viem'
+import { type Hex, parseAbi, zeroAddress } from 'viem'
+import { useReadContracts } from 'wagmi'
 
 import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import { contributionsQueries } from '@/lib/contributions-api'
 import { financialProofReady, financialReadState } from '@/lib/financial-state'
 import { usePonderQuery } from '@/lib/use-ponder-query'
+import { getTargetChainId } from '@/lib/wagmi'
 import { merkleFundDistribution } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 type Distribution = typeof merkleFundDistribution.$inferSelect
 type MerkleEntry = { value: string; proof: string[] }
+const deadlineAbi = parseAbi([
+  'function effectiveClaimDeadline(uint256 distributionIndex) view returns (uint256)',
+])
 
 export type ClaimSource = {
   id: 'network' | 'contributions'
@@ -59,7 +64,39 @@ export const useDistributionRewards = ({
     enabled,
   })
 
-  const { data: distributions = [] } = distributionsQuery
+  const { data: indexedDistributions = [] } = distributionsQuery
+  const expiringDistributions = indexedDistributions.filter(
+    ({ claimDeadline }) => claimDeadline > 0n
+  )
+  // Pauses preserve the remaining claim window. The indexed funding event contains the original
+  // deadline, so read the contract's effective deadline before declaring a timed round closed.
+  const deadlinesQuery = useReadContracts({
+    allowFailure: false,
+    contracts: expiringDistributions.map(({ id }) => ({
+      address: distributor,
+      chainId: getTargetChainId(),
+      abi: deadlineAbi,
+      functionName: 'effectiveClaimDeadline' as const,
+      args: [id] as const,
+    })),
+    query: {
+      enabled: enabled && expiringDistributions.length > 0,
+      refetchInterval: 12_000,
+    },
+  })
+  const distributions = useMemo(() => {
+    const deadlines = new Map(
+      expiringDistributions.map(({ id }, index) => [
+        id,
+        deadlinesQuery.data?.[index],
+      ])
+    )
+    return indexedDistributions.map((distribution) => ({
+      ...distribution,
+      claimDeadline:
+        deadlines.get(distribution.id) ?? distribution.claimDeadline,
+    }))
+  }, [indexedDistributions, deadlinesQuery.data])
   const claimsQuery = usePonderQuery({
     queryFn: ponderQueryFns.getFundDistributionClaims({
       distributor,
@@ -78,6 +115,7 @@ export const useDistributionRewards = ({
   const requiredReads = financialReadState([
     distributionsQuery,
     distributorQuery,
+    ...(expiringDistributions.length > 0 ? [deadlinesQuery] : []),
     ...(account ? [claimsQuery] : []),
   ])
   const readState =
@@ -231,6 +269,7 @@ export const useDistributionRewards = ({
       void Promise.allSettled([
         distributionsQuery.refetch(),
         distributorQuery.refetch(),
+        ...(expiringDistributions.length > 0 ? [deadlinesQuery.refetch()] : []),
         ...(source?.id === 'contributions'
           ? [latestSnapshotQuery.refetch()]
           : []),

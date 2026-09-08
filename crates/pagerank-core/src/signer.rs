@@ -12,6 +12,9 @@ use crate::{
 use alloy_primitives::{keccak256, Address, B256, U256};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Matches the deployment and update bounds in `SignerSelectionPolicy.sol`.
+pub const MAX_SIGNERS: u32 = 64;
+
 /// `ceil(a / b)` for `b > 0`.
 #[inline]
 fn ceil_div(a: u64, b: u64) -> u64 {
@@ -29,7 +32,7 @@ fn ceil_div(a: u64, b: u64) -> u64 {
 ///      `n` is the actual number chosen (which may be < `top_n` if fewer accounts have a score).
 ///
 /// If no account has a positive score the set is empty and the threshold is 0; the on-chain module
-/// rejects such a proof (a Safe must keep >= 1 owner).
+/// rejects such a proof (an initialized signer policy needs at least two owners).
 pub fn select_signers(scores: &[(Address, U256)], sp: &SelectionParams) -> (Vec<Address>, U256) {
     let mut ranked: Vec<(Address, U256)> =
         scores.iter().filter(|(_, v)| !v.is_zero()).cloned().collect();
@@ -184,6 +187,27 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
     SignerComputeResult { journal, signers, target_threshold, activity_applied, rank: base.rank }
 }
 
+/// The proof-producing entry point. Native previews may preserve the current owners when
+/// activity is insufficient, but such a preview must never become a proof that consumes an
+/// on-chain checkpoint or initializes the singleton bootstrap policy.
+///
+/// A selection that is eligible but already equals the current owner set remains provable:
+/// eligibility, rather than an incidental owner-set difference, initializes the policy.
+pub fn compute_signers_for_proof(input: &SignerInput) -> SignerComputeResult {
+    let selection = &input.selection;
+    assert!(
+        (2..=MAX_SIGNERS).contains(&selection.top_n)
+            && (2..=selection.top_n).contains(&selection.min_threshold)
+            && (1..=10_000).contains(&selection.target_threshold_bps)
+            && selection.max_inactive_blocks > 0
+            && (2..=selection.top_n).contains(&selection.min_activity_witnesses),
+        "invalid signer selection policy"
+    );
+    let result = compute_signers(input);
+    assert!(result.activity_applied, "insufficient authenticated signer activity");
+    result
+}
+
 /// The signer journal digest the on-chain `SignerSyncZkModule` binds.
 pub fn signer_journal_digest(j: &SignerJournal) -> alloy_primitives::B256 {
     encode::signer_journal_digest(j)
@@ -235,6 +259,71 @@ mod tests {
             was_initialized,
             instance_domain: B256::ZERO,
         }
+    }
+
+    fn proof_input(
+        current_signers: Vec<Address>,
+        was_initialized: bool,
+        witnesses: u8,
+    ) -> SignerInput {
+        let activity = (1..=witnesses)
+            .map(|account| SignerActivity {
+                account: addr(account),
+                proposal_id: U256::from(1),
+                block_number: 1_000,
+            })
+            .collect();
+        let threshold = current_signers.len().min(2) as u64;
+        let mut input =
+            liveness_input(current_signers, threshold, was_initialized, activity, 1_000);
+        input.params.trusted_seeds = vec![addr(1)];
+        input.params.trust_share_fp = input.params.precision_scale;
+        input.params.trust_decay_fp =
+            input.params.precision_scale * U256::from(80) / U256::from(100);
+        let mut data = vec![0u8; 64];
+        data[32..].copy_from_slice(&U256::from(50).to_be_bytes::<32>());
+        input.edges = vec![crate::RawEdge {
+            kind: 0,
+            attester: addr(1),
+            recipient: addr(2),
+            uid: B256::from([1; 32]),
+            block_timestamp: 100,
+            data,
+        }];
+        input
+    }
+
+    #[test]
+    fn proof_rejects_ineligible_bootstrap_without_consuming_first_rotation() {
+        let input = proof_input(vec![addr(1)], false, 1);
+        let preview = compute_signers(&input);
+        assert!(!preview.activity_applied);
+        assert_eq!(preview.signers, vec![addr(1)]);
+        assert!(std::panic::catch_unwind(|| compute_signers_for_proof(&input)).is_err());
+
+        // A second fresh scored member can still initialize the singleton: no proof existed
+        // for the previous preview, so the on-chain was_initialized flag has not changed.
+        let ready = proof_input(vec![addr(1)], false, 2);
+        let result = compute_signers_for_proof(&ready);
+        assert!(result.activity_applied);
+        assert_eq!(result.signers, vec![addr(1), addr(2)]);
+        assert_eq!(result.target_threshold, U256::from(2));
+    }
+
+    #[test]
+    fn eligible_selection_equal_to_current_owners_is_still_provable() {
+        let input = proof_input(vec![addr(1), addr(2)], true, 2);
+        let result = compute_signers_for_proof(&input);
+        assert!(result.activity_applied);
+        assert_eq!(result.signers, input.current_signers);
+        assert_eq!(result.target_threshold, input.current_threshold);
+    }
+
+    #[test]
+    fn proof_rejects_selection_above_deployment_capacity() {
+        let mut input = proof_input(vec![addr(1)], false, 2);
+        input.selection.top_n = MAX_SIGNERS + 1;
+        assert!(std::panic::catch_unwind(|| compute_signers_for_proof(&input)).is_err());
     }
 
     #[test]

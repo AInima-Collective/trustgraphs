@@ -8,10 +8,11 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
 /// @title ParentAuthorityModule
 /// @notice A contestable parent-admin route into a child network's module-only Safe.
-/// @dev Parent authority is resolved dynamically from `InstanceRegistry` for every privileged
-///      action. With a zero delay it is an immediate admin; with a nonzero delay it is a public,
-///      child-cancellable guardian. The child's own governance can disable this Safe module.
+/// @dev The registry resolves authority only at installation. Thereafter only the child Safe can
+///      approve a replacement; registry operators cannot redirect an installed module. With a zero
+///      delay it is an immediate admin; otherwise actions have a public, child-cancellable window.
 contract ParentAuthorityModule {
+    uint256 public constant EXECUTION_WINDOW = 14 days;
     Safe public immutable safe;
     IInstanceRegistry public immutable INSTANCE_REGISTRY;
     bytes32 public immutable childInstanceId;
@@ -19,6 +20,8 @@ contract ParentAuthorityModule {
     uint48 public immutable executionDelay;
 
     uint256 public nextNonce;
+    address public parentAuthority;
+    uint256 public authorityGeneration;
     bool public renounced;
     mapping(bytes32 actionId => uint256 executableAt) public readyAt;
 
@@ -36,6 +39,10 @@ contract ParentAuthorityModule {
     error UnknownAction(bytes32 actionId);
     error ExecutionDelayNotElapsed(bytes32 actionId, uint256 executableAt);
     error SafeExecutionFailed(bytes32 actionId);
+    error OnlyChildSafe(address caller);
+    error ActionExpired(bytes32 actionId, uint256 expiresAt);
+
+    event ParentAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority, uint256 generation);
 
     event ParentActionScheduled(
         bytes32 indexed childInstanceId,
@@ -88,7 +95,7 @@ contract ParentAuthorityModule {
 
         address childAuthority = _authorityOf(childInstanceId_);
         if (childAuthority != safe_) revert ChildAuthorityMismatch(childInstanceId_, childAuthority, safe_);
-        _authorityOf(parentInstanceId_);
+        parentAuthority = _authorityOf(parentInstanceId_);
     }
 
     /// @notice Execute immediately through the child Safe. Available only when the delay is zero.
@@ -141,6 +148,9 @@ contract ParentAuthorityModule {
         uint256 executableAt = readyAt[actionId];
         if (executableAt == 0) revert UnknownAction(actionId);
         if (block.timestamp < executableAt) revert ExecutionDelayNotElapsed(actionId, executableAt);
+        if (block.timestamp > executableAt + EXECUTION_WINDOW) {
+            revert ActionExpired(actionId, executableAt + EXECUTION_WINDOW);
+        }
 
         delete readyAt[actionId];
         _execute(actionId, target, value, data, operation);
@@ -151,7 +161,7 @@ contract ParentAuthorityModule {
 
     /// @notice Cancel a queued action. The current parent or the child Safe may veto it.
     function cancel(bytes32 actionId) external {
-        address authority = _authorityOf(parentInstanceId);
+        address authority = parentAuthority;
         if (msg.sender != authority && msg.sender != address(safe)) {
             revert NotAuthorizedToCancel(msg.sender, authority, address(safe));
         }
@@ -168,9 +178,15 @@ contract ParentAuthorityModule {
         emit ParentPowerRenounced(childInstanceId, parentInstanceId, authority);
     }
 
-    /// @notice Resolve the parent instance's current authority.
-    function parentAuthority() external view returns (address) {
-        return _authorityOf(parentInstanceId);
+    /// @notice Child governance consents to an explicit replacement, invalidating all queued actions.
+    /// @dev Updating a registry record or transferring a params controller does not grant child power.
+    function setParentAuthority(address newAuthority) external {
+        if (msg.sender != address(safe)) revert OnlyChildSafe(msg.sender);
+        if (renounced) revert ParentAuthorityRenounced();
+        if (newAuthority == address(0)) revert ZeroAddress();
+        address previous = parentAuthority;
+        parentAuthority = newAuthority;
+        emit ParentAuthorityUpdated(previous, newAuthority, ++authorityGeneration);
     }
 
     function hashAction(uint256 nonce, address target, uint256 value, bytes calldata data, Enum.Operation operation)
@@ -178,11 +194,15 @@ contract ParentAuthorityModule {
         view
         returns (bytes32)
     {
-        return keccak256(abi.encode(block.chainid, address(this), nonce, target, value, keccak256(data), operation));
+        return keccak256(
+            abi.encode(
+                block.chainid, address(this), authorityGeneration, nonce, target, value, keccak256(data), operation
+            )
+        );
     }
 
     function _requireParentAuthority() internal view returns (address authority) {
-        authority = _authorityOf(parentInstanceId);
+        authority = parentAuthority;
         if (msg.sender != authority) revert OnlyParentAuthority(msg.sender, authority);
     }
 

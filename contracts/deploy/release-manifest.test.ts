@@ -29,13 +29,20 @@ test('mainnet manifests require an explicit reader opt-in and the exact chain bi
   const sepolia = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
   const mainnet = { ...sepolia, chain: 'mainnet', chainId: 1 }
   assert.throws(() => validateReleaseManifest(mainnet), /chain=sepolia/)
-  assert.equal(validateReleaseManifest(mainnet, { expectedChain: 'mainnet' }).chainId, 1)
+  assert.equal(
+    validateReleaseManifest(mainnet, { expectedChain: 'mainnet' }).chainId,
+    1
+  )
   assert.throws(
     () => validateReleaseManifest(sepolia, { expectedChain: 'mainnet' }),
     /chain=mainnet and chainId=1/
   )
   assert.throws(
-    () => validateReleaseManifest({ ...mainnet, chainId: 11155111 }, { expectedChain: 'mainnet' }),
+    () =>
+      validateReleaseManifest(
+        { ...mainnet, chainId: 11155111 },
+        { expectedChain: 'mainnet' }
+      ),
     /chain=mainnet and chainId=1/
   )
 })
@@ -321,6 +328,8 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
     guestManifest,
     JSON.stringify({
       tag: 'v0.0.0-test',
+      guest_build: 'docker',
+      builder_image: fs.readFileSync('zk/sp1-builder-image.txt', 'utf8').trim(),
       commit: 'aa'.repeat(20),
       programs: [
         {
@@ -446,6 +455,8 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
     guestManifest,
     JSON.stringify({
       tag: 'v0.0.0-test',
+      guest_build: 'docker',
+      builder_image: fs.readFileSync('zk/sp1-builder-image.txt', 'utf8').trim(),
       commit: 'aa'.repeat(20),
       programs: [
         { program: 'trust-graph', vkey: BYTES32, elf_sha256: '44'.repeat(32) },
@@ -513,6 +524,26 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
 
     Object.assign(process.env, base)
     assert.doesNotThrow(plan)
+
+    const released = JSON.parse(fs.readFileSync(guestManifest, 'utf8'))
+    const writeManifest = (value: unknown) =>
+      fs.writeFileSync(guestManifest, JSON.stringify(value))
+    writeManifest({ ...released, guest_build: 'local' })
+    assert.throws(plan, /pinned Docker image/)
+    writeManifest({
+      ...released,
+      programs: [...released.programs, released.programs[0]],
+    })
+    assert.throws(plan, /duplicate program/)
+    const withoutDigest = structuredClone(released)
+    delete withoutDigest.programs[0].elf_sha256
+    writeManifest(withoutDigest)
+    assert.throws(plan, /invalid vkey or ELF digest/)
+    const malformedKey = structuredClone(released)
+    malformedKey.programs[0].vkey = '0x1234'
+    writeManifest(malformedKey)
+    Object.assign(process.env, base, { SP1_PROGRAM_VKEY: '0x1234' })
+    assert.throws(plan, /invalid vkey or ELF digest/)
   } finally {
     process.env = previous
   }

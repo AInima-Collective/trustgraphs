@@ -48,7 +48,7 @@ const ZERO_BYTES32 =
  */
 function requireProdBytes32(name: string): string {
   const v = process.env[name]
-  if (!v || v === ZERO_BYTES32 || /^0x0{64}$/i.test(v)) {
+  if (!v || !/^0x[0-9a-f]{64}$/i.test(v) || /^0x0{64}$/i.test(v)) {
     const how = name === 'PARAMS_HASH' ? 'paramshash' : 'vkey'
     throw new Error(
       `${name} must be set to the real guest-computed value for a production deployment ` +
@@ -67,7 +67,7 @@ function requireProdBytes32(name: string): string {
  */
 function requireProgramVkey(name: string, program: string): string {
   const value = process.env[name]
-  if (!value || /^0x0{64}$/i.test(value)) {
+  if (!value || !/^0x[0-9a-f]{64}$/i.test(value) || /^0x0{64}$/i.test(value)) {
     throw new Error(
       `${name} must be set to the ${program} guest vkey (got ${value ?? 'unset'}). ` +
         `Compute it with: cargo run -p trustgraph-prover -- ${program} vkey, or use ` +
@@ -145,6 +145,8 @@ function requireReleaseVkeys(): void {
   let manifest: {
     commit?: string
     tag?: string
+    guest_build?: string
+    builder_image?: string
     programs?: { program?: string; vkey?: string; elf_sha256?: string }[]
   }
   try {
@@ -160,10 +162,38 @@ function requireReleaseVkeys(): void {
         `being deployed; a manifest from a different build proves nothing about these vkeys.`
     )
   }
+  const builderImage = fs
+    .readFileSync('zk/sp1-builder-image.txt', 'utf8')
+    .trim()
+  if (
+    manifest.guest_build !== 'docker' ||
+    manifest.builder_image !== builderImage
+  ) {
+    throw new Error(
+      `${file} must describe guests built with the pinned Docker image ${builderImage}`
+    )
+  }
 
   const released = new Map(
     (manifest.programs ?? []).map((entry) => [entry.program, entry])
   )
+  if (released.size !== manifest.programs?.length) {
+    throw new Error(`${file} contains duplicate program entries`)
+  }
+  for (const entry of released.values()) {
+    if (
+      !entry.vkey ||
+      !/^0x[0-9a-f]{64}$/i.test(entry.vkey) ||
+      /^0x0{64}$/i.test(entry.vkey) ||
+      !entry.elf_sha256 ||
+      !/^[0-9a-f]{64}$/i.test(entry.elf_sha256) ||
+      /^0{64}$/.test(entry.elf_sha256)
+    ) {
+      throw new Error(
+        `${file} has an invalid vkey or ELF digest for ${entry.program ?? '<unnamed>'}`
+      )
+    }
+  }
 
   // Every guest vkey this environment carries, whether or not this particular deploy path
   // consumes it. A weighted vkey that disagrees with the release is not harmless here: it is
@@ -200,10 +230,10 @@ function requireReleaseVkeys(): void {
 
   const trustGraph = released.get('trust-graph')
   const digest = requireReleaseDigest()
-  if (trustGraph?.elf_sha256 && hex(digest) !== hex(trustGraph.elf_sha256)) {
+  if (!trustGraph?.elf_sha256 || hex(digest) !== hex(trustGraph.elf_sha256)) {
     throw new Error(
       `SP1_PROGRAM_ELF_SHA256 pins ${digest}, but trust-graph in the ${commit} release is ` +
-        `0x${hex(trustGraph.elf_sha256)}. The digest and the vkey describe the same ELF, so ` +
+        `${trustGraph?.elf_sha256 ?? '<missing>'}. The digest and the vkey describe the same ELF, so ` +
         `disagreement here means one of the two was copied from a different build.`
     )
   }

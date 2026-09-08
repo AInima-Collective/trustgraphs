@@ -7,6 +7,7 @@ import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {OzMerkle} from "../merkle/OzMerkle.sol";
+import {SignerSelectionPolicy} from "./SignerSelectionPolicy.sol";
 
 interface ISignerSyncCheckpointSource {
     function checkpointParamsHash(uint256 checkpointId) external view returns (bytes32);
@@ -50,6 +51,12 @@ interface ISignerActivitySource {
 contract SignerSyncZkModule is Module {
     /// @notice Gnosis Safe OwnerManager linked-list sentinel.
     address internal constant SENTINEL = address(0x1);
+    uint32 public constant MAX_SIGNERS = SignerSelectionPolicy.MAX_SIGNERS;
+
+    /// @notice Maximum proving lag after the authenticated activity snapshot (~one day on L1).
+    /// @dev Selection is evaluated as of that immutable checkpoint. Subsequent votes do not
+    ///      invalidate work; a shorter inactivity policy also shortens this acceptance window.
+    uint64 public constant MAX_ACTIVITY_CHECKPOINT_AGE = 7_200;
 
     /*///////////////////////////////////////////////////////////////
                                 STATE
@@ -77,6 +84,10 @@ contract SignerSyncZkModule is Module {
     /// @notice The last checkpoint id whose proof was applied (monotonic).
     uint256 public lastAppliedCheckpoint;
 
+    /// @notice Activity history cannot move backwards across accepted score checkpoints.
+    /// @dev Equal ids are allowed: an unchanged activity snapshot may serve a later score round.
+    uint256 public lastAppliedActivityCheckpoint;
+
     /// @notice Whether any checkpoint has been applied (distinguishes "none" from "checkpoint 0").
     bool public hasAppliedCheckpoint;
 
@@ -92,6 +103,7 @@ contract SignerSyncZkModule is Module {
     error ZeroAddress();
     error StaleCheckpoint(uint256 submitted, uint256 lastApplied);
     error EmptySignerSet();
+    error InvalidSignerCount(uint256 count);
     error InvalidSigner(address signer);
     error SignersNotStrictlyAscending();
     error InvalidThreshold(uint256 threshold, uint256 ownerCount);
@@ -100,8 +112,9 @@ contract SignerSyncZkModule is Module {
     error UnpinnedCheckpoint(uint256 checkpointId);
     error SignerSyncPaused();
     error InvalidSelectionParams();
-    error ActivityCheckpointSuperseded();
+    error ActivityCheckpointRegression(uint256 submitted, uint256 lastApplied);
     error ActivityCheckpointStale(uint64 checkpointBlock, uint256 currentBlock);
+    error ActivityCheckpointInFuture(uint64 checkpointBlock, uint256 currentBlock);
     error AccumulatorRotationLocked(uint256 currentCheckpointCount, uint256 candidateCheckpointCount);
 
     event ZkVerifierUpdated(address indexed zkVerifier);
@@ -193,6 +206,7 @@ contract SignerSyncZkModule is Module {
         }
         accumulator = _accumulator;
         lastAppliedCheckpoint = 0;
+        lastAppliedActivityCheckpoint = 0;
         hasAppliedCheckpoint = false;
         emit AccumulatorUpdated(address(_accumulator));
     }
@@ -209,6 +223,7 @@ contract SignerSyncZkModule is Module {
 
     function setActivitySource(ISignerActivitySource activitySource_) external onlyOwner {
         if (address(activitySource_) == address(0)) revert ZeroAddress();
+        if (activitySource_ != activitySource) lastAppliedActivityCheckpoint = 0;
         activitySource = activitySource_;
         emit ActivitySourceUpdated(address(activitySource_));
     }
@@ -227,7 +242,7 @@ contract SignerSyncZkModule is Module {
     ///         rotate the Safe's owner set + threshold to match. Permissionless.
     /// @param checkpointId The checkpoint whose inputs the proof consumes.
     /// @param signers The proven owner set, strictly ascending by address (canonical, unique).
-    /// @param targetThreshold The proven Safe threshold (1 <= targetThreshold <= signers.length).
+    /// @param targetThreshold The proven Safe threshold (2 <= targetThreshold <= signers.length).
     /// @param proof The verifier-specific proof blob.
     function submitSignerProof(
         uint256 checkpointId,
@@ -249,10 +264,15 @@ contract SignerSyncZkModule is Module {
 
         ISignerActivitySource.ActivityCheckpoint memory activity =
             activitySource.getActivityCheckpoint(activityCheckpointId);
-        if (activity.acc != activitySource.activityAccumulator() || activity.count != activitySource.activityCount()) {
-            revert ActivityCheckpointSuperseded();
+        if (activityCheckpointId < lastAppliedActivityCheckpoint) {
+            revert ActivityCheckpointRegression(activityCheckpointId, lastAppliedActivityCheckpoint);
         }
-        if (block.number > uint256(activity.blockNumber) + maxInactiveBlocks) {
+        if (activity.blockNumber > block.number) {
+            revert ActivityCheckpointInFuture(activity.blockNumber, block.number);
+        }
+        uint256 maximumAge =
+            maxInactiveBlocks < MAX_ACTIVITY_CHECKPOINT_AGE ? maxInactiveBlocks : MAX_ACTIVITY_CHECKPOINT_AGE;
+        if (block.number > uint256(activity.blockNumber) + maximumAge) {
             revert ActivityCheckpointStale(activity.blockNumber, block.number);
         }
 
@@ -262,7 +282,7 @@ contract SignerSyncZkModule is Module {
 
         // Validate the canonical form and recompute the set commitment the guest proved.
         bytes32 signerSetRoot = _validateAndRoot(signers);
-        if (targetThreshold < 1 || targetThreshold > signers.length) {
+        if (targetThreshold < 2 || targetThreshold > signers.length) {
             revert InvalidThreshold(targetThreshold, signers.length);
         }
 
@@ -291,6 +311,7 @@ contract SignerSyncZkModule is Module {
         zkVerifier.verify(proof, journalDigest);
 
         lastAppliedCheckpoint = checkpointId;
+        lastAppliedActivityCheckpoint = activityCheckpointId;
         hasAppliedCheckpoint = true;
 
         _syncOwners(signers, targetThreshold);
@@ -372,6 +393,7 @@ contract SignerSyncZkModule is Module {
     function _validateAndRoot(address[] calldata signers) internal pure returns (bytes32) {
         uint256 n = signers.length;
         if (n == 0) revert EmptySignerSet();
+        if (n < 2 || n > MAX_SIGNERS) revert InvalidSignerCount(n);
         bytes32[] memory leaves = new bytes32[](n);
         address prev = address(0);
         for (uint256 i = 0; i < n; i++) {
@@ -399,11 +421,11 @@ contract SignerSyncZkModule is Module {
         uint64 maxInactiveBlocks_,
         uint32 minActivityWitnesses
     ) internal {
-        if (
-            topN < 2 || minThreshold < 2 || minThreshold > topN || targetThresholdBps == 0
-                || targetThresholdBps > 10_000 || maxInactiveBlocks_ == 0 || minActivityWitnesses < 2
-                || minActivityWitnesses > topN
-        ) revert InvalidSelectionParams();
+        if (!SignerSelectionPolicy.isValid(
+                topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses
+            )) {
+            revert InvalidSelectionParams();
+        }
         selectionParamsHash =
             keccak256(abi.encode(topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses));
         maxInactiveBlocks = maxInactiveBlocks_;

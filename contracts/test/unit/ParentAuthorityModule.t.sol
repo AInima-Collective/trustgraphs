@@ -163,10 +163,20 @@ contract ParentAuthorityModuleTest is Test {
         assertEq(module.readyAt(actionId), 0);
     }
 
-    function test_AuthorityRotationTakesEffectImmediately() public {
+    function test_AuthorityRotationRequiresChildConsent() public {
         ParentAuthorityModule module = _deploy(0);
         address nextAuthority = address(0xA4E18);
         parentController.rotate(nextAuthority);
+        assertEq(module.parentAuthority(), parentAuthority, "controller owner cannot redirect installed authority");
+        ParentModuleController replacementController = new ParentModuleController(outsider);
+        vm.prank(admin);
+        instances.setParamsAuthority(PARENT, address(replacementController));
+        assertEq(module.parentAuthority(), parentAuthority, "registry operator cannot redirect installed authority");
+        vm.expectRevert(abi.encodeWithSelector(ParentAuthorityModule.OnlyChildSafe.selector, nextAuthority));
+        vm.prank(nextAuthority);
+        module.setParentAuthority(nextAuthority);
+        vm.prank(address(safe));
+        module.setParentAuthority(nextAuthority);
         assertEq(module.parentAuthority(), nextAuthority);
 
         vm.expectRevert(
@@ -178,6 +188,40 @@ contract ParentAuthorityModuleTest is Test {
         vm.prank(nextAuthority);
         module.execute(address(target), 0, _setNumberCall(2), Enum.Operation.Call);
         assertEq(target.number(), 2);
+    }
+
+    function test_RotationInvalidatesQueuedActionsEvenAfterRestoringAuthority() public {
+        ParentAuthorityModule module = _deploy(1 days);
+        bytes memory data = _setNumberCall(5);
+        vm.prank(parentAuthority);
+        module.schedule(address(target), 0, data, Enum.Operation.Call);
+        vm.prank(address(safe));
+        module.setParentAuthority(outsider);
+        vm.prank(address(safe));
+        module.setParentAuthority(parentAuthority);
+        vm.warp(block.timestamp + 1 days);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ParentAuthorityModule.UnknownAction.selector,
+                module.hashAction(0, address(target), 0, data, Enum.Operation.Call)
+            )
+        );
+        module.executeScheduled(0, address(target), 0, data, Enum.Operation.Call);
+        assertEq(target.number(), 0);
+    }
+
+    function test_QueuedActionsExpireAfterExecutionWindow() public {
+        ParentAuthorityModule module = _deploy(1 days);
+        bytes memory data = _setNumberCall(5);
+        vm.prank(parentAuthority);
+        bytes32 actionId = module.schedule(address(target), 0, data, Enum.Operation.Call);
+        uint256 expiry = module.readyAt(actionId) + module.EXECUTION_WINDOW();
+        vm.warp(expiry + 1);
+        vm.expectRevert(abi.encodeWithSelector(ParentAuthorityModule.ActionExpired.selector, actionId, expiry));
+        module.executeScheduled(0, address(target), 0, data, Enum.Operation.Call);
+        vm.prank(address(safe));
+        module.cancel(actionId);
+        assertEq(module.readyAt(actionId), 0);
     }
 
     function test_RenouncePermanentlyMakesModuleInertIncludingQueuedActions() public {

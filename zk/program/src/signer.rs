@@ -9,14 +9,16 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
-use pagerank_core::{encode::signer_journal_encoded, signer::compute_signers, SignerInput};
+use pagerank_core::{
+    encode::signer_journal_encoded, signer::compute_signers_for_proof, SignerInput,
+};
 
 pub fn main() {
     // Read the folded edges + governance params + selection params (private witness).
     let input: SignerInput = sp1_zkvm::io::read();
 
     // Canonical, deterministic, float-free selection.
-    let result = compute_signers(&input);
+    let result = compute_signers_for_proof(&input);
 
     // Commit the signer journal tuple as public values (preimage of the signer journal digest).
     let public_values = signer_journal_encoded(&result.journal);

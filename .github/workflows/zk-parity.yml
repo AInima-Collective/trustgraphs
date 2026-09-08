@@ -1,6 +1,12 @@
 name: ZK Parity
 
 on:
+  workflow_call:
+    inputs:
+      guest_artifact_ready:
+        type: boolean
+        default: false
+
   pull_request:
     paths:
       - 'packages/**'
@@ -19,6 +25,7 @@ on:
 
 jobs:
   guest-elfs:
+    if: ${{ !inputs.guest_artifact_ready }}
     name: Build pinned SP1 guest ELFs
     runs-on: ubuntu-latest
     steps:
@@ -66,6 +73,7 @@ jobs:
   parity:
     name: Parity (${{ matrix.program }})
     needs: guest-elfs
+    if: ${{ always() && !cancelled() && (needs.guest-elfs.result == 'success' || (inputs.guest_artifact_ready && needs.guest-elfs.result == 'skipped')) }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -90,7 +98,7 @@ jobs:
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
-          version: "27.3"
+          version: '27.3'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: Swatinem/rust-cache@v2
@@ -114,7 +122,7 @@ jobs:
         uses: go-task/setup-task@v1
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Download pinned guest ELFs
         uses: actions/download-artifact@v4
@@ -130,6 +138,7 @@ jobs:
   host-lint:
     name: Host lint + tests (prover, operator)
     needs: guest-elfs
+    if: ${{ always() && !cancelled() && (needs.guest-elfs.result == 'success' || (inputs.guest_artifact_ready && needs.guest-elfs.result == 'skipped')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -143,7 +152,7 @@ jobs:
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
-          version: "27.3"
+          version: '27.3'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: Swatinem/rust-cache@v2
@@ -165,14 +174,14 @@ jobs:
       # clippy/fmt/test jobs never compile them, so they get their own pass here,
       # against the same pinned guest ELFs the parity jobs use.
       - name: clippy (prover)
-        run: cargo clippy --manifest-path zk/prover/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --locked --manifest-path zk/prover/Cargo.toml --all-targets -- -D warnings
         env:
-          SP1_SKIP_PROGRAM_BUILD: "true"
+          SP1_SKIP_PROGRAM_BUILD: 'true'
 
       - name: clippy (operator)
-        run: cargo clippy --manifest-path zk/operator/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --locked --manifest-path zk/operator/Cargo.toml --all-targets -- -D warnings
         env:
-          SP1_SKIP_PROGRAM_BUILD: "true"
+          SP1_SKIP_PROGRAM_BUILD: 'true'
 
       - name: fmt --check (prover + operator)
         run: |
@@ -180,6 +189,6 @@ jobs:
           cargo fmt --manifest-path zk/operator/Cargo.toml --all --check
 
       - name: cargo test (operator)
-        run: cargo test --manifest-path zk/operator/Cargo.toml
+        run: cargo test --locked --manifest-path zk/operator/Cargo.toml
         env:
-          SP1_SKIP_PROGRAM_BUILD: "true"
+          SP1_SKIP_PROGRAM_BUILD: 'true'

@@ -64,4 +64,7 @@ interface ISubnetworkRegistry {
 
     /// @notice The nominated parent awaiting acceptance, or zero when no claim is pending.
     function pendingParentOf(bytes32 childInstanceId) external view returns (bytes32);
+
+    /// @notice Longest accepted descendant path in edges; never greater than the maximum depth.
+    function subtreeHeight(bytes32 instanceId) external view returns (uint8);
 }

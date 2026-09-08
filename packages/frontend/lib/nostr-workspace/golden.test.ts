@@ -9,6 +9,7 @@ import {
   type AuthenticatedEvent,
   type NostrWorkspaceParams,
   journalDigest,
+  nostrNodeId,
   paramsEncoded,
   paramsHash,
   recompute,
@@ -86,7 +87,7 @@ assert.equal(
   String(golden.paramsHash).toLowerCase()
 )
 
-const result = recompute({
+const input = {
   events: golden.recompute.events as AuthenticatedEvent[],
   rosterPubkeys: golden.metadata.rosterPubkeys as Hex[],
   bindings: golden.metadata.bindings as Array<{ nodeId: Hex; address: Hex }>,
@@ -102,7 +103,8 @@ const result = recompute({
     recipient: golden.journal.recipient as Hex,
     instanceDomain: golden.journal.instanceDomain as Hex,
   },
-})
+}
+const result = recompute(input)
 
 const actualEdges = result.semantics.edges.map((edge) => ({
   source: edge.source,
@@ -131,5 +133,21 @@ assert.equal(result.journal.skippedDigest, golden.journal.skippedDigest)
 assert.equal(result.blob, golden.cid.blob)
 assert.equal(result.cid, golden.cid.cid)
 assert.equal(journalDigest(result.journal), golden.journal.digest)
+
+// A governance seed outside the current roster must retain the seed-only result rather
+// than switching to uniform unseeded scoring. This mirrors the Rust fixture regression.
+const absentSeed: Hex =
+  '0x62c0a046dacce86ddd0343c6d3c7c79c2208ba0d9c9cf24a6d046d21d21f90f7'
+assert(!input.rosterPubkeys.includes(absentSeed))
+const absent = recompute({
+  ...input,
+  params: { ...params, trustedSeedPubkeys: [absentSeed] },
+})
+assert.deepEqual(absent.scores, [[nostrNodeId(absentSeed), params.totalPool]])
+assert.notEqual(
+  absent.journal.outputRoot,
+  recompute({ ...input, params: { ...params, trustedSeedPubkeys: [] } }).journal
+    .outputRoot
+)
 
 console.log('All nostr-workspace golden vectors reproduced. PASS')

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
+import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
@@ -22,6 +23,42 @@ contract MockWorkAnchorRegistry is IAnchorRegistry {
         anchorAcc = acc_;
         anchorCount = count_;
         workCount = work_;
+    }
+}
+
+contract ProvenanceObservingHook is IMerkleSnapshotHook {
+    bool public complete;
+    bool public triggerReentrancyBlocked;
+    bool public submitReentrancyBlocked;
+
+    function onMerkleUpdate(IMerkleSnapshot.MerkleState memory state) external {
+        MerkleSnapshot snapshot = MerkleSnapshot(msg.sender);
+        uint256 id = snapshot.lastAppliedCheckpoint();
+        (IMerkleSnapshot.MerkleState memory accepted, IMerkleSnapshotProvenance.StateProvenance memory provenance) =
+            snapshot.getAcceptedCheckpoint(id);
+        complete = accepted.root == state.root && provenance.checkpointId == id
+            && provenance.paramsHash == snapshot.checkpointParamsHash(id) && provenance.verifier != address(0)
+            && provenance.acceptedAtBlock == block.number;
+        bytes4 expected = bytes4(keccak256("ReentrancyGuardReentrantCall()"));
+        (bool ok, bytes memory reason) = msg.sender.call(abi.encodeCall(MerkleSnapshot.trigger, ()));
+        triggerReentrancyBlocked = !ok && bytes4(reason) == expected;
+        (ok, reason) = msg.sender
+            .call(
+                abi.encodeCall(
+                    MerkleSnapshot.submitProof,
+                    (
+                        id + 1,
+                        state.root,
+                        state.ipfsHash,
+                        state.ipfsHashCid,
+                        state.totalValue,
+                        bytes32(0),
+                        address(0),
+                        bytes("")
+                    )
+                )
+            );
+        submitReentrancyBlocked = !ok && bytes4(reason) == expected;
     }
 }
 
@@ -639,6 +676,52 @@ contract MerkleSnapshotTest is Test {
         accer.setState(bytes32(uint256(2)), 2);
         ms.trigger();
         assertEq(accer.checkpointCount(), 2);
+    }
+
+    function test_ChangedParametersPermitCheckpointOnQuietInputs() public {
+        uint256 first = _mint(bytes32(uint256(1)), 1, 100);
+        _submit(first);
+        bytes32 nextParams = keccak256("changed parameters");
+        vm.prank(operational);
+        ms.setParamsHash(nextParams);
+        vm.roll(200);
+        uint256 second = ms.trigger();
+        assertEq(ms.checkpointParamsHash(first), paramsHash);
+        assertEq(ms.checkpointParamsHash(second), nextParams);
+        assertEq(accer.getCheckpoint(first).acc, accer.getCheckpoint(second).acc);
+        _submit(second);
+        vm.expectRevert(IAttestationAccumulator.NoNewInputs.selector);
+        ms.trigger();
+    }
+
+    function test_VerifierReplacementPermitsQuietCheckpointButDoesNotPinAcceptance() public {
+        vm.prank(constitutional);
+        ms.enableStateProvenance();
+        _submit(_mint(bytes32(uint256(1)), 1, 100));
+        MockZkVerifier next = new MockZkVerifier();
+        vm.prank(constitutional);
+        ms.setZkVerifier(next);
+        vm.roll(200);
+        uint256 second = ms.trigger();
+        assertEq(ms.checkpointVerifier(second), address(next));
+        // Emergency replacement still applies to an already-frozen checkpoint.
+        vm.prank(constitutional);
+        ms.setZkVerifier(verifier);
+        _submit(second);
+        (, IMerkleSnapshotProvenance.StateProvenance memory provenance) = ms.getAcceptedCheckpoint(second);
+        assertEq(provenance.verifier, address(verifier));
+    }
+
+    function test_HooksObserveCompleteProvenanceAndCannotReenterLifecycle() public {
+        ProvenanceObservingHook hook = new ProvenanceObservingHook();
+        vm.startPrank(constitutional);
+        ms.enableStateProvenance();
+        ms.addHook(hook);
+        vm.stopPrank();
+        _submit(_mint(bytes32(uint256(1)), 1, 100));
+        assertTrue(hook.complete());
+        assertTrue(hook.triggerReentrancyBlocked());
+        assertTrue(hook.submitReentrancyBlocked());
     }
 
     /// Lane 2 moving alone is enough — which is the case the mirror's missing guard exists for.

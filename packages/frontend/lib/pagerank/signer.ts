@@ -24,6 +24,8 @@ import { ZERO_HASH, wordAddr, wordU256, wordU64 } from './words'
 /** `ceil(a / b)` for `b > 0`. */
 const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b
 
+export const MAX_SIGNERS = 64
+
 /** Numeric address comparison (compare as bigints of the 20-byte value), matching Rust `Address` ordering. */
 const cmpAddr = (a: Hex, b: Hex): number => {
   const av = BigInt(a)
@@ -204,6 +206,33 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     instanceDomain: input.instanceDomain ?? (`0x${'00'.repeat(32)}` as Hex),
   }
   return { journal, signers, targetThreshold, activityApplied }
+}
+
+/** Mirrors the guest entry point; an ineligible native preview is never a valid proof. */
+export const computeSignersForProof = (
+  input: SignerInput
+): SignerComputeResult => {
+  const selection = input.selection
+  if (
+    !Number.isInteger(selection.topN) ||
+    selection.topN < 2 ||
+    selection.topN > MAX_SIGNERS ||
+    !Number.isInteger(selection.minThreshold) ||
+    selection.minThreshold < 2 ||
+    selection.minThreshold > selection.topN ||
+    !Number.isInteger(selection.targetThresholdBps) ||
+    selection.targetThresholdBps < 1 ||
+    selection.targetThresholdBps > 10_000 ||
+    selection.maxInactiveBlocks <= 0n ||
+    !Number.isInteger(selection.minActivityWitnesses) ||
+    selection.minActivityWitnesses < 2 ||
+    selection.minActivityWitnesses > selection.topN
+  )
+    throw new Error('invalid signer selection policy')
+  const result = computeSigners(input)
+  if (!result.activityApplied)
+    throw new Error('insufficient authenticated signer activity')
+  return result
 }
 
 /** The signer journal digest the on-chain `SignerSyncZkModule` binds. Re-exported for convenience. */

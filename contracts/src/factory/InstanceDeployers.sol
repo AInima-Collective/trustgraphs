@@ -15,6 +15,7 @@ import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
 import {ParentAuthorityModule} from "src/zodiac/ParentAuthorityModule.sol";
+import {SignerSelectionPolicy} from "src/zodiac/SignerSelectionPolicy.sol";
 import {
     SignerSyncZkModule,
     ISignerSyncCheckpointSource,
@@ -165,7 +166,7 @@ contract MerkleGovModuleDeployer {
 /// @notice Keeps the signer guest module's creation code out of the governed factory runtime.
 /// @dev Every authority and dependency is explicit; this permissionless helper retains nothing.
 contract SignerSyncModuleDeployer {
-    uint32 public constant MAX_SIGNERS = 64;
+    uint32 public constant MAX_SIGNERS = SignerSelectionPolicy.MAX_SIGNERS;
 
     error InvalidSignerVerifier();
     error SignerProgramVKeyMismatch(bytes32 supplied, bytes32 verifierVKey);
@@ -207,11 +208,11 @@ contract SignerSyncModuleDeployer {
         if (address(verifier) == address(0) || programVKey == bytes32(0)) {
             revert InvalidSignerVerifier();
         }
-        if (
-            topN < 2 || topN > MAX_SIGNERS || minThreshold < 2 || minThreshold > topN || targetThresholdBps == 0
-                || targetThresholdBps > 10_000 || maxInactiveBlocks == 0 || minActivityWitnesses < 2
-                || minActivityWitnesses > topN
-        ) revert InvalidSignerSelection(topN, minThreshold, targetThresholdBps);
+        if (!SignerSelectionPolicy.isValid(
+                topN, minThreshold, targetThresholdBps, maxInactiveBlocks, minActivityWitnesses
+            )) {
+            revert InvalidSignerSelection(topN, minThreshold, targetThresholdBps);
+        }
 
         // Signer-sync's current guest authenticates lane 1 only. Keep it fail-closed for any
         // score snapshot that advertises a live lane-2 registry. The staticcall is a foreign-type

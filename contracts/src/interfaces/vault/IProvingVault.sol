@@ -37,6 +37,8 @@ pragma solidity ^0.8.22;
 /// are superseded and are NOT implemented here: §4.3's commit-reveal (replaced by
 /// recipient-in-journal) and §4.2's free-floor-for-all (replaced by curated subsidy).
 interface IProvingVault {
+    error SnapshotProvenanceRequired(address snapshot);
+
     /*///////////////////////////////////////////////////////////////
                                 TYPES
     //////////////////////////////////////////////////////////////*/

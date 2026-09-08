@@ -76,13 +76,16 @@ where:
 - `distance_decay(j)` is the configured trust-decay factor raised to the shortest directed
   distance from a starting account to `j`.
 
-Self-vouches and zero-weight edges do not carry influence. A sender outside the reachable set has
-zero distance factor and contributes nothing.
+Self-vouches and zero-weight edges do not carry influence or establish reachability. Both the
+shortest-path search and score transitions use positive, non-self edges. A sender outside the
+reachable set has zero distance factor and contributes nothing.
 
 The program stops when the largest score change is below the configured tolerance or when it
 reaches the maximum iteration count. It then normalizes the reachable result to the precision
-scale and converts it into the configured whole-number point pool. Deterministic account ordering
-assigns any rounding remainder.
+scale and converts it into the configured whole-number point pool using Hamilton allocation.
+Each positive score receives the floor of its full-precision share of the pool. Remaining units
+go to the largest fractional remainders, with ties broken by ascending account ID. Zero scores
+receive nothing. This preserves the entire pool without first rounding scores to a coarser scale.
 
 ## Determinism
 

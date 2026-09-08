@@ -14,7 +14,7 @@
 //!
 //! **Carve-out (§6.6).** β = `evaluator_carveout_bps`/10000 of the pool goes to participating
 //! raters pro-rata rep; contributors share 1 − β pro-rata P. Each side is normalized over its
-//! own mass, so the split is exact (up to `distribute_points_generic` quantization). If one
+//! own mass, so the split is exact up to integer Hamilton apportionment. If one
 //! side has zero mass the other absorbs the pool (deterministic; e.g. no eligible valuations +
 //! no participating raters ⇒ nobody is paid).
 
@@ -169,7 +169,7 @@ pub fn eligibility(state: &LiveState, rep: &BTreeMap<Address, U256>, p: &Params)
     out
 }
 
-/// Stage-2 result before quantization, all fixed point (scale S).
+/// Stage-2 result before integer allocation, all fixed point (scale S).
 #[derive(Clone, Debug, Default)]
 pub struct Stage2 {
     /// S(c): rep-weighted budgeted score per claim.
@@ -287,7 +287,7 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let weights: Vec<(Address, U256)> =
         st2.combined_weights.into_iter().filter(|(_, v)| !v.is_zero()).collect();
 
-    // 6. Quantize to the integer pool allocation; sort ascending by address for the
+    // 6. Hamilton allocation of the integer pool; sort ascending by address for the
     //    blob + tree determinism.
     let (mut assigned, total_value) = distribute::distribute_points_generic(
         &weights,

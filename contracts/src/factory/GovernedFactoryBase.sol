@@ -3,7 +3,6 @@ pragma solidity ^0.8.22;
 
 import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
 import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
-import {SafeProxy} from "@safe-global/safe-smart-account/proxies/SafeProxy.sol";
 import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {
@@ -134,6 +133,8 @@ abstract contract GovernedFactoryBase {
     error InitialCapBelowFee(uint96 supplied, uint256 feeUsd);
     error GovernanceDefaultsMismatch();
     error InvalidSignerSyncVerifier();
+    error UnsupportedSignerSyncProgram(bytes32 program);
+    error SafeProxyReferenceDeploymentFailed();
     error SignerSyncProgramVKeyMismatch(bytes32 expected, bytes32 actual);
     error BootstrapSafeUnavailable(uint256 baseNonce);
     error SubnetworkRegistryMismatch(address expected, address actual);
@@ -207,9 +208,19 @@ abstract contract GovernedFactoryBase {
         }
         SIGNER_SYNC_VERIFIER = signerSyncVerifier_;
         SIGNER_SYNC_PROGRAM_VKEY = signerSyncProgramVKey_;
-        SAFE_PROXY_DEPLOYMENT_CODE_HASH =
-            keccak256(abi.encodePacked(safeFactory_.proxyCreationCode(), uint256(uint160(safeSingleton_))));
-        SAFE_PROXY_RUNTIME_CODE_HASH = keccak256(type(SafeProxy).runtimeCode);
+        bytes memory proxyDeploymentCode =
+            abi.encodePacked(safeFactory_.proxyCreationCode(), uint256(uint160(safeSingleton_)));
+        SAFE_PROXY_DEPLOYMENT_CODE_HASH = keccak256(proxyDeploymentCode);
+        // Runtime depends on the deployed factory's Safe version/compiler, not ours. Construct
+        // one inert reference from the exact advertised initcode. It receives no assets or roles
+        // and is never used by the wrapper; its immutable proxy runtime is the only retained fact.
+        // This works for both Safe 1.3 (proxyRuntimeCode exists) and 1.5 (that getter was removed).
+        address referenceProxy;
+        assembly ("memory-safe") {
+            referenceProxy := create(0, add(proxyDeploymentCode, 0x20), mload(proxyDeploymentCode))
+        }
+        if (referenceProxy.code.length == 0) revert SafeProxyReferenceDeploymentFailed();
+        SAFE_PROXY_RUNTIME_CODE_HASH = referenceProxy.codehash;
     }
 
     function authorityOf(bytes32 instanceId) external view returns (Authority memory) {
@@ -265,7 +276,7 @@ abstract contract GovernedFactoryBase {
 
     /// @dev The sub-network variant shares the complete governed install path, then atomically
     ///      records the relationship. The current parent authority is checked before any external
-    ///      creation effect and again by each ParentAuthorityModule action after creation.
+    ///      creation effect and pinned by ParentAuthorityModule until the child approves a replacement.
     function _installGovernedSubnetwork(
         Safe safe,
         string calldata name,
@@ -298,6 +309,10 @@ abstract contract GovernedFactoryBase {
         bytes32 parentInstanceId,
         SubnetworkTier tier
     ) private returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
+        if (signerSync.enabled) {
+            bytes32 program = IGovernableInstanceFactory(FACTORY).PROGRAM();
+            if (program != keccak256("trust-graph")) revert UnsupportedSignerSyncProgram(program);
+        }
         safeAddress = address(safe);
 
         if (msg.value != 0) {
