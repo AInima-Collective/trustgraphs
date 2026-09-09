@@ -1,12 +1,9 @@
 name: Candidate real proof assurance
 
+# Only the Release workflow calls this, on a `v*` tag push or a manual dispatch. It never runs for
+# a pull request or a branch push, because every job below buys a real Groth16 proof.
 on:
   workflow_call:
-    secrets:
-      SP1_NETWORK_PRIVATE_KEY:
-        required: true
-      RELEASE_PROOF_RPC_URL:
-        required: true
 
 permissions:
   contents: read
@@ -16,6 +13,10 @@ jobs:
     name: Groth16 (${{ matrix.program }})
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    # Credentials come from this environment (or from repository secrets, which the caller's
+    # `secrets: inherit` also forwards). Adding required reviewers to the environment makes every
+    # proof purchase wait for an approval.
+    environment: Actions
     strategy:
       fail-fast: false
       matrix:
@@ -33,7 +34,7 @@ jobs:
       TRUSTGRAPHS_RELEASE_BUILD: '1'
       SP1_SKIP_PROGRAM_BUILD: 'true'
       NETWORK_PRIVATE_KEY: ${{ secrets.SP1_NETWORK_PRIVATE_KEY }}
-      RELEASE_PROOF_RPC_URL: ${{ secrets.RELEASE_PROOF_RPC_URL }}
+      RELEASE_PROOF_RPC_URL: ${{ secrets.EAS_OFFCHAIN_TESTNET_RPC_URL }}
       PROGRAM: ${{ matrix.program }}
     steps:
       - uses: actions/checkout@v4

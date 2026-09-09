@@ -105,9 +105,10 @@ jobs:
     uses: ./.github/workflows/release-proof-assurance.yml
     permissions:
       contents: read
-    secrets:
-      SP1_NETWORK_PRIVATE_KEY: ${{ secrets.SP1_NETWORK_PRIVATE_KEY }}
-      RELEASE_PROOF_RPC_URL: ${{ secrets.EAS_OFFCHAIN_TESTNET_RPC_URL }}
+    # The called job runs under the `Actions` environment, so the proof credentials may live as
+    # environment secrets (with required reviewers gating every purchase) or repository secrets.
+    # An explicit mapping here could only forward repository secrets.
+    secrets: inherit
 
   image:
     name: Image (${{ matrix.platform }})
