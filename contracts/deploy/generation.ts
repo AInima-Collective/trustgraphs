@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  CURRENT_SP1_CIRCUIT_VERSION,
   CURRENT_SP1_VERSION,
   RELEASE_PROGRAMS,
   type ReleaseManifest,
@@ -32,8 +33,12 @@ export const planGeneration = (
   if (!guest || guest.commit !== commit || !/^[0-9a-f]{40}$/.test(commit)) {
     throw new Error('Generation guest manifest must match DEPLOYMENT_COMMIT')
   }
-  if (guest.sp1?.replace(/^v/, '') !== CURRENT_SP1_VERSION) {
-    throw new Error(`Generation requires SP1 ${CURRENT_SP1_VERSION}`)
+  // The manifest's `sp1` is the circuit version the guests were proven for, not the SDK version;
+  // the generation records the SDK version pinned in zk/prover alongside each program.
+  if (guest.sp1 !== CURRENT_SP1_CIRCUIT_VERSION) {
+    throw new Error(
+      `Generation requires SP1 circuit ${CURRENT_SP1_CIRCUIT_VERSION} (manifest says ${guest.sp1 ?? '<none>'})`
+    )
   }
   if (
     !Array.isArray(guest.programs) ||

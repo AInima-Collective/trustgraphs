@@ -664,3 +664,11 @@ test('broadcast receipts populate the consumer adapter without RPC access', () =
   )
   assert.equal(summary.contributionsFactory?.contributions_factory, ADDRESS)
 })
+
+test('CURRENT_SP1_VERSION is the sp1-sdk the prover pins', () => {
+  const cargo = fs.readFileSync('zk/prover/Cargo.toml', 'utf8')
+  const pin = cargo.match(
+    /^sp1-sdk\s*=\s*\{[^}]*version\s*=\s*"=([^"]+)"/m
+  )?.[1]
+  assert.equal(pin, CURRENT_SP1_VERSION)
+})

@@ -12,6 +12,7 @@ import {
   planGeneration,
 } from './generation'
 import {
+  CURRENT_SP1_CIRCUIT_VERSION,
   CURRENT_SP1_VERSION,
   RELEASE_PROGRAMS,
   loadReleaseManifest,
@@ -26,7 +27,7 @@ const commit = 'ab'.repeat(20)
 const builder = fs.readFileSync('zk/sp1-builder-image.txt', 'utf8')
 const guest = {
   commit,
-  sp1: `v${CURRENT_SP1_VERSION}`,
+  sp1: CURRENT_SP1_CIRCUIT_VERSION,
   guest_build: 'docker',
   builder_image: builder.trim(),
   programs: RELEASE_PROGRAMS.map(([, program], index) => ({
@@ -65,6 +66,17 @@ test('replacement rejects incomplete or mismatched guest identities and unsafe n
   )
   assert.throws(
     () => planGeneration(active, { ...guest, sp1: 'v6.3.1' }, commit),
+    /requires SP1/
+  )
+  // The SDK version is not the circuit version; a manifest carrying it was not produced by the
+  // release prover.
+  assert.throws(
+    () =>
+      planGeneration(
+        active,
+        { ...guest, sp1: `v${CURRENT_SP1_VERSION}` },
+        commit
+      ),
     /requires SP1/
   )
   assert.throws(

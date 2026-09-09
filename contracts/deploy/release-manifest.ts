@@ -29,6 +29,13 @@ export const RELEASE_PROGRAMS = [
 ] as const
 
 export const CURRENT_SP1_VERSION = '6.6.0'
+/**
+ * `sp1_sdk::SP1_CIRCUIT_VERSION` shipped by the pinned sp1-sdk above. A guest manifest's `sp1`
+ * field records this, not the SDK version: it names the Groth16 circuit the verifier gateway
+ * routes proofs to (the selector in preflight check 9 derives from it). It has stayed at v6.1.0
+ * from sp1-sdk 6.1.0 through 6.6.0; an SDK upgrade that moves it is a verifier-route change.
+ */
+export const CURRENT_SP1_CIRCUIT_VERSION = 'v6.1.0'
 const SUPPORTED_SP1_VERSIONS = new Set(['6.3.1', CURRENT_SP1_VERSION])
 
 export type ReleaseProgramKey = (typeof RELEASE_PROGRAMS)[number][0]
@@ -202,7 +209,10 @@ const validateRecord = (
 
 export const validateReleaseManifest = (
   value: unknown,
-  { requireComplete = false, expectedChain = 'sepolia' }: ReleaseManifestOptions = {}
+  {
+    requireComplete = false,
+    expectedChain = 'sepolia',
+  }: ReleaseManifestOptions = {}
 ): ReleaseManifest => {
   assertObject(value, 'manifest')
   assertNoSecrets(value)
