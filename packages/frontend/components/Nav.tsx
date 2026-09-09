@@ -23,6 +23,15 @@ import { ThemeToggle } from './ThemeToggle'
  * menu opens: see `MobileMenu.tsx`. One row at every width, and the wordmark
  * stays whole down to 320px.
  *
+ * THE ALPHA TAG SITS BESIDE THE HOME LINK, NOT INSIDE IT. It is a statement
+ * about the software, not part of the name, so it is not part of the link's
+ * accessible name either: the link keeps saying "Trustgraphs, home" and the
+ * tag is announced on its own. It is the same mono label as every other
+ * machine label in the system, in a hairline box so it reads as a stamp
+ * rather than a word that fell off the wordmark. Below `sm` the wallet button
+ * collapses to an icon, which is what buys the tag its room at 320px: brand
+ * cluster about 176px, controls 92px, against a 304px row.
+ *
  * THE NAV RAISES ITSELF WHILE THE MENU IS OPEN. The scrim is a fixed layer
  * inside the nav and the row is a positioned layer above it; the nav becomes
  * a stacking context at `z-50` only while the menu is open, so the scrim
@@ -65,6 +74,9 @@ export const Nav = () => {
             Trustgraphs
           </span>
         </Link>
+        <span className="tg-label ml-2 shrink-0 border border-border px-1.5 py-1 leading-none">
+          alpha
+        </span>
 
         {/* `h-11` overrides the button's default `h-9`. Every control in the
          * nav is a touch target on a tablet, and 36px is under the 44px floor

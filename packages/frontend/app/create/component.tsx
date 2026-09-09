@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Hex, zeroAddress } from 'viem'
 import { useAccount, useChainId, useReadContract } from 'wagmi'
 
+import { AlphaNotice } from '@/components/AlphaNotice'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { DraftNotice } from '@/components/DraftNotice'
@@ -302,6 +303,8 @@ const ScopedCreateNetworkWizard = ({
           ))}
         </div>
       </div>
+
+      <AlphaNotice />
 
       <DraftNotice
         pending={!!draft.pending}

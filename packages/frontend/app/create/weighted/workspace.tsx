@@ -34,6 +34,7 @@ import {
   useSwitchChain,
 } from 'wagmi'
 
+import { AlphaNotice } from '@/components/AlphaNotice'
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
@@ -1186,6 +1187,8 @@ const WeightedWorkspaceForm = ({
           </div>
         )}
       </header>
+
+      {!administrative && <AlphaNotice />}
 
       <DraftNotice
         pending={!!draft.pending}

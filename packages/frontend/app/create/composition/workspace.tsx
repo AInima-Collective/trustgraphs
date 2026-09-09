@@ -30,6 +30,7 @@ import {
   useSwitchChain,
 } from 'wagmi'
 
+import { AlphaNotice } from '@/components/AlphaNotice'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
@@ -1434,6 +1435,7 @@ const CompositionWorkspaceForm = ({
           </p>
         </header>
       )}
+      {!embedded && mode === 'create' && <AlphaNotice />}
       <DraftNotice
         pending={!!draft.pending}
         status={draft.status}

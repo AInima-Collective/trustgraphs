@@ -1,6 +1,7 @@
 import { ArrowRight } from 'lucide-react'
 import { isAddress, zeroAddress } from 'viem'
 
+import { AlphaNotice } from '@/components/AlphaNotice'
 import { ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import {
@@ -46,6 +47,8 @@ export const CreateNetworkChooser = () => (
           : 'Choose the kind of network your community needs. You can review every setting before creating it.'}
       </p>
     </div>
+
+    <AlphaNotice />
 
     <div className="space-y-4">
       <Card type="accent" size="md" className="space-y-3">
