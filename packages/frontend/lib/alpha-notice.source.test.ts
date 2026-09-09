@@ -32,12 +32,10 @@ test('the caveat says what the software is and what not to do with it', () => {
   assert.match(notice, /Trustgraphs is alpha software/)
   assert.match(notice, /large amounts of money/)
   assert.match(notice, /security-critical/)
-  // It points at the Status group rather than repeating it, and the audit
-  // wording agrees with the answer there.
-  assert.match(notice, /href="\/faq#status"/)
-  assert.match(notice, /prefetch=\{false\}/)
+  // No link: the footer already reaches the FAQ from every page. The audit
+  // wording agrees with the Status answer there.
+  assert.doesNotMatch(notice, /<Link\b/)
   assert.match(notice, /has not been\s+audited by an outside firm/)
-  assert.match(faq, /id: 'status'/)
   assert.match(faq, /Not by an outside firm/)
 })
 
