@@ -242,7 +242,7 @@ const openVouch = async (page) => {
 }
 
 const fillRecipient = async (dialog) => {
-  await dialog.getByLabel('RECIPIENT').fill(recipient)
+  await dialog.getByLabel('RECIPIENT', { exact: true }).fill(recipient)
 }
 
 const endorseIfRequired = async (dialog) => {
