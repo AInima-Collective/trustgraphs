@@ -158,6 +158,19 @@ echo "=== 4. .env.sepolia points at the chain we mean ==="
 [ "${DEPLOY_TARGET:-}" = "sepolia" ]   && ok "DEPLOY_TARGET=sepolia"     || bad "DEPLOY_TARGET=${DEPLOY_TARGET:-unset}"
 [ "${DEPLOY_STAGE:-}" = "production" ] && ok "DEPLOY_STAGE=production"   || bad "DEPLOY_STAGE=${DEPLOY_STAGE:-unset}"
 [ "${CHAIN_ID:-}" = "11155111" ]       && ok "CHAIN_ID=11155111"         || bad "CHAIN_ID=${CHAIN_ID:-unset}"
+# The factory scripts fail closed below ~1 day of blocks on a real chain unless the testnet opts
+# in explicitly. Attempt 2 of v0.1.0 (2026-09-09) broadcast four contracts before step 5 hit
+# that guard; this is the check that would have stopped it at zero transactions.
+FLOOR=${FACTORY_EPOCH_FLOOR:-unset}
+if [ "$FLOOR" = unset ] || ! [[ "$FLOOR" =~ ^[0-9]+$ ]]; then
+  bad "FACTORY_EPOCH_FLOOR=$FLOOR (must be a positive block count)"
+elif [ "$FLOOR" -ge 7200 ]; then
+  ok "FACTORY_EPOCH_FLOOR=$FLOOR (deliberate: at least ~1 day of blocks)"
+elif [ "${ALLOW_TESTNET_EPOCH_FLOOR:-}" = true ]; then
+  ok "FACTORY_EPOCH_FLOOR=$FLOOR with ALLOW_TESTNET_EPOCH_FLOOR=true (fast-cadence testnet factories)"
+else
+  bad "FACTORY_EPOCH_FLOOR=$FLOOR is below 7200; the factory scripts will revert at step 5 unless ALLOW_TESTNET_EPOCH_FLOOR=true"
+fi
 
 echo "=== 5. the RPC is the chain it claims to be ==="
 CHAIN=$(cast chain-id --rpc-url "${RPC_URL:-}" 2>/dev/null || echo 0)

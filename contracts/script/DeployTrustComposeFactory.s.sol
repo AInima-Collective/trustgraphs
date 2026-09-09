@@ -66,12 +66,8 @@ contract DeployTrustComposeFactory is Common {
         require(zkVerifier != address(0), "DeployTrustComposeFactory: zkVerifier is zero");
         require(instanceRegistry != address(0), "DeployTrustComposeFactory: instanceRegistry is zero");
         require(epochFloor > 0, "DeployTrustComposeFactory: epochFloor is zero");
-        // Same fail-closed floor as `DeployFactory`: the floor is IMMUTABLE and bounds hosted
-        // proving cost per instance, so the 1-block dev default must not reach a real chain.
-        require(
-            block.chainid == 31337 || epochFloor >= 7200,
-            "DeployTrustComposeFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
-        );
+        // Same fail-closed floor as `DeployFactory`; see `Common`.
+        _requireDeliberateEpochFloor(epochFloor, "DeployTrustComposeFactory");
         require(policyActivationDelay > 0, "DeployTrustComposeFactory: policyActivationDelay is zero");
         // The delay is the runbook's operator review window (research/operations/composition/runbook.md
         // "Rotate, cancel, roll back, or recover"). A seconds-long dev default reaching a real

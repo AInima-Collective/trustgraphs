@@ -67,12 +67,8 @@ contract DeployWeightedTrustgraphsFactory is Common {
         require(zkVerifier != address(0), "DeployWeightedTrustgraphsFactory: zkVerifier is zero");
         require(instanceRegistry != address(0), "DeployWeightedTrustgraphsFactory: instanceRegistry is zero");
         require(epochFloor > 0, "DeployWeightedTrustgraphsFactory: epochFloor is zero");
-        // Same fail-closed floor as `DeployFactory`: the floor is IMMUTABLE and bounds hosted
-        // proving cost per instance, so the 1-block dev default must not reach a real chain.
-        require(
-            block.chainid == 31337 || epochFloor >= 7200,
-            "DeployWeightedTrustgraphsFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
-        );
+        // Same fail-closed floor as `DeployFactory`; see `Common`.
+        _requireDeliberateEpochFloor(epochFloor, "DeployWeightedTrustgraphsFactory");
         require(priorActivationDelay > 0, "DeployWeightedTrustgraphsFactory: priorActivationDelay is zero");
         // The delay is the runbook's operator review window (research/operations/weighted-prior/runbook.md
         // "Activate"): during it every proving operator re-fetches and re-verifies the proposed

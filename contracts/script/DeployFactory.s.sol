@@ -77,15 +77,8 @@ contract DeployFactory is Common {
         require(zkVerifier != address(0), "DeployFactory: zkVerifier is zero");
         require(instanceRegistry != address(0), "DeployFactory: instanceRegistry is zero");
         require(epochFloor > 0, "DeployFactory: epochFloor is zero");
-        // The floor is IMMUTABLE and it is what bounds hosted proving cost per instance, so a dev
-        // default must not reach a real chain. `contracts/deploy/env.ts` hardcodes 1 block for local anvil
-        // and the stage defaults to `development`, which makes "unset env + real RPC" a one-typo path to
-        // a permissionless factory whose floor is one block. Roughly a day of blocks is the least
-        // that could be deliberate; mainnet's intended value is ~30 days (216000).
-        require(
-            block.chainid == 31337 || epochFloor >= 7200,
-            "DeployFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
-        );
+        // Fail closed below ~1 day of blocks on a real chain unless a testnet opts in; see `Common`.
+        _requireDeliberateEpochFloor(epochFloor, "DeployFactory");
 
         // Zero disables the prepay path on this factory; `createInstance` then reverts on any
         // `msg.value` rather than silently keeping it.

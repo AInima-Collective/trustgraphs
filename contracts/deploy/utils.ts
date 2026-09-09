@@ -173,9 +173,13 @@ export const execFull = ({
       if (code === 0) {
         resolve(stdout)
       } else {
+        // The echoed command above is redacted; the failure must be too, or the one time a deploy
+        // fails is the one time the RPC credential lands in a transcript.
         reject(
           new Error(
-            `Command \`${cmd.join(' ')}\` failed with code ${code}:\n${stdout}\n${stderr}`
+            redactSecrets(
+              `Command \`${cmd.join(' ')}\` failed with code ${code}:\n${stdout}\n${stderr}`
+            )
           )
         )
       }
