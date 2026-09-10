@@ -297,11 +297,32 @@ Implemented on branch `feat/mainnet-profile`, uncommitted at the time of writing
 The Railway dashboard rename to `trustgraphs-sepolia` was done on 2026-09-10 and the alias
 removed. Still outside the branch: the second Vercel project, DNS records, and every secret.
 
+## 6b. Phase 3 status (2026-09-10): contracts leg rehearsed on a mainnet fork
+
+Anvil forked mainnet at block 25,949,456 with the real SP1 gateway, EAS, feed and USDC in state;
+throwaway deployer, admin and submitter keys funded on the fork; a rehearsal `guest-manifest.json`
+derived from the locally rebuilt Docker guests (vkeys identical to the v0.1.1 table) for commit
+`929cde36`; the ignored `.env.mainnet` overlay with the decided policy (floor 1 plus the mainnet
+opt-in, one-day delays).
+
+| Step | Result |
+| --- | --- |
+| `pnpm deploy:mainnet:preflight` | 27 passed, 0 failed (after fixing the headroom check's wei overflow) |
+| `--dry-run` | the 18-step plan, imported family skipped by configuration |
+| `pnpm deploy:mainnet:contracts` | all 16 broadcast steps landed, including both handoffs; manifest finalized as `deployed` with 20 contract records and no imported keys |
+| admin grants | the 4-entry Safe batch executed from the stand-in admin key |
+| `pnpm deploy:mainnet:postcheck` | 65 passed, 0 failed |
+| gas | 76,092,233 over 49 transactions |
+
+Not yet rehearsed: a governed network created through the frontend on the fork, and a real
+Groth16 proof submitted through the gateway (needs a decision to spend Succinct credit). The fork
+manifest and receipts are kept as session evidence; the tracked seed was restored to `planned`.
+
 ## 7. Cost sketch
 
 | Item | Estimate |
 | --- | --- |
-| Contract deployment, about 40 to 50 M gas | 0.02 to 0.05 ETH at 0.5 to 1 gwei; 0.25 ETH at 5 gwei. Base fee on 2026-09-10 was about 0.06 gwei. Hold 0.5 ETH on the deployer. |
+| Contract deployment, 76.1 M gas measured on the fork (49 transactions) | 0.04 to 0.08 ETH at 0.5 to 1 gwei; 0.38 ETH at 5 gwei. Base fee on 2026-09-10 was about 0.07 gwei. The preflight wants three times an 80 M budget at the live base fee: hold 0.25 ETH at 1 gwei, 1.2 ETH at 5 gwei. |
 | Showcase network creation (governed, seven-plus contracts) | on the order of 10 M gas |
 | Each root update | about 0.6 M gas plus Succinct proving (cents to low dollars for a small graph) |
 | Railway mainnet project (Postgres, indexer 1 GB, operator 2 GB) | roughly $20 to $40 per month at the reviewed ceilings |

@@ -44,11 +44,11 @@ GUEST_MANIFEST=${GUEST_MANIFEST:-guest-manifest.json}
 RELEASE_TAG=$(jq -r '.tag // "untagged candidate"' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
 RELEASE_COMMIT=$(jq -r '.commit // empty' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
 
-# The full plan (registrar, verifiers, registry, vault, the factory families, the governed
-# wrappers and the two role handoffs) measured 39,406,718 gas locally with registry grants
-# enabled; public chains disable those grants, but budget 50m anyway so a base-fee move cannot
-# strand a run between families.
-GAS_TOTAL=50000000
+# The full mainnet plan (registrar, four verifiers, registry, vault, the four factory families,
+# the governed wrappers and the two role handoffs) measured 76,092,233 gas over 49 transactions on
+# a mainnet-fork rehearsal on 2026-09-10 (commit 929cde36, GRANT_REGISTRAR=false). Budget 80m so a
+# base-fee move cannot strand a run between families; the check below wants three times this.
+GAS_TOTAL=80000000
 
 # A key that was exposed and must never be funded or used again.
 BURNED_KEY_ADDRESS=0x3ed16f90e8ea54d9a1bae67ab2d6bdc177eadeec
