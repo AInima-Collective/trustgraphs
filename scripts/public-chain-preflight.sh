@@ -69,7 +69,7 @@ sha256_of() {
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-for tool in cast jq curl; do
+for tool in cast jq curl bc; do
   command -v "$tool" >/dev/null 2>&1 || { echo "$tool not found" >&2; exit 1; }
 done
 
@@ -218,8 +218,10 @@ COST_WEI=$(( GAS_TOTAL * BASEFEE ))
 note "base fee $(cast to-unit "$BASEFEE" gwei) gwei"
 note "$GAS_TOTAL gas at that price = $(cast to-unit "$COST_WEI" ether | cut -c1-8) ETH"
 note "deployer holds                = $(cast to-unit "$DEP_WEI" ether | cut -c1-8) ETH"
-# Threefold, because the risk is not the price now but a spike partway through a 16-transaction run.
-if [ "$COST_WEI" -gt 0 ] && [ "$DEP_WEI" -gt $(( COST_WEI * 3 )) ]; then
+# Threefold, because the risk is not the price now but a spike partway through the run. Compared
+# with bc: wei balances above ~9.22 ETH overflow the shell's 64-bit integers, and a well-funded
+# deployer must not fail its own headroom check.
+if [ "$(echo "$COST_WEI > 0 && $DEP_WEI > $COST_WEI * 3" | bc)" = 1 ]; then
   ok "at least 3x headroom over the current base fee"
 else
   bad "under 3x headroom, a spike mid-run could strand the deploy half-finished"
