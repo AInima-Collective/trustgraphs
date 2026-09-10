@@ -58,6 +58,11 @@ RECIPIENT="${RECIPIENT:-0x0000000000000000000000000000000000000000}"
 GROTH16="${GROTH16:-1}"
 # The prover backend. Default mock so the loop runs on any box; override for a real proof.
 export SP1_PROVER="${SP1_PROVER:-mock}"
+# The Succinct client is an opt-in cargo feature of zk/prover (see its Cargo.toml), so a network
+# run has to build it in; without this the guest step panics with "requires the `network`
+# feature" and the loop reports a bare "guest execute failed".
+PROVER_FEATURES=""
+[ "$SP1_PROVER" = network ] && PROVER_FEATURES="--features network"
 # Never rebuild the guest ELFs from here: a rebuild mid-loop changes every vkey after the deploy
 # pinned the old ones, and each verifier then rejects (or the daemon holds) forever. Only
 # `task zk:build` builds guests.
@@ -170,7 +175,7 @@ while read -r row; do
 
   # 3. Run the guest and byte-assert it against native `compute` — this is what makes the journal
   #    values below trustworthy, and it is the same assertion the parity gate runs.
-  EXEC=$( cd zk/prover && cargo run -q --release -- trust-graph execute "$OUTDIR/input.json" --out-dir "$OUTDIR" 2>/dev/null ) || {
+  EXEC=$( cd zk/prover && cargo run -q --release $PROVER_FEATURES -- trust-graph execute "$OUTDIR/input.json" --out-dir "$OUTDIR" 2>"$OUTDIR/execute.err" ) || {
     fail_instance "$ID" "$NAME: guest execute failed"; continue
   }
   OUTPUT_ROOT=$(awk '/^outputRoot:/{print $2}'    <<<"$EXEC")
@@ -186,7 +191,7 @@ while read -r row; do
   say "   guest == native ✓  root=$OUTPUT_ROOT"
 
   # 4. Prove.
-  ( cd zk/prover && cargo run -q --release -- trust-graph prove "$OUTDIR/input.json" \
+  ( cd zk/prover && cargo run -q --release $PROVER_FEATURES -- trust-graph prove "$OUTDIR/input.json" \
       $([ "$GROTH16" = "1" ] && echo --groth16) --out-dir "$OUTDIR" ) >/dev/null 2>&1 || {
     fail_instance "$ID" "$NAME: prove failed"; continue
   }
