@@ -43,7 +43,7 @@ carries the daemon and the binaries it shells out to, and it is anonymously pull
 
 ```toml
 rpc = "https://sepolia-rpc.example"
-registry = "0x4369ad64D4E378BEc45eE1081394cCD8A0052904"
+registry = "0x731F64E9A03282CA36Ed3d679a7662468B3c37c7"
 chain_id = 11155111
 registry_from_block = 11565416
 # Every helper RPC call has its own deadline; it is never allowed to wait forever.

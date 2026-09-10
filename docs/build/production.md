@@ -8,8 +8,8 @@ security-sensitive release, not a copy of the local demo.
 
 The repository exposes one supported public deployment target:
 
-| Target | Current profile |
-| --- | --- |
+| Target    | Current profile                                                                                                                                                                                                                                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sepolia` | Modern registry; verifiers for trust-graph, signer-sync, weighted-prior, trust-compose, and contributions; base and governed factories for trust-graph, weighted, and composition; a contributions factory; canonical Safe integration; signer-sync module deployer; and proving vault. |
 
 The `mainnet` target is intentionally disabled because the repository has no authorized Ethereum
@@ -84,12 +84,12 @@ docker compose -f docker-compose.prod.yml up -d
 `OPERATOR_IMAGE` must be the release workflow's complete
 `ghcr.io/.../trustgraphs-operator@sha256:...` reference. On startup, the operator refuses unless
 its embedded trust-graph and signer ELF digests and vkeys match the tracked release manifest. The
-Sepolia candidate built from commit `22bbf4a` by
-[release run 32892667547](https://github.com/AInima-Collective/trustgraphs/actions/runs/32892667547)
+Sepolia release image, `v0.1.2`, built from commit `6a9e2d7` by
+[release run 34422090643](https://github.com/AInima-Collective/trustgraphs/actions/runs/34422090643)
 is:
 
 ```text
-ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40
+ghcr.io/ainima-collective/trustgraphs-operator@sha256:d37fad30f3007a1f0f515ffec1f8a1542248296d71b796705146f086e94f22e6
 ```
 
 That run reproduced the guest ELFs twice, published a linux/amd64 + linux/arm64 OCI index,

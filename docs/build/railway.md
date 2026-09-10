@@ -71,8 +71,10 @@ the Railway files.
 
 Treat any Ponder, schema, config, ABI, or indexing-function change as a new application build. Bump
 `PONDER_DATABASE_SCHEMA` in `.railway/railway.ts` and leave `PONDER_VIEWS_SCHEMA` stable. For the
-Ponder 0.17 upgrade, `trustgraph_sepolia_v5` is the new writer and `trust-graph` remains the public
-views schema. Do not reuse or delete `trustgraph_sepolia_v4`; it is the rollback source.
+v0.1 generation (replacement contracts from block 11,670,854 plus the Ponder 0.17 upgrade),
+`trustgraph_sepolia_v6` is the new writer and `trust-graph` remains the public views schema. Do not
+reuse or delete `trustgraph_sepolia_v4`, the writer that served the previous generation; it is the
+rollback source for that generation's claims.
 
 Before the production deploy, run the candidate image in a disposable Railway environment against
 a fresh Postgres database, the production release manifest, and the production start blocks. Wait

@@ -9,68 +9,78 @@ guest ELF digests, and verification keys. Release consumers validate that manife
 `planned` or incomplete record. It never contains an RPC URL, private key, database URL, or
 service credential.
 
-The Sepolia deployment starts at block 11,565,413 and records release commit
-`f64a4c7c9b5e552e2392894a2e0d6f6c40973549`. Its `instances` list is currently empty; factory
-contracts are live, but no showcase instance is claimed here until its creation transaction is
-added to the manifest.
+The active Sepolia generation (release `v0.1.1`, contracts) starts at block
+11,670,854 and records release commit `6d3e272eef46ee9e06ab7caedb03fa733594c4ce`. The
+operator image comes from release `v0.1.2` (same guests and vkeys; the only change is the operator's
+Pinata publication request). The previous generation's manifest is archived as
+[`deployments/generations/v0.1.1/previous-sepolia.json`](../../deployments/generations/v0.1.1/previous-sepolia.json);
+its addresses remain historical evidence and were not migrated.
+
+The `instances` list records one showcase network, created through the browser wizard:
+
+| Field                 | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Name                  | Ethereum Extitutional                                                |
+| Instance id           | `0xe4470bdbbd69691686ecd6dec72fdf5c8caea136bf18f0a0214b6cf93c491ee3` |
+| Vouch schema UID      | `0x89a1cffc5596e57c49583f0e257f41f4859a5c23af6e1c8d2c0c9f8e80c6139d` |
+| MerkleSnapshot        | `0x6CbB8Fe3D33F7483Ec1c0Bb8567a39aCd18aF641`                         |
+| EASIndexerResolver    | `0xf3CE152b68c8605e66A1149E8C811a9f7dFDD14d`                         |
+| MerkleFundDistributor | `0x3321C56eefE022d5970ce7ff308af064b39CD2a7`                         |
+| ParamsController      | `0xAdC95F50923aD857274611e06013160C6BDc2EFe`                         |
 
 ## Deployed addresses
 
 ### External dependencies
 
-| Contract | Address |
-| --- | --- |
-| EAS | `0xC2679fBD37d54388Ce493F1DB75320D236e1815e` |
+| Contract            | Address                                      |
+| ------------------- | -------------------------------------------- |
+| EAS                 | `0xC2679fBD37d54388Ce493F1DB75320D236e1815e` |
 | EAS Schema Registry | `0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0` |
 | SP1 Groth16 gateway | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` |
-| Chainlink ETH/USD | `0x694AA1769357215DE4FAC081bf1f309aDC325306` |
-| Circle test USDC | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` |
+| Chainlink ETH/USD   | `0x694AA1769357215DE4FAC081bf1f309aDC325306` |
+| Circle test USDC    | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` |
 
 ### Trustgraphs contracts
 
-| Manifest entry | Address | Block |
-| --- | --- | ---: |
-| Schema registrar | `0x4f74b6C19e84639421692df9abD5c587e0d20fb9` | 11,565,413 |
-| Root verifier | `0xFF850b9c0198Fa9fF9e28e9DFEdB39b1cb7E0bd4` | 11,565,414 |
-| Instance registry | `0x4369ad64D4E378BEc45eE1081394cCD8A0052904` | 11,565,416 |
-| Proving vault | `0x940e4D678a1581560b5C59701aF283beD9F9BFFc` | 11,565,424 |
-| Trustgraphs factory | `0xd14aF10B0546A247d68E01AE5ef3b73C6e116E35` | 11,565,430 |
-| Signer verifier | `0xF99e2c06018f2Aa8078859854ecb1fC3C7368b63` | 11,565,969 |
-| Signer-sync module deployer | `0x71CaAe36fF68b329422283bD14Eb88c1D90952c9` | 11,565,972 |
-| Governed trustgraphs factory | `0xFd0ee86105bF67C5c74653b8268c74120C485b6b` | 11,565,975 |
-| Weighted verifier | `0xf19507cCcfA09fE18A15Abc2aee595413A576ee2` | 11,567,209 |
-| Weighted factory | `0x59a513e2a0b88CCA9f642BE1d67348A8bFF87133` | 11,567,214 |
-| Governed weighted factory | `0x182CE62522DB88d20794eC2d32b9fF723c9e732D` | 11,567,216 |
-| Composition verifier | `0xd6d94310025EFe103284D195F1E7D1F215E13707` | 11,567,217 |
-| Trust-compose factory | `0x2f5Ef810326AdE3d2F5e48Ce7727BE1b8952c696` | 11,567,226 |
-| Governed trust-compose factory | `0x5654ed69EC94bCB312d867dc9408F029038F0337` | 11,567,227 |
-| Contributions verifier | `0x099Fb1c2C2d41A426b459f7f516CB070e7bC9e12` | 11,567,228 |
-| Contributions factory | `0xa93F50d42b7491b4A01Be7449e8c9CCf1591933e` | 11,567,231 |
-| Canonical Safe 1.3.0 singleton | `0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552` | external |
-| Canonical Safe 1.3.0 proxy factory | `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2` | external |
+| Manifest entry                     | Address                                      |      Block |
+| ---------------------------------- | -------------------------------------------- | ---------: |
+| Schema registrar                   | `0x70d897D936370735008d40250d4cd9bDe6D62B4a` | 11,670,854 |
+| Root verifier                      | `0xBf553f5737dbfE9bB5ea2E881E3329638f6A16A3` | 11,670,855 |
+| Instance registry                  | `0x731F64E9A03282CA36Ed3d679a7662468B3c37c7` | 11,670,856 |
+| Proving vault                      | `0x4Bb3E2F62aE3457B18030C0f748f42B0BB169f5E` | 11,670,864 |
+| Trustgraphs factory                | `0x7E913FcA17dEdbE1f7610b51464AC3524970e813` | 11,670,870 |
+| Imported EAS factory               | `0x73BD357729F4B846245DFAe7d2B88f08bCfF7322` | 11,670,877 |
+| Signer verifier                    | `0x5Bbb202e81AFC6FfbB64F97aFeFa30d092383F6D` | 11,670,878 |
+| Signer-sync module deployer        | `0x071DC91731A184bF0F58d5f91998573E82061b70` | 11,670,881 |
+| Parent-authority module deployer   | `0xf1eEE62011718bf6938657aCf52289D0AE81f938` | 11,670,882 |
+| Subnetwork registry                | `0x8a424C9A34AeB0D63ade308b660EDDF1FfC89B99` | 11,670,886 |
+| Governed trustgraphs factory       | `0x69F0966Ef4D5d604E049Cc5A0237e4d1Ce002a57` | 11,670,885 |
+| Governed imported EAS factory      | `0x4F6FFD8fBeB666Ba7cF1405d04f1238087402168` | 11,670,887 |
+| Weighted verifier                  | `0xd5Da5C835C8d47a8A2cF9fFF3Db3e91236283853` | 11,670,888 |
+| Weighted factory                   | `0x35C560fAE4a65d6F579Ba2348ACf723eab56A926` | 11,670,892 |
+| Governed weighted factory          | `0x9b3cF205Bb29A4203ccb729f9CF3Fb1fEF7467E4` | 11,670,893 |
+| Composition verifier               | `0x7944035945F8CE03f2Da71b9030973E5f8e1327d` | 11,670,895 |
+| Trust-compose factory              | `0x66dF2Da93A13a4208b7015e67e27101a1e1Ba617` | 11,670,902 |
+| Governed trust-compose factory     | `0xCF1B2d0234d526dfC1c68eEC9E36835FF02d7e12` | 11,670,903 |
+| Contributions verifier             | `0xD56559ba91c08d165d1431e95D02E58Edf12530F` | 11,670,905 |
+| Contributions factory              | `0x5e55DFD86df16cbB365b9978c76422b1F776Ca05` | 11,670,907 |
+| Canonical Safe 1.3.0 singleton     | `0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552` |   external |
+| Canonical Safe 1.3.0 proxy factory | `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2` |   external |
 
 ## Program vkeys
 
 A vkey identifies one exact SP1 guest binary. The on-chain verifier holds it as an immutable:
 a proof from any other binary does not verify.
 
-| Program | Release vkey | Sepolia deployment |
-| --- | --- | --- |
-| trust-graph | `0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e` | verifier and factory live |
-| trust-graph-weighted | `0x0027625a41e9d165ab50ca4ff9afbc134385b99688a5fd69cdf03d5056f5abb2` | verifier and factory live |
-| trust-compose | superseded — see note below | replacement pending |
-| signer-sync | `0x00d1b981df6bee1682be2b212151d2ac74c30108215d8e949a84a604ae4baadb` | verifier and governed creation path live |
-| contributions | `0x0083cb62532a5c855c0c1b61a1eb7b7d5d6d924784342ea661c80baf79cfa243` | verifier and factory live |
-| hypercerts | `0x009890d8fed8be4836e060c25ad267049efbe79ce929b0e63c1e086007008d40` | release identity only |
-| nostr-workspace | `0x003a7984610aa854a8daa012d2d78846ba663781c8fe3aa74fed99be047b6566` | release identity only |
-
-The `trust-compose` row is in transition: the guest was replaced 2026-09-01 by the mixed
-standard/weighted-source program (see `research/MIXED_COMPOSITION_V2.md`, historical file name),
-so the previously published vkey
-(`0x00e2847cc257d916a6422283094e8764296045e5f9ed8805b7aaa9b3dd6f7aed`) identifies a deleted
-binary. The next reproducible release publishes the new vkey, and the Sepolia composition
-verifier + factory must be redeployed against it; the live pair above predates the replacement
-and will not verify new-format proofs.
+| Program              | Release vkey                                                         | Sepolia deployment                       |
+| -------------------- | -------------------------------------------------------------------- | ---------------------------------------- |
+| trust-graph          | `0x00bbf3b3cc5efe71ced29517bd09edac2720bcc795b7094a314db17c224dcea3` | verifier and factory live                |
+| trust-graph-weighted | `0x0095b1a77a841e434307acdc8cd2340c3a82beda37cde4498170db3cdcc6eb80` | verifier and factory live                |
+| trust-compose        | `0x00c6868afdf506311dcb1393a74f3c033ad0620ec25602b65d079227c88d9dfc` | verifier and factory live                |
+| signer-sync          | `0x00f8ad1fd05ff8c894a1e8906b3e1a1f9fba968d14ef8a121d3107d3c57df7fb` | verifier and governed creation path live |
+| contributions        | `0x0098fb1266d6ca97c12c529c29ef59b45dae9bede0cbe0990a2fbb1b4394d798` | verifier and factory live                |
+| hypercerts           | `0x0072790ce927dab3afab201f8517b7b0ac36764c825825f6a23d9ed3c080c8d2` | release identity only                    |
+| nostr-workspace      | `0x00a8e5183dbdab1ff521c068ff2d2d8ed840f5beef4f516964d345a16bc302af` | release identity only                    |
 
 Dev-derived values for each program appear in
 [`concepts/networks-and-programs.md`](../../docs/concepts/networks-and-programs.md).

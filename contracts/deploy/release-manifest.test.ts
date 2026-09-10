@@ -145,6 +145,9 @@ test('manifest validator rejects half-recorded governed deployments', () => {
 
 test('manifest carries subnetwork infrastructure as an optional atomic pair', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  // Start from a manifest without the pair, whatever the tracked release records.
+  delete manifest.contracts.parentAuthorityModuleDeployer
+  delete manifest.contracts.subnetworkRegistry
   manifest.contracts.parentAuthorityModuleDeployer = {
     address: ADDRESS,
     block: 123,
@@ -214,8 +217,19 @@ test('manifest validator accepts, pairs, and rejects the fast factory generation
 test('manifest validator pairs the weighted / compose / contributions fast generations', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
 
-  // The tracked Sepolia manifest records all three fast families; the summary must carry each
-  // one under its original family's shape so consumers treat the generations uniformly.
+  // Record all three fast families on top of the tracked manifest (which may carry none: the
+  // v0.1 generation deploys its factories at floor 1 directly). The summary must carry each one
+  // under its original family's shape so consumers treat the generations uniformly.
+  const fastRecord = (n: number) => ({
+    address: `0x${String(n).repeat(40)}`,
+    block: 200 + n,
+    txHash: `0x${String(n).repeat(64)}`,
+  })
+  manifest.contracts.weightedTrustgraphsFactoryFast = fastRecord(3)
+  manifest.contracts.governedWeightedTrustgraphsFactoryFast = fastRecord(4)
+  manifest.contracts.trustComposeFactoryFast = fastRecord(5)
+  manifest.contracts.governedTrustComposeFactoryFast = fastRecord(6)
+  manifest.contracts.contributionsFactoryFast = fastRecord(7)
   const validated = validateReleaseManifest(manifest)
   const summary = releaseManifestToDeploymentSummary(validated)
   assert.equal(
