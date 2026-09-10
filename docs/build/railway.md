@@ -72,9 +72,17 @@ the Railway files.
 Treat any Ponder, schema, config, ABI, or indexing-function change as a new application build. Bump
 `PONDER_DATABASE_SCHEMA` in `.railway/railway.ts` and leave `PONDER_VIEWS_SCHEMA` stable. For the
 v0.1 generation (replacement contracts from block 11,670,854 plus the Ponder 0.17 upgrade),
-`trustgraph_sepolia_v6` is the new writer and `trust-graph` remains the public views schema. Do not
+`trustgraph_sepolia_v7` is the new writer and `trust-graph` remains the public views schema. Do not
 reuse or delete `trustgraph_sepolia_v4`, the writer that served the previous generation; it is the
-rollback source for that generation's claims.
+rollback source for that generation's claims. (`v6` was abandoned mid-backfill and holds nothing.)
+
+The canonical EAS contract and Schema Registry sources start at `PONDER_EAS_START_BLOCK_11155111`,
+pinned to the generation's first block, 11,670,854. Left at its default of 0 they crawl all of
+Sepolia in 10-block `eth_getLogs` windows, roughly 2.3 million calls per backfill, which exhausted
+the metered primary's monthly quota on 2026-09-10 and repeats with every writer-schema bump. The
+cost of the bound is that the "start from existing attestations" preview only sees canonical
+attestations made after that block; widen the start block deliberately when that feature needs
+older history, and budget the crawl.
 
 Before the production deploy, run the candidate image in a disposable Railway environment against
 a fresh Postgres database, the production release manifest, and the production start blocks. Wait

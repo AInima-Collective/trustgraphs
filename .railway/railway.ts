@@ -113,12 +113,19 @@ export default defineRailway((input) => {
       DEPLOY_STAGE: 'production',
       DEPLOY_TARGET: 'sepolia',
       DATABASE_URL: database.env.DATABASE_URL,
-      // v6: the v0.1 generation replaces every Trustgraphs contract (new registry, factories and
+      // v7: the v0.1 generation replaces every Trustgraphs contract (new registry, factories and
       // vault from block 11670854) and carries the Ponder 0.17 upgrade, which changes the indexer
       // build fingerprint. Ponder refuses to reuse a schema written by a different app build, so
-      // the new writer backfills into a fresh schema. The views schema below stays stable and
-      // continues pointing at the previous writer until v6 is ready.
-      PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v6',
+      // the new writer backfills into a fresh schema. v6 was abandoned mid-backfill on 2026-09-10
+      // when the canonical EAS crawl below was bounded. The views schema stays stable and
+      // continues pointing at the previous writer until the new one is ready.
+      PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v7',
+      // The canonical EAS contract and Schema Registry otherwise index from Sepolia genesis: ~11.7M
+      // blocks in 10-block eth_getLogs windows per source, a crawl that exhausted the metered
+      // primary's monthly quota on 2026-09-10 and repeats on every writer-schema bump. Bounding it
+      // to the generation's first block makes the "start from existing attestations" preview see
+      // only canonical attestations made after this block. Widen deliberately, not by default.
+      PONDER_EAS_START_BLOCK_11155111: '11670854',
       PONDER_VIEWS_SCHEMA: 'trust-graph',
       PONDER_PORT: '65421',
       PONDER_RPC_URL_11155111: ctx.shared.RPC_URL_11155111_0,
