@@ -17,6 +17,7 @@ import {
   toBlockTag,
 } from './chain-identity.mjs'
 import { resolveDeploymentProfile } from './deployment-profile.mjs'
+import { linkNetworks } from './link-networks.mjs'
 
 const { Client } = pg
 const { loadTargetEnvironment } = environmentLoader
@@ -32,8 +33,8 @@ if (!['dev', 'start', 'serve', 'preflight'].includes(mode)) {
 }
 
 // Explicit process variables win. The public-target overlay comes next so a local indexer file
-// cannot leak local RPC/IPFS settings into Sepolia; `.env.local` then fills service-specific values
-// such as DATABASE_URL that are absent from the repository environment.
+// cannot leak local RPC/IPFS settings into a public target; `.env.local` then fills
+// service-specific values such as DATABASE_URL that are absent from the repository environment.
 loadTargetEnvironment({
   repositoryRoot: repoDir,
   higherPriorityFiles: [path.join(indexerDir, '.env.local')],
@@ -41,6 +42,13 @@ loadTargetEnvironment({
 
 const deploymentProfile = resolveDeploymentProfile(process.env, repoDir)
 const production = deploymentProfile.production
+
+// `pnpm dev` links the networks catalog through its predev hook. The hosted image runs this file
+// directly (no npm hooks) and is built once for every chain, so start/serve/preflight link
+// `networks.json` here from the resolved target rather than at image build time.
+if (mode !== 'dev') {
+  linkNetworks({ target: deploymentProfile.target, repoDir, indexerDir })
+}
 
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required')
@@ -54,7 +62,7 @@ const configuredProductionSchema =
 
 const primaryRpcUrl = production
   ? process.env[deploymentProfile.rpcEnv]
-  : (process.env.PONDER_RPC_URL_31337 ??
+  : (process.env[deploymentProfile.rpcEnv] ??
     process.env.PONDER_RPC_URL ??
     process.env.RPC_URL ??
     'http://127.0.0.1:8545')
@@ -132,7 +140,7 @@ function indexerAppFingerprint() {
     path.join(indexerDir, 'ponder.config.ts'),
     path.join(indexerDir, 'ponder.schema.ts'),
     path.join(indexerDir, 'offchain.schema.ts'),
-    path.join(indexerDir, 'config', 'networks.json'),
+    path.join(indexerDir, 'networks.json'),
     path.join(repoDir, 'pnpm-lock.yaml'),
     deploymentProfile.deploymentFile,
     path.join(repoDir, 'frontend', 'lib', 'contract-abis.ts'),

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 
+import { SITE_URL } from '@/lib/config'
 import { DOCS_ORDER, DOCS_SECTIONS } from '@/lib/docs/manifest'
 
 /**
@@ -14,9 +15,10 @@ import { DOCS_ORDER, DOCS_SECTIONS } from '@/lib/docs/manifest'
  * Constants, not a read. A crawler has to be able to find `/`, `/networks`,
  * `/faq` and the docs whether or not anything else in this system is
  * answering — the docs routes come from the manifest, which is compiled-in
- * data, not a filesystem or indexer read.
+ * data, not a filesystem or indexer read. The origin is compiled-in too: it is
+ * the deployment's `FRONTEND_URL`, so the testnet site lists testnet URLs.
  */
-const SITE = 'https://trustgraphs.xyz'
+const SITE = SITE_URL
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

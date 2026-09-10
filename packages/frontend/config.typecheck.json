@@ -1,5 +1,6 @@
 {
   "chain": "local",
+  "siteUrl": "http://127.0.0.1:3000",
   "apis": {
     "ponder": "http://127.0.0.1:65421",
     "ipfsGateway": "http://127.0.0.1:8080/ipfs/"

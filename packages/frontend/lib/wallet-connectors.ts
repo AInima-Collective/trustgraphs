@@ -4,7 +4,7 @@ import { coinbaseWallet } from 'wagmi/connectors/coinbaseWallet'
 import { metaMask } from 'wagmi/connectors/metaMask'
 import { walletConnect } from 'wagmi/connectors/walletConnect'
 
-import { CHAIN } from './config'
+import { CHAIN, SITE_URL } from './config'
 
 /**
  * Vendor connectors live in their own async chunk. Do not import this module from the root
@@ -23,8 +23,10 @@ export const makeWalletConnectors = (): CreateConnectorFn[] => [
       name: 'Trustgraphs',
       description:
         'Turn community vouches into reputation scores that apps can use and contracts can verify.',
-      url: 'https://trustgraphs.xyz',
-      icons: ['https://trustgraphs.xyz/images/icon-512.png'],
+      // The deployment's own origin: wallets show it as the dapp's identity,
+      // and some refuse a session whose metadata URL is not the page's origin.
+      url: SITE_URL,
+      icons: [`${SITE_URL}/images/icon-512.png`],
     },
   }),
 ]

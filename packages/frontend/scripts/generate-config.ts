@@ -87,6 +87,25 @@ if (isPublic) {
   }
 }
 
+// The canonical site origin. The same application is deployed once per public target
+// (testnet.trustgraphs.xyz on Sepolia, trustgraphs.xyz on mainnet), so nothing that names the
+// site — metadataBase and OpenGraph, the sitemap and robots, WalletConnect metadata, the
+// analytics hostname — may hard-code it. A public build must say which site it is; a local build
+// is the dev server unless FRONTEND_URL says otherwise.
+const resolveSiteUrl = (): string => {
+  if (!isPublic && !process.env.FRONTEND_URL?.trim()) {
+    return 'http://127.0.0.1:3000'
+  }
+  const value = requiredPublicUrl('FRONTEND_URL')
+  const parsed = new URL(value)
+  if (parsed.search || parsed.hash) {
+    throw new Error('FRONTEND_URL must not include a query string or fragment')
+  }
+  // Never a trailing slash: every consumer appends `/path` to it.
+  return value.replace(/\/+$/, '')
+}
+const siteUrl = resolveSiteUrl()
+
 // Path to deployment summary and config files
 const deploymentSummaryFile = path.join(
   __dirname,
@@ -178,6 +197,7 @@ try {
 
   // Set chain based on environment
   configOutput.chain = selectedTarget
+  configOutput.siteUrl = siteUrl
   configOutput.apis = {
     ponder: !isPublic
       ? 'http://127.0.0.1:65421'

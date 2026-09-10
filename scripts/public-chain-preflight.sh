@@ -1,42 +1,54 @@
 #!/usr/bin/env bash
 #
 # Read-only preflight for a public-chain deploy. Broadcasts nothing, writes nothing, and prints
-# no secret: it derives addresses from the keys in `.env.sepolia` but never echoes a key, an RPC URL or
-# an API token.
+# no secret: it derives addresses from the keys in `.env.<target>` but never echoes a key, an RPC
+# URL or an API token. The target is the only switch: everything chain-specific below is derived
+# from it and from `deployments/<target>.json`.
 #
 # It exists because the checks that matter before a deploy were spread across a checklist, a dry
 # run and several people's heads. On 2026-08-25 a verifier went out holding a vkey from a local
 # guest build, which is immutable and cost a redeploy of two contracts. Everything below is
 # either that failure or a neighbour of it.
 #
-# Usage:  bash scripts/sepolia-preflight.sh [--new-generation NAME]
+# Usage:  bash scripts/public-chain-preflight.sh <sepolia|mainnet> [--new-generation NAME]
 # Exit code is the number of failed checks, so it composes with `&&`.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+usage() { echo 'Usage: public-chain-preflight.sh <sepolia|mainnet> [--new-generation NAME]' >&2; exit 1; }
+[ "$#" -ge 1 ] || usage
+TARGET=$1; shift
+case "$TARGET" in
+  sepolia) EXPECTED_CHAIN_ID=11155111; EPOCH_FLOOR_OPT_IN=ALLOW_TESTNET_EPOCH_FLOOR; OTHER_OPT_IN=ALLOW_MAINNET_EPOCH_FLOOR ;;
+  mainnet) EXPECTED_CHAIN_ID=1;        EPOCH_FLOOR_OPT_IN=ALLOW_MAINNET_EPOCH_FLOOR; OTHER_OPT_IN=ALLOW_TESTNET_EPOCH_FLOOR ;;
+  *) usage ;;
+esac
+MANIFEST=deployments/$TARGET.json
+
 if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
-  exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
+  exec node scripts/run-with-target-env.cjs "$TARGET" bash "$0" "$TARGET" "$@"
 fi
 
 NEW_GENERATION=''
 if [ "$#" -gt 0 ]; then
   if [ "$#" -ne 2 ] || [ "$1" != '--new-generation' ] || ! [[ "$2" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]]; then
-    echo 'Usage: sepolia-preflight.sh [--new-generation NAME]' >&2
-    exit 1
+    usage
   fi
   NEW_GENERATION=$2
 fi
+MANIFEST_STATUS=$(jq -r '.status // "missing"' "$MANIFEST" 2>/dev/null || echo missing)
 
 # One candidate identity: the archived guest manifest. Checkout and env must agree with it.
 GUEST_MANIFEST=${GUEST_MANIFEST:-guest-manifest.json}
 RELEASE_TAG=$(jq -r '.tag // "untagged candidate"' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
 RELEASE_COMMIT=$(jq -r '.commit // empty' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
 
-# The expansion adds weighted, composition and contributions factory families. Their latest local
-# receipts total 39,406,718 gas with registry grants enabled; Sepolia disables those grants, but
-# budget 50m anyway so a base-fee move cannot strand a continuation between families.
-GAS_TOTAL=50000000
+# The full mainnet plan (registrar, four verifiers, registry, vault, the four factory families,
+# the governed wrappers and the two role handoffs) measured 76,092,233 gas over 49 transactions on
+# a mainnet-fork rehearsal on 2026-09-10 (commit 929cde36, GRANT_REGISTRAR=false). Budget 80m so a
+# base-fee move cannot strand a run between families; the check below wants three times this.
+GAS_TOTAL=80000000
 
 # A key that was exposed and must never be funded or used again.
 BURNED_KEY_ADDRESS=0x3ed16f90e8ea54d9a1bae67ab2d6bdc177eadeec
@@ -57,7 +69,7 @@ sha256_of() {
   else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-for tool in cast jq curl; do
+for tool in cast jq curl bc; do
   command -v "$tool" >/dev/null 2>&1 || { echo "$tool not found" >&2; exit 1; }
 done
 
@@ -105,16 +117,20 @@ else
   bad "guest-manifest.json absent: gh release download $RELEASE_TAG -R AInima-Collective/trustgraphs -p guest-manifest.json"
 fi
 
-echo "=== 3. scratch artifacts cannot steer the continuation ==="
-if [ -n "$NEW_GENERATION" ]; then
-  if [ -e "deployments/generations/$NEW_GENERATION" ]; then
-    bad "generation already exists; reconcile its receipts before retrying"
+echo "=== 3. scratch artifacts cannot steer the deploy ==="
+if [ -n "$NEW_GENERATION" ] || [ "$MANIFEST_STATUS" = planned ]; then
+  if [ -n "$NEW_GENERATION" ]; then
+    if [ -e "deployments/generations/$NEW_GENERATION" ]; then
+      bad "generation already exists; reconcile its receipts before retrying"
+    else
+      ok "generation name is unused"
+    fi
   else
-    ok "generation name is unused"
+    ok "$MANIFEST is planned: this is a fresh deploy, so no scratch artifact may exist"
   fi
   for file in .docker/*_deploy.json; do
     [ -f "$file" ] || continue
-    bad "$file is from an earlier attempt; use a fresh checkout for the new generation"
+    bad "$file is from an earlier attempt or a local run; use a fresh checkout"
   done
 else
 # The continuation ignores all five core artifacts and preserves those addresses from the tracked
@@ -141,7 +157,7 @@ for item in \
   file=${item%%:*}; rest=${item#*:}; field=${rest%%:*}; key=${rest##*:}
   [ -f "$file" ] || { note "$file absent (the manifest remains authoritative)"; continue; }
   have=$(jq -r --arg field "$field" '.[$field] // empty' "$file")
-  want=$(jq -r --arg key "$key" '.contracts[$key].address // empty' deployments/sepolia.json)
+  want=$(jq -r --arg key "$key" '.contracts[$key].address // empty' "$MANIFEST")
   if [ -z "$want" ]; then
     bad "$file exists while manifest.contracts.$key is null; determine whether it is live or a rehearsal"
   elif [ "$(echo "$have" | tr 'A-Z' 'a-z')" = "$(echo "$want" | tr 'A-Z' 'a-z')" ]; then
@@ -152,35 +168,40 @@ for item in \
 done
 fi
 
-echo "=== 4. .env.sepolia points at the chain we mean ==="
+echo "=== 4. .env.$TARGET points at the chain we mean ==="
 # `pnpm deploy:contracts` with no flags follows these. A demo once inherited them and deployed
 # the production plan to a public chain.
-[ "${DEPLOY_TARGET:-}" = "sepolia" ]   && ok "DEPLOY_TARGET=sepolia"     || bad "DEPLOY_TARGET=${DEPLOY_TARGET:-unset}"
-[ "${DEPLOY_STAGE:-}" = "production" ] && ok "DEPLOY_STAGE=production"   || bad "DEPLOY_STAGE=${DEPLOY_STAGE:-unset}"
-[ "${CHAIN_ID:-}" = "11155111" ]       && ok "CHAIN_ID=11155111"         || bad "CHAIN_ID=${CHAIN_ID:-unset}"
-# The factory scripts fail closed below ~1 day of blocks on a real chain unless the testnet opts
-# in explicitly. Attempt 2 of v0.1.0 (2026-09-09) broadcast four contracts before step 5 hit
-# that guard; this is the check that would have stopped it at zero transactions.
+[ "${DEPLOY_TARGET:-}" = "$TARGET" ]         && ok "DEPLOY_TARGET=$TARGET"             || bad "DEPLOY_TARGET=${DEPLOY_TARGET:-unset}, expected $TARGET"
+[ "${DEPLOY_STAGE:-}" = "production" ]       && ok "DEPLOY_STAGE=production"           || bad "DEPLOY_STAGE=${DEPLOY_STAGE:-unset}"
+[ "${CHAIN_ID:-}" = "$EXPECTED_CHAIN_ID" ]   && ok "CHAIN_ID=$EXPECTED_CHAIN_ID"       || bad "CHAIN_ID=${CHAIN_ID:-unset}, expected $EXPECTED_CHAIN_ID"
+# The factory scripts fail closed below ~1 day of blocks on a real chain unless the chain's own
+# opt-in is set: ALLOW_TESTNET_EPOCH_FLOOR on a testnet, ALLOW_MAINNET_EPOCH_FLOOR on mainnet,
+# never the other one. Attempt 2 of v0.1.0 (2026-09-09) broadcast four contracts before step 5
+# hit that guard; this is the check that would have stopped it at zero transactions.
 FLOOR=${FACTORY_EPOCH_FLOOR:-unset}
+eval "OPT_IN=\${$EPOCH_FLOOR_OPT_IN:-}"
+eval "OTHER=\${$OTHER_OPT_IN:-}"
 if [ "$FLOOR" = unset ] || ! [[ "$FLOOR" =~ ^[0-9]+$ ]]; then
   bad "FACTORY_EPOCH_FLOOR=$FLOOR (must be a positive block count)"
 elif [ "$FLOOR" -ge 7200 ]; then
   ok "FACTORY_EPOCH_FLOOR=$FLOOR (deliberate: at least ~1 day of blocks)"
-elif [ "${ALLOW_TESTNET_EPOCH_FLOOR:-}" = true ]; then
-  ok "FACTORY_EPOCH_FLOOR=$FLOOR with ALLOW_TESTNET_EPOCH_FLOOR=true (fast-cadence testnet factories)"
+elif [ "$OPT_IN" = true ]; then
+  ok "FACTORY_EPOCH_FLOOR=$FLOOR with $EPOCH_FLOOR_OPT_IN=true (fast-cadence factories, a recorded decision)"
 else
-  bad "FACTORY_EPOCH_FLOOR=$FLOOR is below 7200; the factory scripts will revert at step 5 unless ALLOW_TESTNET_EPOCH_FLOOR=true"
+  bad "FACTORY_EPOCH_FLOOR=$FLOOR is below 7200; the factory scripts will revert at step 5 unless $EPOCH_FLOOR_OPT_IN=true"
 fi
+[ "$OTHER" = true ] && note "$OTHER_OPT_IN=true is set but $TARGET ignores it; remove it so the overlay says what it means"
 
 echo "=== 5. the RPC is the chain it claims to be ==="
 CHAIN=$(cast chain-id --rpc-url "${RPC_URL:-}" 2>/dev/null || echo 0)
-[ "$CHAIN" = "11155111" ] && ok "RPC answers chain-id 11155111" || bad "RPC answers chain-id $CHAIN"
+[ "$CHAIN" = "$EXPECTED_CHAIN_ID" ] && ok "RPC answers chain-id $EXPECTED_CHAIN_ID" || bad "RPC answers chain-id $CHAIN, expected $EXPECTED_CHAIN_ID"
 note "head block $(cast block-number --rpc-url "${RPC_URL:-}" 2>/dev/null || echo unknown)"
 
 echo "=== 6. the keys, by address and balance ==="
 DEPLOYER=$(cast wallet address --private-key "${FUNDED_KEY:-}" 2>/dev/null || echo unknown)
 SUBMITTER=$(cast wallet address --private-key "${SUBMITTER_PRIVATE_KEY:-}" 2>/dev/null || echo unknown)
 for pair in "deployer:$DEPLOYER" "admin:${INSTANCE_REGISTRY_ADMIN:-unknown}" "submitter:$SUBMITTER"; do
+  # The admin may be a Safe; only its address and balance are read, never a key.
   who=${pair%%:*}; addr=${pair##*:}
   [ "$addr" = "unknown" ] && { bad "$who key missing from .env"; continue; }
   WEI=$(cast balance "$addr" --rpc-url "${RPC_URL:-}" 2>/dev/null || echo 0)
@@ -197,8 +218,10 @@ COST_WEI=$(( GAS_TOTAL * BASEFEE ))
 note "base fee $(cast to-unit "$BASEFEE" gwei) gwei"
 note "$GAS_TOTAL gas at that price = $(cast to-unit "$COST_WEI" ether | cut -c1-8) ETH"
 note "deployer holds                = $(cast to-unit "$DEP_WEI" ether | cut -c1-8) ETH"
-# Threefold, because the risk is not the price now but a spike partway through a 16-transaction run.
-if [ "$COST_WEI" -gt 0 ] && [ "$DEP_WEI" -gt $(( COST_WEI * 3 )) ]; then
+# Threefold, because the risk is not the price now but a spike partway through the run. Compared
+# with bc: wei balances above ~9.22 ETH overflow the shell's 64-bit integers, and a well-funded
+# deployer must not fail its own headroom check.
+if [ "$(echo "$COST_WEI > 0 && $DEP_WEI > $COST_WEI * 3" | bc)" = 1 ]; then
   ok "at least 3x headroom over the current base fee"
 else
   bad "under 3x headroom, a spike mid-run could strand the deploy half-finished"
@@ -206,8 +229,8 @@ fi
 
 echo "=== 8. the contracts the plan reuses rather than deploys ==="
 for key in eas schemaRegistry sp1Gateway ethUsdFeed usdc; do
-  ADDR=$(jq -r --arg k "$key" '.external[$k] // empty' deployments/sepolia.json)
-  [ -z "$ADDR" ] && { bad "deployments/sepolia.json has no external.$key"; continue; }
+  ADDR=$(jq -r --arg k "$key" '.external[$k] // empty' "$MANIFEST")
+  [ -z "$ADDR" ] && { bad "$MANIFEST has no external.$key"; continue; }
   SIZE=$(cast code "$ADDR" --rpc-url "${RPC_URL:-}" 2>/dev/null | wc -c | tr -d ' ')
   [ "${SIZE:-0}" -gt 4 ] && ok "$key $ADDR has code" || bad "$key $ADDR has NO code on this chain"
 done
@@ -234,7 +257,7 @@ else
   note "sp1-verifier $SP1_VERSION not unpacked locally, using the pinned selector"
   note "to derive: cargo fetch in zk/prover, then rerun"
 fi
-GATEWAY=$(jq -r '.external.sp1Gateway' deployments/sepolia.json)
+GATEWAY=$(jq -r '.external.sp1Gateway' "$MANIFEST")
 ROUTE=$(cast call "$GATEWAY" "routes(bytes4)(address,bool)" "$SELECTOR" --rpc-url "${RPC_URL:-}" 2>/dev/null)
 ROUTE_VERIFIER=$(echo "$ROUTE" | sed -n 1p)
 ROUTE_FROZEN=$(echo "$ROUTE" | sed -n 2p)
@@ -247,16 +270,15 @@ else
 fi
 
 echo "=== 10. the record this deploy will overwrite ==="
-STATUS=$(jq -r .status deployments/sepolia.json)
-if [ "$STATUS" = "deployed" ]; then
+if [ "$MANIFEST_STATUS" = "deployed" ]; then
   if [ -n "$NEW_GENERATION" ]; then
-    ok "active deployment is preserved; candidate writes deployments/generations/$NEW_GENERATION/sepolia.json"
+    ok "active deployment is preserved; candidate writes deployments/generations/$NEW_GENERATION/$TARGET.json"
   else
-  note "deployments/sepolia.json already records a deploy. It is the release manifest file, so"
+  note "$MANIFEST already records a deploy. It is the release manifest file, so"
   note "the next run writes straight over it. Keep a copy if that record still matters."
   fi
 else
-  ok "deployments/sepolia.json is '$STATUS', so nothing is lost by deploying"
+  ok "$MANIFEST is '$MANIFEST_STATUS', so nothing is lost by deploying"
 fi
 
 echo

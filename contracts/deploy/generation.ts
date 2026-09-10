@@ -1,21 +1,33 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { CHAIN_PROFILES } from './profiles'
+import { hostedFamilyKeys, type PublicChainTarget } from './public-chains'
 import {
   CURRENT_SP1_CIRCUIT_VERSION,
   CURRENT_SP1_VERSION,
   RELEASE_PROGRAMS,
   type ReleaseManifest,
+  releaseChainOf,
   validateReleaseManifest,
 } from './release-manifest'
 
-export const generationManifestPath = (name: string): string => {
+export const generationManifestPath = (
+  name: string,
+  target: PublicChainTarget
+): string => {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(name)) {
     throw new Error(
       'Generation name must be 1–80 letters, digits, dots, underscores or hyphens'
     )
   }
-  return `deployments/generations/${name}/sepolia.json`
+  return `deployments/generations/${name}/${target}.json`
+}
+
+const activeManifestFile = (target: PublicChainTarget): string => {
+  const file = CHAIN_PROFILES[target].releaseManifestFile
+  if (!file) throw new Error(`${target} has no release manifest file`)
+  return file
 }
 
 /** Only canonical external contracts survive a replacement deployment. */
@@ -24,7 +36,11 @@ export const planGeneration = (
   guestManifest: unknown,
   commit: string
 ): ReleaseManifest => {
-  validateReleaseManifest(active, { requireComplete: true })
+  const target = releaseChainOf(active)
+  validateReleaseManifest(active, {
+    requireComplete: true,
+    expectedChain: target,
+  })
   const guest = guestManifest as {
     commit?: string
     sp1?: string
@@ -79,7 +95,7 @@ export const planGeneration = (
       elfSha256: `0x${entry.elf_sha256}`,
     }
   }
-  return validateReleaseManifest(plan)
+  return validateReleaseManifest(plan, { expectedChain: target })
 }
 
 /** Reserve a new generation before any broadcast. Never overwrite a prior attempt. */
@@ -90,6 +106,7 @@ export const beginGeneration = (
   guestBytes: string,
   root = '.'
 ) => {
+  const target = releaseChainOf(plan)
   const archivedPlan = planGeneration(
     JSON.parse(activeBytes),
     JSON.parse(guestBytes),
@@ -101,11 +118,11 @@ export const beginGeneration = (
     )
   }
   if (
-    fs.readFileSync(path.join(root, 'deployments/sepolia.json'), 'utf8') !==
+    fs.readFileSync(path.join(root, activeManifestFile(target)), 'utf8') !==
     activeBytes
   ) {
     throw new Error(
-      'Active Sepolia manifest changed while preparing the generation'
+      `Active ${target} manifest changed while preparing the generation`
     )
   }
   const scratch = path.join(root, '.docker')
@@ -117,12 +134,12 @@ export const beginGeneration = (
       'New generation requires a clean deployment checkout without .docker/*_deploy.json receipts; preserve existing receipts and use a fresh checkout'
     )
   }
-  const file = path.join(root, generationManifestPath(name))
+  const file = path.join(root, generationManifestPath(name, target))
   fs.mkdirSync(path.dirname(path.dirname(file)), { recursive: true })
   // Non-recursive mkdir reserves the whole directory exclusively, including failed attempts.
   fs.mkdirSync(path.dirname(file))
   fs.writeFileSync(
-    path.join(path.dirname(file), 'previous-sepolia.json'),
+    path.join(path.dirname(file), `previous-${target}.json`),
     activeBytes,
     { flag: 'wx' }
   )
@@ -139,7 +156,11 @@ export const assertGenerationComplete = (
   plan: ReleaseManifest,
   deployed: ReleaseManifest
 ) => {
-  validateReleaseManifest(deployed, { requireComplete: true })
+  const target = releaseChainOf(plan)
+  validateReleaseManifest(deployed, {
+    requireComplete: true,
+    expectedChain: target,
+  })
   if (
     deployed.deploymentCommit !== plan.deploymentCommit ||
     JSON.stringify(deployed.programs) !== JSON.stringify(plan.programs)
@@ -148,29 +169,8 @@ export const assertGenerationComplete = (
       'Deployed generation does not match the candidate source and guest identities'
     )
   }
-  // All hosted families must be present, not merely the four minimum core records.
-  for (const key of [
-    'schemaRegistrar',
-    'rootVerifier',
-    'instanceRegistry',
-    'provingVault',
-    'trustgraphsFactory',
-    'importedTrustgraphsFactory',
-    'signerVerifier',
-    'governedTrustgraphsFactory',
-    'governedImportedTrustgraphsFactory',
-    'signerSyncModuleDeployer',
-    'parentAuthorityModuleDeployer',
-    'subnetworkRegistry',
-    'weightedVerifier',
-    'weightedTrustgraphsFactory',
-    'governedWeightedTrustgraphsFactory',
-    'compositionVerifier',
-    'trustComposeFactory',
-    'governedTrustComposeFactory',
-    'contributionsVerifier',
-    'contributionsFactory',
-  ] as const) {
+  // Every hosted family this chain's plan ships must be present, not merely the core records.
+  for (const key of hostedFamilyKeys(target)) {
     const record = deployed.contracts[key]
     if (!record?.address || record.block === null || record.txHash === null) {
       throw new Error(`Generation is missing deployment receipt for ${key}`)

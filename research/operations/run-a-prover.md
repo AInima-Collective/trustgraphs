@@ -73,10 +73,13 @@ registry = "0x…"                # required. InstanceRegistry address
 chain_id = 1                    # optional; checked against eth_chainId at startup, never trusted over it
 registry_from_block = 21000000  # the block `registry` was deployed at. SET THIS on any real chain.
 
-# Sepolia alternative: omit registry/chain_id/registry_from_block and resolve them from the
-# sanitized tracked release record. Relative paths are resolved from this TOML. Explicit values
-# are allowed only when they exactly match the manifest; RPC credentials never come from JSON.
-# release_manifest = "../../deployments/sepolia.json"
+# Public-chain alternative: omit registry/registry_from_block and resolve them from the sanitized
+# tracked release record for the chain named by `chain_id`, which stays required: the manifest's
+# chainId must equal it and its `chain` must be that id's canonical name (1 = mainnet,
+# 11155111 = sepolia); any other id is refused. Every guest this binary embeds is checked against
+# the manifest's program table at startup. Relative paths are resolved from this TOML. Explicit
+# values are allowed only when they exactly match the manifest; RPC credentials never come from JSON.
+# release_manifest = "../../deployments/sepolia.json"   # or mainnet.json with chain_id = 1
 
 # ── which instances ─────────────────────────────────────────────────────────
 # Factory-minted trust-graph instances and their optional governed signer modules need ZERO
@@ -264,9 +267,9 @@ inside `state_dir`, which is the arrangement a backup and a volume mount both wa
 | ------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `rpc`                                            | JSON-RPC endpoint; must be an absolute `http(s)://` URL                                 | required                                       |
 | `rpc_timeout_seconds`                            | budget for one chain read; a provider that never answers must not stop the daemon       | 30                                             |
-| `release_manifest`                               | sanitized finalized public release JSON; supplies and checks chain/registry coordinates | unset                                          |
+| `release_manifest`                               | finalized release JSON for the chain in `chain_id`; supplies registry, pins every guest | unset                                          |
 | `registry`                                       | `InstanceRegistry` address                                                              | required unless supplied by `release_manifest` |
-| `chain_id`                                       | expected chain; startup aborts on mismatch                                              | read from chain                                |
+| `chain_id`                                       | expected chain; required with `release_manifest`; startup aborts on mismatch            | read from chain                                |
 | `registry_from_block`                            | where the `InstanceRegistered` scan starts                                              | 0 (alerts on any chain but 31337)              |
 | `manifest[]`                                     | instances the chain cannot describe                                                     | empty                                          |
 | `curated.instances`                              | proven on us, no vault                                                                  | empty                                          |

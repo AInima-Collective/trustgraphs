@@ -7,6 +7,7 @@ import { formatApproxDuration } from '@/lib/duration'
  * here degrades to a wrong estimate, never a wrong on-chain action.
  */
 const BLOCK_TIME_SECONDS: Record<string, number> = {
+  mainnet: 12,
   sepolia: 12,
   local: 12, // Anvil demo cadence mirrors mainnet
 }

@@ -1,14 +1,57 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { chromium } from 'playwright'
 
-const configuredUrl = process.env.SEPOLIA_FRONTEND_URL?.trim()
+/**
+ * Browser smoke for a public deployment, testnet or mainnet.
+ *
+ * ONE SCRIPT FOR BOTH SITES. The same application is served at
+ * testnet.trustgraphs.xyz and trustgraphs.xyz, so the site under test is
+ * `FRONTEND_URL` and the chain is whatever the generated `config.json` says
+ * the checkout was built for: `chain` names a target in
+ * `lib/application-targets.json`, and that chain id is the read proxy's path
+ * (`/api/rpc/<chainId>`) the failover assertion watches. The `SEPOLIA_*`
+ * names are accepted for the runbooks that still use them.
+ */
+const frontendDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+
+const configuredUrl = (
+  process.env.FRONTEND_URL ?? process.env.SEPOLIA_FRONTEND_URL
+)?.trim()
 if (!configuredUrl) {
-  throw new Error('SEPOLIA_FRONTEND_URL is required')
+  throw new Error('FRONTEND_URL is required')
 }
 const baseUrl = new URL(configuredUrl)
 const createUrl = new URL('/create', baseUrl).toString()
-const expectRpcFailover = process.env.SEPOLIA_EXPECT_RPC_FAILOVER === 'true'
+const expectRpcFailover =
+  (process.env.EXPECT_RPC_FAILOVER ??
+    process.env.SEPOLIA_EXPECT_RPC_FAILOVER) === 'true'
+
+const readJson = (file) => {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'))
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(
+        `Missing ${file}; generate and link the frontend configuration for the target under test first`
+      )
+    }
+    throw error
+  }
+}
+const { chain } = readJson(path.join(frontendDir, 'config.json'))
+const targets = readJson(path.join(frontendDir, 'lib/application-targets.json'))
+if (!Object.hasOwn(targets, chain)) {
+  throw new Error(
+    `config.json names an unsupported application chain: ${chain}`
+  )
+}
+const chainId = String(targets[chain])
+const rpcPath = `/api/rpc/${chainId}`
+
 const browser = await chromium.launch({ headless: true })
 
 try {
@@ -17,7 +60,7 @@ try {
   const rpcResponses = []
   page.on('response', (response) => {
     const url = new URL(response.url())
-    if (url.pathname !== '/api/rpc/11155111') return
+    if (url.pathname !== rpcPath) return
     rpcResponses.push({
       id: url.searchParams.get('id') ?? '0',
       status: response.status(),
@@ -49,17 +92,19 @@ try {
   if (expectRpcFailover) {
     assert.ok(
       rpcResponses.some(({ id, status }) => id === '0' && status >= 500),
-      `primary RPC was not observed failing: ${JSON.stringify(rpcResponses)}`
+      `primary RPC on ${rpcPath} was not observed failing: ${JSON.stringify(rpcResponses)}`
     )
     assert.ok(
       rpcResponses.some(({ id, status }) => id === '1' && status === 200),
-      `secondary RPC was not observed succeeding: ${JSON.stringify(rpcResponses)}`
+      `secondary RPC on ${rpcPath} was not observed succeeding: ${JSON.stringify(rpcResponses)}`
     )
   }
 
   console.log(
     JSON.stringify({
       url: createUrl,
+      chain,
+      chainId,
       title: await page.title(),
       testnetBanner: false,
       standardCreationOffered: true,

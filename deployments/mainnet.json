@@ -1,0 +1,157 @@
+{
+  "$schema": "./schema.json",
+  "version": 1,
+  "status": "planned",
+  "stage": "production",
+  "chain": "mainnet",
+  "chainId": 1,
+  "deploymentCommit": null,
+  "firstDeploymentBlock": null,
+  "external": {
+    "eas": "0xA1207F3BBa224E2c9c3c6D5aF63D0eb1582Ce587",
+    "schemaRegistry": "0xA7b39296258348C78294F95B872b282326A97BDF",
+    "sp1Gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+    "ethUsdFeed": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+    "usdc": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+  },
+  "contracts": {
+    "schemaRegistrar": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "rootVerifier": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "instanceRegistry": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "provingVault": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "trustgraphsFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "signerVerifier": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "governedTrustgraphsFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "signerSyncModuleDeployer": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "parentAuthorityModuleDeployer": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "subnetworkRegistry": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "safeSingleton": {
+      "address": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+      "block": null,
+      "txHash": null
+    },
+    "safeProxyFactory": {
+      "address": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+      "block": null,
+      "txHash": null
+    },
+    "weightedVerifier": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "weightedTrustgraphsFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "governedWeightedTrustgraphsFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "compositionVerifier": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "trustComposeFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "governedTrustComposeFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "contributionsVerifier": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    },
+    "contributionsFactory": {
+      "address": null,
+      "block": null,
+      "txHash": null
+    }
+  },
+  "programs": {
+    "trustGraph": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00bbf3b3cc5efe71ced29517bd09edac2720bcc795b7094a314db17c224dcea3",
+      "elfSha256": "0x446d12fab5a9cde882ca7d07499e2db750915c21696c3945f8fcb061b6435f6e"
+    },
+    "weighted": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x0095b1a77a841e434307acdc8cd2340c3a82beda37cde4498170db3cdcc6eb80",
+      "elfSha256": "0x12e658843d2719b246f2898e3375610e65c255326a11df8ec16e57ae40142d95"
+    },
+    "composition": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00c6868afdf506311dcb1393a74f3c033ad0620ec25602b65d079227c88d9dfc",
+      "elfSha256": "0xd74643d1a62bf5951dcc3e3caee4e0d558a61f4fc0d8664509da277b31f0e082"
+    },
+    "signer": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00f8ad1fd05ff8c894a1e8906b3e1a1f9fba968d14ef8a121d3107d3c57df7fb",
+      "elfSha256": "0x73ca7d5e2fd1516a83645aefe3ce8541fe76007d7416267a5169ff5dd6bbb912"
+    },
+    "contributions": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x0098fb1266d6ca97c12c529c29ef59b45dae9bede0cbe0990a2fbb1b4394d798",
+      "elfSha256": "0x48603c146a0d7100f5a2a6e92ba518b6b7f9ca0d55816be1742d70f70e5a2480"
+    },
+    "hypercerts": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x0072790ce927dab3afab201f8517b7b0ac36764c825825f6a23d9ed3c080c8d2",
+      "elfSha256": "0x00cdda54fb2eccffed8b393cad91926a9560faa1341c0b7ae05248565b9222f0"
+    },
+    "nostrWorkspace": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00a8e5183dbdab1ff521c068ff2d2d8ed840f5beef4f516964d345a16bc302af",
+      "elfSha256": "0x3238e0ef525febdc094ed7d3fe1958ef93ddeddbb31599cd3d0d615d8ea121b7"
+    }
+  },
+  "instances": []
+}

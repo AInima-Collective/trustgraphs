@@ -42,7 +42,7 @@ const program = new Command('verify-contracts')
   )
   .option(
     '--chain <target>',
-    'Chain target: local or sepolia (default: $DEPLOY_TARGET)'
+    'Chain target: local, sepolia or mainnet (default: $DEPLOY_TARGET)'
   )
   .option(
     '-r, --rpc-url <rpcUrl>',
@@ -202,20 +202,32 @@ const main = async () => {
 
   const records: CreationRecord[] = []
   const problems: string[] = []
+  const seen = new Set<string>()
   for (const script of scripts) {
-    const file = path.join(
-      'broadcast',
-      script,
-      String(chainId),
-      'run-latest.json'
-    )
-    if (!fs.existsSync(file)) {
+    const directory = path.join('broadcast', script, String(chainId))
+    // One script can run several times in one release (the four `DeployZkVerifier` adapters on a
+    // public chain), and each run replaces `run-latest.json`. The timestamped receipts are the
+    // release evidence; reading only the latest would verify one adapter and silently skip three.
+    const files = fs.existsSync(directory)
+      ? fs
+          .readdirSync(directory)
+          .filter((name) => /^run-(?:latest|\d+)\.json$/.test(name))
+          .map((name) => path.join(directory, name))
+      : []
+    if (files.length === 0) {
       if (!all) problems.push(`${script}: no broadcast for chain ${chainId}`)
       continue
     }
-    const found = readCreations(file, outDir, script)
-    records.push(...found.records)
-    problems.push(...found.problems)
+    for (const file of files) {
+      const found = readCreations(file, outDir, script)
+      for (const record of found.records) {
+        const key = record.address.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        records.push(record)
+      }
+      problems.push(...found.problems)
+    }
   }
 
   if (records.length === 0) {

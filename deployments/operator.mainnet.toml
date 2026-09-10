@@ -1,0 +1,104 @@
+# Production operator policy for the public Ethereum mainnet app.
+# Operator image: filled in at release time. Mainnet runs a new operator image because the
+# config loader changed (chain binding, every-guest identity check); the guests and vkeys are the
+# v0.1.1 program table, unchanged, and mainnet.json records them. Record the digest here:
+# ghcr.io/ainima-collective/trustgraphs-operator@sha256:<filled in at release time>
+#
+# Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
+# operator at startup and never enter its public status response. The transaction and Succinct
+# credentials are separately supplied as SUBMITTER_PRIVATE_KEY and NETWORK_PRIVATE_KEY.
+rpc = "env:RPC_URL"
+# Resolved relative to this file. The loader binds the manifest to chain_id below: a record whose
+# chainId is not 1 or whose chain is not "mainnet" is refused, so a copied testnet manifest cannot
+# start this daemon.
+release_manifest = "mainnet.json"
+chain_id = 1
+rpc_timeout_seconds = 30
+
+[curated]
+# Fail closed until the browser-created showcase network is recorded in mainnet.json, then fund
+# exactly that one tracked instance. Additional permissionless instances must use the vault.
+single_release_instance = true
+
+[paid]
+enabled = true
+# The vault address is read from the finalized release manifest and checked for conflicts.
+# PLACEHOLDER: replace with the public address of the separately funded mainnet submitter key.
+# The zero address is deliberately what the loader refuses ("[paid] enabled but `recipient` is
+# missing or zero"), so the daemon cannot start until this line is replaced.
+recipient = "0x0000000000000000000000000000000000000000"
+
+[cadence]
+tick_seconds = 60
+# The mainnet factory epoch floor is 1 block (decision D2 in research/operations/mainnet.md), so
+# this is the ONLY rate limit on subsidized proving of the curated instance: 300 blocks is about
+# one hour between proofs while the graph is changing. Quiet graphs cost nothing regardless.
+subsidy_min_blocks = 300
+max_concurrent = 1
+max_per_instance = 1
+
+[gas]
+# Proofs wait out a fee spike rather than buying a submit at the top of one.
+max_basefee_gwei = 30
+priority_fee_gwei = 0.1
+replacement_after_s = 300
+simulate_before_send = true
+
+[finality]
+# Two Ethereum epochs: a proof is only bought for a checkpoint beyond ordinary short reorg depth.
+confirmations = 64
+track_block_hash = true
+
+[prover]
+backend = "network"
+groth16 = true
+timeout_s = 3600
+
+[budget]
+# Sized to the epoch: the 600k-gas submit is about $1.50 at 1 gwei and about $15 at 10 gwei.
+# Succinct cycles are priced through cents_per_billion_cycles; eth_usd books on-chain gas burn
+# into the same ledger. Replace eth_usd with the price at launch.
+per_instance_usd_per_day = 5
+global_usd_per_day = 20
+global_alert_percent = 80
+window_seconds = 86400
+cents_per_billion_cycles = 100
+eth_usd = 2500
+
+[signer_sync]
+enabled = true
+confirmations = 64
+track_block_hash = true
+per_instance_usd_per_day = 2
+global_usd_per_day = 5
+budget_window_seconds = 86400
+
+[ipfs]
+# One genuinely independent writable service today, Pinata. Counting the same account or gateway
+# twice would invent durability. A second independently writable and readable target (decision D5
+# in research/operations/mainnet.md, still open) is added as another [[ipfs.targets]] entry and
+# raises min_success to 2.
+min_success = 1
+retry_seconds = 300
+
+[[ipfs.targets]]
+name = "pinata"
+kind = "pinata"
+api = "env:IPFS_PIN_API"
+gateway = "env:IPFS_GATEWAY"
+token_env = "IPFS_PIN_API_KEY"
+
+[ops]
+state_dir = "/data"
+journal_path = "/data/journal.jsonl"
+status_path = "/data/status.json"
+# Railway private networking is dual-stack for new environments and IPv6-only for legacy ones.
+# Binding the unspecified IPv6 address is dual-stack on Linux, so either network generation and
+# Docker's existing IPv4 localhost health check work with the same profile.
+listen = "[::]:8080"
+ready_after_seconds = 10800
+tool_timeout_seconds = 900
+log_format = "json"
+submit_failure_threshold = 3
+# Resolved at startup like the endpoints above; the daemon refuses to start without the variable.
+alert_webhook = "env:OPERATOR_ALERT_WEBHOOK"

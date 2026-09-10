@@ -30,6 +30,7 @@ export const CHAIN_PROFILES: Record<ChainTarget, ChainProfile> = {
     wsEnv: 'PONDER_WS_URL_1',
     startBlockEnv: 'PONDER_START_BLOCK_1',
     explorer: 'https://etherscan.io',
+    releaseManifestFile: 'deployments/mainnet.json',
   },
 }
 

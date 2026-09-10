@@ -41,9 +41,11 @@ COPY deployments ./deployments
 COPY scripts/load-env.cjs ./scripts/load-env.cjs
 COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 
-# Hosted services explicitly load their complete configuration from the process environment.
-# The static fallback catalog is fixed at image-build time, so startup never mutates the read-only
-# application tree.
+# Hosted services explicitly load their complete configuration from the process environment. One
+# image serves every public chain: `scripts/launch-indexer.mjs` links `packages/indexer/networks.json`
+# to `config/networks.<DEPLOY_TARGET>.json` at startup, which is why the tree is chowned to the
+# runtime user below (that link is the only file startup replaces). The checked-out symlink is
+# removed here because it points at the untracked local catalog this image never carries.
 #
 # Ponder executes every file under `src/` when it builds indexing functions, ignoring only the API
 # directory, and this repository keeps unit tests beside the modules they cover. The other copied
@@ -56,7 +58,6 @@ COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 # it materializes the container. Keep the assertion so an ignore-rule regression fails the image
 # build instead of crash-looping the service at startup.
 RUN rm -f packages/indexer/networks.json \
-    && ln -s ../../config/networks.sepolia.json packages/indexer/networks.json \
     && remaining="$(find packages/indexer packages/eas-offchain-client packages/frontend/lib contracts/deploy \
          -type f -name '*.test.*')" \
     && if [ -n "$remaining" ]; then \
