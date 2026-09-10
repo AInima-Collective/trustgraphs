@@ -830,8 +830,13 @@ fn pin_kubo(target: &PinTarget, blob: &[u8]) -> Result<String> {
 fn pin_pinata(target: &PinTarget, blob: &[u8], token: &str) -> Result<String> {
     let boundary = "----trustgraph-operator-pinata-blob";
     let mut body = Vec::new();
+    // Pinata's v3 files API takes `cid_version` as one of `v0`, `v1` or `unixfs-v1-2025`, not a
+    // bare number: the bare `1` was answered with a 500 wrapping a validation error, which blocked
+    // every publication of the v0.1.1 candidate on Sepolia (2026-09-09). `v1` is what the API
+    // defaults to and yields the raw `bafkrei…` CID the local computation expects for a single
+    // raw block.
     for (name, value) in
-        [("network", "public"), ("name", "trustgraph-score-blob"), ("cid_version", "1")]
+        [("network", "public"), ("name", "trustgraph-score-blob"), ("cid_version", "v1")]
     {
         body.extend_from_slice(
             format!(
@@ -1540,7 +1545,9 @@ mod readback_tests {
         assert!(request.contains("name=\"network\""), "{request}");
         assert!(request.contains("\r\n\r\npublic\r\n"), "{request}");
         assert!(request.contains("name=\"cid_version\""), "{request}");
-        assert!(request.contains("\r\n\r\n1\r\n"), "{request}");
+        // The enum value the real API accepts; a bare `1` is rejected (see `pin_pinata`).
+        assert!(request.contains("\r\n\r\nv1\r\n"), "{request}");
+        assert!(!request.contains("\r\n\r\n1\r\n"), "{request}");
         assert!(request.contains(std::str::from_utf8(BLOB).unwrap()), "{request}");
     }
 
