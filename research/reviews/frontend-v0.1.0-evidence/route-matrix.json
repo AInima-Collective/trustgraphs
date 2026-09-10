@@ -1,0 +1,1288 @@
+{
+  "baselineCommit": "a45687bfdf0cc5c3190aea9048b9ec79b24c3150",
+  "includesExistingWorkingTreeChanges": true,
+  "fixtureMode": true,
+  "browser": "Playwright Chromium",
+  "contexts": "Coarse pointer/mobile emulation below 500px; reduced-motion requested; desktop otherwise.",
+  "interpretation": "Initial route states only. Deep interaction overflows are separately documented in mobile-targeted-results.json. Unavailable configured capabilities may render an explanatory page with HTTP 200. No live transactions were tested.",
+  "cells": [
+    {
+      "route": "/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "target": [
+                ".bg-surface-2 > .tracking-widest.text-text-subtle.text-\\[10px\\]"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 4.31 (foreground color: #7b7f83, background color: #191a1c, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "target": [
+                ".gap-8.lg\\:grid-cols-\\[minmax\\(15rem\\,0\\.72fr\\)_minmax\\(0\\,1\\.28fr\\)\\].lg\\:gap-16 > div > .opacity-55.tracking-widest.text-\\[10px\\]"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 4.2 (foreground color: #707173, background color: #eceef0, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "target": [
+                ".lg\\:p-12 > .opacity-55.tracking-widest.text-\\[10px\\]"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 4.2 (foreground color: #707173, background color: #eceef0, font size: 7.5pt (10px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ]
+        }
+      ],
+      "axeRun": true
+    },
+    {
+      "route": "/networks",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create/standard",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create/weighted",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create/composition",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/faq",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/docs/learn/what-is-trustgraphs",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/governance",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/governance/new",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "target": [
+                ".bg-surface-2 > .tg-label"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 4.31 (foreground color: #7b7f83, background color: #191a1c, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ]
+        }
+      ],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/rewards",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/rewards?fund=true",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "description": "Ensure buttons have discernible text",
+          "nodes": [
+            {
+              "target": [
+                ".h-10"
+              ],
+              "summary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ]
+        }
+      ],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/settings",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/attestations",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": [
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "description": "Ensure select element has an accessible name",
+          "nodes": [
+            {
+              "target": [
+                "div:nth-child(1) > select"
+              ],
+              "summary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            },
+            {
+              "target": [
+                "div:nth-child(2) > select"
+              ],
+              "summary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ]
+        }
+      ],
+      "axeRun": true
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/standard",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/weighted",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/composition",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/faq",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/docs/learn/what-is-trustgraphs",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance/new",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards?fund=true",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/settings",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/attestations",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 320,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/standard",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/weighted",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/composition",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/faq",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/docs/learn/what-is-trustgraphs",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance/new",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards?fund=true",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/settings",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/attestations",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 768,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/standard",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/weighted",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/composition",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/faq",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/docs/learn/what-is-trustgraphs",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance/new",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards?fund=true",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/settings",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/attestations",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/standard",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/weighted",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/create/composition",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/faq",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/docs/learn/what-is-trustgraphs",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/governance/new",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/rewards?fund=true",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/networks/demo-co-op/settings",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/attestations",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 390,
+      "pageErrors": [],
+      "accessibilityViolations": null,
+      "axeRun": false
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create/standard",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create/weighted",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/create/composition",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/faq",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/docs/learn/what-is-trustgraphs",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/governance",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/governance/new",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/rewards",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/rewards?fund=true",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "description": "Ensure buttons have discernible text",
+          "nodes": [
+            {
+              "target": [
+                ".h-10"
+              ],
+              "summary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ]
+        }
+      ],
+      "axeRun": true
+    },
+    {
+      "route": "/networks/demo-co-op/settings",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [],
+      "axeRun": true
+    },
+    {
+      "route": "/attestations",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "httpStatus": 200,
+      "documentWidth": 1440,
+      "pageErrors": [],
+      "accessibilityViolations": [
+        {
+          "id": "select-name",
+          "impact": "critical",
+          "description": "Ensure select element has an accessible name",
+          "nodes": [
+            {
+              "target": [
+                "div:nth-child(1) > select"
+              ],
+              "summary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            },
+            {
+              "target": [
+                "div:nth-child(2) > select"
+              ],
+              "summary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ]
+        }
+      ],
+      "axeRun": true
+    }
+  ]
+}

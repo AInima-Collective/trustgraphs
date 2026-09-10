@@ -33,6 +33,12 @@ export function CreateVouchingSchema({
   network,
 }: SchemaComponentProps) {
   const [endorsementChecked, setEndorsementChecked] = useState(false)
+  const criteria = network?.criteria?.trim()
+  const needsEndorsement = !!criteria && !endorsementChecked
+
+  useEffect(() => {
+    setEndorsementChecked(false)
+  }, [network?.id, criteria])
 
   // Set default confidence value if not set
   const confidenceValue = form.watch('data.confidence') || '100'
@@ -51,7 +57,7 @@ export function CreateVouchingSchema({
   }
 
   const handleSubmit = form.handleSubmit((data) => {
-    if (!endorsementChecked) {
+    if (needsEndorsement) {
       // This shouldn't happen due to button disable, but extra safety
       return
     }
@@ -70,39 +76,37 @@ export function CreateVouchingSchema({
 
   return (
     <div className="space-y-6">
-      {network ? (
-        <div className="space-y-2">
-          <div className="text-sm font-bold">NETWORK CRITERIA</div>
-          <Markdown className="text-sm">{network.criteria}</Markdown>
-        </div>
-      ) : (
-        // Default message if no network is provided
-        <div className="text-primary text-sm">
-          Express your trust in this person and optionally add a comment.
-        </div>
+      {criteria && (
+        <>
+          <div className="space-y-2">
+            <div className="text-sm font-bold">NETWORK CRITERIA</div>
+            <Markdown className="text-sm">{criteria}</Markdown>
+          </div>
+
+          {/* Endorsement Checkbox */}
+          <div className="space-y-2">
+            <p className="text-sm font-bold">
+              I ENDORSE THIS PERSON MEETS THE NETWORK CRITERIA
+            </p>
+
+            <div className="flex flex-row gap-2 items-center">
+              <Checkbox
+                aria-label="Confirm the recipient meets the network criteria"
+                checked={endorsementChecked}
+                onCheckedChange={(checked: boolean) =>
+                  setEndorsementChecked(!!checked)
+                }
+              />
+              <p
+                className="text-sm cursor-pointer"
+                onClick={() => setEndorsementChecked((c) => !c)}
+              >
+                Yes
+              </p>
+            </div>
+          </div>
+        </>
       )}
-
-      {/* Endorsement Checkbox */}
-      <div className="space-y-2">
-        <p className="text-sm font-bold">
-          I ENDORSE THIS PERSON MEETS THE NETWORK CRITERIA
-        </p>
-
-        <div className="flex flex-row gap-2 items-center">
-          <Checkbox
-            checked={endorsementChecked}
-            onCheckedChange={(checked: boolean) =>
-              setEndorsementChecked(!!checked)
-            }
-          />
-          <p
-            className="text-sm cursor-pointer"
-            onClick={() => setEndorsementChecked((c) => !c)}
-          >
-            Yes
-          </p>
-        </div>
-      </div>
 
       {/* Confidence Slider */}
       <FormField
@@ -188,18 +192,18 @@ export function CreateVouchingSchema({
           </p>
         )}
 
-        {!endorsementChecked && (
+        {needsEndorsement && (
           <p className="text-xs text-muted-foreground text-center">
-            You must confirm the endorsement above to make this attestation.
+            You must confirm the endorsement above to make this vouch.
           </p>
         )}
 
         <Button
           onClick={handleSubmit}
-          disabled={isLoading || !endorsementChecked}
+          disabled={isLoading || needsEndorsement}
           className="px-6 py-2 w-full"
         >
-          {isLoading ? 'Attesting...' : 'Make Attestation'}
+          {isLoading ? 'Preparing vouch…' : 'Review vouch'}
         </Button>
 
         {/* Success Display */}

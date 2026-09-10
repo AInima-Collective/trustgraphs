@@ -21,6 +21,7 @@
  *   ALICE = 1, BOB = 2, CAROL = 3, DAVE = 4, EVE = 5
  *
  * Usage: npx tsx scripts/contribution-round.ts <phase> [--flags]
+ *   preflight             verify the round's slot-A trust network and vouching schema
  *   graph                 the fixture's six vouches through the trust resolver
  *   claim-out-of-window   C4: BOB self-claim (attested BEFORE the round window opens)
  *   round1                C1/C2/C3/C5 + responses + all 12 fixture valuations
@@ -46,9 +47,8 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { foundry } from 'viem/chains'
 
-import { SEED_NETWORKS } from '../lib/config'
+import { SEED_NETWORKS, easAddress } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
-import { easAddress } from '../lib/contracts'
 import {
   fetchContributionsPayout,
   fetchContributionsRound,
@@ -166,7 +166,16 @@ const artifactRow = (
     admin: zeroAddress,
     name: a.name ?? 'Contribution round',
     metadataURI: '',
+    metadataURIHash: `0x${'0'.repeat(64)}`,
+    metadataRevision: '0',
+    metadataStatus: 'unavailable-or-invalid',
+    metadataUpdated: {
+      block: '0',
+      timestamp: '0',
+      txHash: `0x${'0'.repeat(64)}`,
+    },
     metadata: null,
+    governance: null,
     contracts: {
       merkleSnapshot: a.merkle_snapshot,
       contributionResolver: a.contribution_resolver,
@@ -222,13 +231,48 @@ const resolveRound = async () => {
   // What `useContributionsData` does when a round loads in the app: rounds are factory-minted, so
   // their claim/response/valuation schemas are not in the static seed the registry boots from.
   registerSchemas(network.schemas)
-  // Display-only back-link for `status`; the seed entries carry no instanceId, so the demo keeps
-  // matching by the accumulator address here.
+  // Slot-A back-link: seed entries carry no instanceId, so the demo matches the round's trust
+  // accumulator to the configured trust network by address.
   trustNetwork = SEED_NETWORKS.find(
     (n) =>
       n.contracts.easIndexerResolver?.toLowerCase() ===
       network.contracts.trustAccumulator?.toLowerCase()
   )
+}
+
+const trustNetworksPath = (): string => {
+  const configuredPath = path.resolve(__dirname, '../networks.json')
+  try {
+    return fs.realpathSync(configuredPath)
+  } catch {
+    return configuredPath
+  }
+}
+
+const requireTrustLane = (): { network: Network; schema: Hex } => {
+  const expectedAccumulator = network.contracts.trustAccumulator
+  if (!trustNetwork) {
+    const configuredAccumulators = SEED_NETWORKS.map(
+      (seed) => seed.contracts.easIndexerResolver
+    ).filter(Boolean)
+    throw new Error(
+      [
+        `trust network for slot A (${expectedAccumulator ?? '<missing>'}) not found in ${trustNetworksPath()}`,
+        `configured trust accumulators: ${configuredAccumulators.join(', ') || '<none>'}`,
+        'relink networks.json for the selected deployment target with: pnpm frontend networks:link',
+      ].join('\n')
+    )
+  }
+
+  const schema = trustNetwork.schemas.find(
+    (candidate) => candidate.key === 'vouching'
+  )
+  if (!schema) {
+    throw new Error(
+      `vouching schema missing from slot-A trust network ${trustNetwork.name} in ${trustNetworksPath()}`
+    )
+  }
+  return { network: trustNetwork, schema: schema.uid as Hex }
 }
 
 const schemaUid = (key: string): Hex => {
@@ -294,13 +338,11 @@ const attest = async (
 }
 
 const vouch = (as: Persona, to: Persona, confidence: number) => {
-  if (!trustNetwork)
-    throw new Error('trust network for slot A not found in config')
-  const uid = trustNetwork.schemas.find((s) => s.key === 'vouching')!.uid as Hex
+  const { schema } = requireTrustLane()
   console.log(`vouch ${as} → ${to} (${confidence})`)
   return attest(
     as,
-    uid,
+    schema,
     { comment: `${as} vouches ${to}`, confidence: String(confidence) },
     address(to)
   )
@@ -347,6 +389,14 @@ const main = async () => {
   await resolveRound()
 
   switch (phase) {
+    case 'preflight': {
+      const trustLane = requireTrustLane()
+      console.log(
+        `trust lane preflight: ${trustLane.network.name} (${network.contracts.trustAccumulator}) via ${trustNetworksPath()}`
+      )
+      break
+    }
+
     // The fixture's trust lane: SEED→ALICE 100, SEED→BOB 80, SEED→CAROL 60, SEED→DAVE 90,
     // ALICE→BOB 50, DAVE→CAROL 40. EVE receives no vouch (dust rep — minRaterRep filters her).
     case 'graph': {
@@ -565,7 +615,7 @@ const main = async () => {
 
     default:
       console.error(
-        'usage: contribution-round.ts <graph|claim-out-of-window|round1|round2|fund|claim|status>'
+        'usage: contribution-round.ts <preflight|graph|claim-out-of-window|round1|round2|fund|claim|status>'
       )
       process.exit(1)
   }

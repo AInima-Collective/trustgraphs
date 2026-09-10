@@ -1,0 +1,1 @@
+ghcr.io/succinctlabs/sp1:v6.6.0@sha256:297351e789fcb7eb3d2ce2591c594ad094c5958506cc5ab7351a232ce1fab098

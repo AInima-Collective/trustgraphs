@@ -128,7 +128,18 @@ fn two_repo_input() -> GuestInput {
             },
         ],
         witnesses: vec![alice_w, bob_w],
-        strongref_targets: BTreeMap::new(),
+        strongref_targets: envelopes::atproto::carset::Car::parse(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tests/fixtures/atproto/hypercerts/fixtures/bob.car"
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+        .blocks
+        .into_iter()
+        .map(|(cid, bytes)| (cid.to_string(), bytes))
+        .collect(),
         binding: Default::default(),
     }
 }
@@ -155,8 +166,14 @@ fn derived() -> (semantics::DerivedGraph, semantics::DerivedGraph) {
     let alice_repo = repo_records(ALICE, alice_head, &alice_w, 0);
     let bob_repo = repo_records(BOB, bob_head, &bob_w, 1);
     let ep = params().edge_params();
-    let both = semantics::derive(&[alice_repo.clone(), bob_repo], &BTreeMap::new(), &ep);
-    let alice_only = semantics::derive(&[alice_repo], &BTreeMap::new(), &ep);
+    let targets = Car::parse(&bob_w.car)
+        .unwrap()
+        .blocks
+        .into_iter()
+        .map(|(cid, bytes)| (cid.to_string(), bytes))
+        .collect();
+    let both = semantics::derive(&[alice_repo.clone(), bob_repo], &targets, &ep).unwrap();
+    let alice_only = semantics::derive(&[alice_repo], &targets, &ep).unwrap();
     (both, alice_only)
 }
 
@@ -222,7 +239,7 @@ fn alice_self_evaluation_stays_inert() {
 #[test]
 fn both_repos_nodes_score_and_journal_is_deterministic() {
     let input = two_repo_input();
-    let r = compute(&input);
+    let r = compute(&input).unwrap();
 
     // Two anchors folded; lane-2-only journal shape.
     assert_eq!(r.journal.anchor_count, 2);
@@ -243,7 +260,7 @@ fn both_repos_nodes_score_and_journal_is_deterministic() {
     assert!(r.scores.iter().any(|(id, v)| *id == did_node_id(BOB) && !v.is_zero()), "bob scored");
 
     // Deterministic: recompute reproduces the journal + blob byte-for-byte.
-    let r2 = compute(&input);
+    let r2 = compute(&input).unwrap();
     assert_eq!(r.journal, r2.journal);
     assert_eq!(r.blob, r2.blob);
 }

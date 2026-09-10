@@ -2,6 +2,7 @@ name: Rust
 
 on:
   pull_request:
+  workflow_call:
 
 jobs:
   tests-stable:
@@ -24,15 +25,13 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: cargo test
-        run: cargo test --workspace --all-features
+        run: cargo test --locked --workspace --all-features
 
   docs:
     name: docs
@@ -49,19 +48,17 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - uses: Swatinem/rust-cache@v2
 
       - name: doc
-        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        run: cargo doc --locked --workspace --all-features --no-deps --document-private-items
         env:
-          RUSTDOCFLAGS: "-D warnings"
+          RUSTDOCFLAGS: '-D warnings'
 
   fmt:
     name: fmt
@@ -84,10 +81,11 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: clippy
-        # These three lints are intentionally allowed: two preserve compatibility with the pinned
-        # guest compiler, and the envelope verifier exposes each signed field explicitly.
+        # These lints are intentionally allowed: three preserve compatibility or byte stability
+        # for pinned guest code, and the envelope verifier exposes each signed field explicitly.
         run: >-
-          cargo clippy --workspace --tests --all-features -- -D warnings
+          cargo clippy --locked --workspace --tests --all-features -- -D warnings
           -A clippy::manual-is-multiple-of
           -A clippy::map-or-identity
+          -A clippy::chunks-exact-to-as-chunks
           -A clippy::too-many-arguments

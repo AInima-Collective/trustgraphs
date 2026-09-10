@@ -5,7 +5,7 @@ import { WaitForTransactionReceiptReturnType } from 'viem'
 
 import { writeEthContractAndWait } from './chain'
 import { parseErrorMessage } from './error'
-import { makeWagmiConfig } from './wagmi'
+import { getTargetChainId } from './wagmi'
 
 export type TransactionToast = {
   /**
@@ -21,7 +21,7 @@ export type TransactionToast = {
    */
   confirmations?: number
   /**
-   * An optional callback with the transaction hash and index.
+   * An optional callback with the transaction hash and index, including repriced replacements.
    */
   onTransactionSent?: (hash: `0x${string}`, index: number) => void
 }
@@ -30,7 +30,6 @@ export type TransactionToast = {
  * Execute 1 or more transactions and display toasts as they are pending and execute/fail.
  */
 export const txToast = async (...txs: TransactionToast[]) => {
-  const wagmiConfig = makeWagmiConfig()
   const toastId = toast.loading('Preparing transaction...')
 
   const results: WaitForTransactionReceiptReturnType[] = []
@@ -41,7 +40,7 @@ export const txToast = async (...txs: TransactionToast[]) => {
     const confirmations =
       _confirmations ??
       // On localhost, just wait for 1 confirmation.
-      (wagmiConfig.chains.length === 1 && wagmiConfig.chains[0].id === 31337
+      (getTargetChainId() === 31337
         ? 1
         : // Use 1 for all preceding transactions, and 3 for the last one.
           index < txs.length - 1

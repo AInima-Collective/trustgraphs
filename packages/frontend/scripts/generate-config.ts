@@ -10,6 +10,7 @@ import {
   releaseManifestToDeploymentSummary,
 } from '../../../contracts/deploy/release-manifest'
 import { loadTargetEnvironment } from '../../../scripts/load-env.cjs'
+import { applicationChain, applicationTarget } from '../lib/application-chains'
 
 const repositoryRoot = path.join(__dirname, '../../..')
 const env = process.env.NODE_ENV || 'development'
@@ -30,15 +31,13 @@ const stage =
 if (!['development', 'production'].includes(stage)) {
   throw new Error('DEPLOY_STAGE must be development or production')
 }
-if (!['local', 'sepolia'].includes(target)) {
-  throw new Error('DEPLOY_TARGET must be local or sepolia for the frontend')
-}
+const selectedTarget = applicationTarget(target)
+const selectedChain = applicationChain(selectedTarget)
 if ((stage === 'development') !== (target === 'local')) {
   throw new Error(`Invalid deployment profile ${stage}/${target}`)
 }
-const isSepolia = target === 'sepolia'
 const isPublic = stage === 'production'
-const configName = isSepolia ? 'sepolia' : env
+const configName = isPublic ? selectedTarget : env
 const configOutputFile = path.join(__dirname, `../config.${configName}.json`)
 const configOutput: any = {}
 
@@ -76,12 +75,14 @@ const requiredPublicUrl = (
 }
 
 if (isPublic) {
-  const primaryRpc = requiredPublicUrl('RPC_URL_11155111_0')
-  const fallbackRpc = requiredPublicUrl('RPC_URL_11155111_1')
-  requiredPublicUrl('RPC_URL_1')
+  const primaryName = `RPC_URL_${selectedChain.id}_0`
+  const fallbackName = `RPC_URL_${selectedChain.id}_1`
+  const primaryRpc = requiredPublicUrl(primaryName)
+  const fallbackRpc = requiredPublicUrl(fallbackName)
+  if (selectedTarget !== 'mainnet') requiredPublicUrl('RPC_URL_1')
   if (primaryRpc === fallbackRpc) {
     throw new Error(
-      'RPC_URL_11155111_0 and RPC_URL_11155111_1 must use independent endpoints'
+      `${primaryName} and ${fallbackName} must use independent endpoints`
     )
   }
 }
@@ -93,7 +94,7 @@ const deploymentSummaryFile = path.join(
 )
 const releaseManifestFile = path.join(
   __dirname,
-  '../../../deployments/sepolia.json'
+  `../../../deployments/${selectedTarget}.json`
 )
 
 // The permissionless instance factory (docs/build/create-a-network.md). It is deployed once per chain
@@ -103,48 +104,80 @@ const factoryDeployFile = path.join(
   __dirname,
   '../../../.docker/factory_deploy.json'
 )
-const localFactoryAddress = fs.existsSync(factoryDeployFile)
-  ? (JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8')).factory ?? '')
-  : ''
+const localFactoryDeployment =
+  !isPublic && fs.existsSync(factoryDeployFile)
+    ? JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8'))
+    : {}
+const localFactoryAddress = localFactoryDeployment.factory ?? ''
+const importedFactoryDeployFile = path.join(
+  __dirname,
+  '../../../.docker/imported_factory_deploy.json'
+)
+const localImportedFactoryAddress =
+  !isPublic && fs.existsSync(importedFactoryDeployFile)
+    ? (JSON.parse(fs.readFileSync(importedFactoryDeployFile, 'utf8'))
+        .imported_factory ?? '')
+    : ''
 const governedFactoryDeployFile = path.join(
   __dirname,
   '../../../.docker/governed_factory_deploy.json'
 )
-const localGovernedFactoryAddress = fs.existsSync(governedFactoryDeployFile)
-  ? (JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
-      .governed_factory ?? '')
-  : ''
+const localGovernedFactoryDeployment =
+  !isPublic && fs.existsSync(governedFactoryDeployFile)
+    ? JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
+    : {}
+const localGovernedFactoryAddress =
+  localGovernedFactoryDeployment.governed_factory ?? ''
+const governedImportedFactoryDeployFile = path.join(
+  __dirname,
+  '../../../.docker/governed_imported_factory_deploy.json'
+)
+const localGovernedImportedFactoryAddress =
+  !isPublic && fs.existsSync(governedImportedFactoryDeployFile)
+    ? (JSON.parse(fs.readFileSync(governedImportedFactoryDeployFile, 'utf8'))
+        .governed_imported_factory ?? '')
+    : ''
 const signerVerifierDeployFile = path.join(
   __dirname,
   '../../../.docker/zk_verifier_signer_deploy.json'
 )
-const localSignerVerifierDeployment = fs.existsSync(signerVerifierDeployFile)
-  ? JSON.parse(fs.readFileSync(signerVerifierDeployFile, 'utf8'))
-  : {}
+const localSignerVerifierDeployment =
+  !isPublic && fs.existsSync(signerVerifierDeployFile)
+    ? JSON.parse(fs.readFileSync(signerVerifierDeployFile, 'utf8'))
+    : {}
 
 console.log('🔄 Updating config with latest deployment data...')
 
 try {
   // Read configs
-  const deployment: any = isSepolia
+  const deployment: any = isPublic
     ? releaseManifestToDeploymentSummary(
-        loadReleaseManifest(releaseManifestFile, { requireComplete: true })
+        loadReleaseManifest(releaseManifestFile, {
+          requireComplete: true,
+          expectedChain: selectedTarget === 'mainnet' ? 'mainnet' : 'sepolia',
+        })
       )
     : JSON.parse(fs.readFileSync(deploymentSummaryFile, 'utf8'))
-  const factoryAddress = isSepolia
+  const factoryAddress = isPublic
     ? deployment.factory?.factory || ''
     : localFactoryAddress
-  const signerVerifierDeployment: any = isSepolia
+  const signerVerifierDeployment: any = isPublic
     ? deployment.signerVerifier || {}
     : localSignerVerifierDeployment
-  const governedFactoryAddress = isSepolia
+  const governedFactoryAddress = isPublic
     ? deployment.governedFactory?.governed_factory || ''
     : localGovernedFactoryAddress
+  const importedFactoryAddress = isPublic
+    ? deployment.importedFactory?.imported_factory || ''
+    : localImportedFactoryAddress
+  const governedImportedFactoryAddress = isPublic
+    ? deployment.governedImportedFactory?.governed_imported_factory || ''
+    : localGovernedImportedFactoryAddress
 
   console.log('📋 Found deployment data')
 
   // Set chain based on environment
-  configOutput.chain = isSepolia ? 'sepolia' : 'local'
+  configOutput.chain = selectedTarget
   configOutput.apis = {
     ponder: !isPublic
       ? 'http://127.0.0.1:65421'
@@ -158,6 +191,14 @@ try {
   configOutput.signerSync = {
     verifier: signerVerifierDeployment.zk_verifier ?? '',
     programVKey: signerVerifierDeployment.program_vkey ?? '',
+  }
+  configOutput.importedFactory = {
+    factory:
+      importedFactoryAddress || process.env.IMPORTED_FACTORY_ADDRESS || '',
+    governedFactory:
+      governedImportedFactoryAddress ||
+      process.env.GOVERNED_IMPORTED_FACTORY_ADDRESS ||
+      '',
   }
   // The weighted lane uses an isolated hand-audited ABI in its workspace. Keeping this address
   // outside the generated binary contract map also lets older deployments offer import/export
@@ -242,6 +283,30 @@ try {
       process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS ||
       '',
   }
+  configOutput.subnetworks = {
+    factory:
+      deployment.factory?.factory ||
+      (!isPublic ? localFactoryAddress : '') ||
+      process.env.SUBNETWORK_TRUSTGRAPHS_FACTORY_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedFactory?.governed_factory ||
+      (!isPublic ? localGovernedFactoryDeployment.governed_factory : '') ||
+      process.env.SUBNETWORK_GOVERNED_FACTORY_ADDRESS ||
+      '',
+    registry:
+      deployment.governedFactory?.subnetwork_registry ||
+      (!isPublic ? localGovernedFactoryDeployment.subnetwork_registry : '') ||
+      process.env.SUBNETWORK_REGISTRY_ADDRESS ||
+      '',
+    parentModuleDeployer:
+      deployment.governedFactory?.parent_authority_deployer ||
+      (!isPublic
+        ? localGovernedFactoryDeployment.parent_authority_deployer
+        : '') ||
+      process.env.PARENT_AUTHORITY_MODULE_DEPLOYER_ADDRESS ||
+      '',
+  }
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {
@@ -262,10 +327,9 @@ try {
     // views + AnchorsCheckpointed/HeadAnchored events for journal-v2 verification.
     AnchorRegistry: '',
     // Contributions program (per-instance addresses live in networks.json): the three-schema
-    // resolver + accumulator, the trust-accumulator mirror, and the local pool token (6dp).
+    // resolver + accumulator and the trust-accumulator mirror.
     ContributionResolver: '',
     TrustAccumulatorMirror: '',
-    TestUSDC: '',
 
     // One per chain: communities fund this tank to pay whoever proves their next root. The
     // deployment summary carries it as a bare address rather than under `networks` because every
@@ -310,7 +374,7 @@ try {
   if (error.code === 'ENOENT') {
     console.error(
       '💡 Make sure the deployment summary file exists at:',
-      deploymentSummaryFile
+      isPublic ? releaseManifestFile : deploymentSummaryFile
     )
   }
   process.exit(1)

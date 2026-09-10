@@ -47,21 +47,6 @@ export const ponderKeys = {
     root?: string
     account?: string
   }) => [...ponderKeys.all, 'merkleTreeEntry', options] as const,
-  attestation: (uid: string) =>
-    [...ponderKeys.all, 'attestation', uid] as const,
-  attestations: (options: {
-    limit: number
-    offset?: number
-    reverse?: boolean
-    schema?: string
-    attester?: string
-    recipient?: string
-  }) => [...ponderKeys.all, 'attestations', options] as const,
-  attestationCount: (options?: {
-    schema?: string
-    attester?: string
-    recipient?: string
-  }) => [...ponderKeys.all, 'attestationCount', options] as const,
   network: (snapshot: string) =>
     [...ponderKeys.all, 'network', snapshot] as const,
   checkpointInputs: (snapshot: string, checkpointId: string) =>
@@ -99,18 +84,6 @@ export type HypercertsScoreList = {
   timestamp: string
   scores: HypercertsScore[]
   scoreProgram: ScoreProgramProvenance
-}
-
-export type FollowerCount = {
-  timestamp: number
-  twitterAccount: string
-  followers: number
-}
-
-export type AttestationCount = {
-  account: string
-  sent: number
-  received: number
 }
 
 export type MerkleMetadata = {
@@ -209,11 +182,6 @@ export type MerkleTreeEntryResponse = {
   scoreProgram: ScoreProgramProvenance
 }
 
-export type AttestationUID = {
-  uid: `0x${string}`
-  timestamp: number
-}
-
 export type NetworkData = {
   accounts: {
     account: Hex
@@ -267,7 +235,7 @@ export type ParameterHistoryResponse = {
   controller: Hex | null
   currentVersion: string | null
   currentParamsHash: Hex
-  control: 'typed' | 'legacy'
+  control: 'typed' | 'raw-hash'
   versions: Array<{
     version: string
     paramsHash: Hex
@@ -824,26 +792,66 @@ export const ponderQueryFns = {
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,
       }),
-  getGovVoteDelegate:
-    (options: { address: Hex; principal: Hex }) =>
+  getProofSubmissionsBefore:
+    (options: { snapshot: Hex; root: Hex; proposalBlock: bigint }) =>
     (db: Client<ResolvedSchema>['db']) =>
-      db.query.merkleGovVoteDelegate.findFirst({
-        where: (t, { and, eq }) =>
+      db.query.proofSubmission.findMany({
+        where: (t, { and, eq, lt }) =>
           and(
-            eq(t.module, options.address),
-            eq(t.principal, options.principal)
+            eq(t.snapshot, options.snapshot),
+            eq(t.root, options.root),
+            // Without transaction/log positions, a proof submitted in the proposal's block cannot
+            // be ordered safely against ProposalCreated.
+            lt(t.blockNumber, options.proposalBlock)
           ),
-      }),
-  getProofSubmission:
-    (options: { snapshot: Hex; root: Hex }) =>
-    (db: Client<ResolvedSchema>['db']) =>
-      db.query.proofSubmission.findFirst({
-        where: (t, { and, eq }) =>
-          and(eq(t.snapshot, options.snapshot), eq(t.root, options.root)),
         orderBy: (t, { desc }) => desc(t.blockNumber),
+        // The newest earlier block is authoritative. A second row detects an unorderable tie when
+        // two matching proofs landed in that block (proof rows do not retain transaction index).
+        limit: 2,
       }),
   getGnosisSafe: (address: Hex) => (db: Client<ResolvedSchema>['db']) =>
     db.query.gnosisSafe.findFirst({
       where: (t, { eq }) => eq(t.address, address),
     }),
+  /** Active role holders on one snapshot, for the composer's membership pickers. */
+  getSnapshotRoleMembers:
+    (snapshot: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.snapshotRoleMember.findMany({
+        where: (t, { and, eq }) =>
+          and(eq(t.snapshot, snapshot), eq(t.active, true)),
+        orderBy: (t, { desc }) => desc(t.updatedBlock),
+        limit: 200,
+      }),
+  /** Recent proven roots, newest first, so a reward pool can be bound to one by choice. */
+  getMerkleSnapshots:
+    (snapshot: Hex, limit: number = 12) =>
+    (db: Client<ResolvedSchema>['db']) =>
+      db.query.merkleSnapshot.findMany({
+        where: (t, { eq }) => eq(t.address, snapshot),
+        orderBy: (t, { desc }) => desc(t.timestamp),
+        limit,
+      }),
+  getPendingWeightedPriorVersion:
+    (instanceId: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.weightedPriorVersion.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.instanceId, instanceId), eq(t.status, 'pending')),
+        orderBy: (t, { desc }) => desc(t.version),
+      }),
+  getPendingCompositionPolicyVersion:
+    (instanceId: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.compositionPolicyVersion.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.instanceId, instanceId), eq(t.status, 'pending')),
+        orderBy: (t, { desc }) => desc(t.version),
+      }),
+  /** Actions still queued on a recovery module, newest first, for the veto picker. */
+  getQueuedRecoveryActions:
+    (module: Hex) => (db: Client<ResolvedSchema>['db']) =>
+      db.query.recoveryAction.findMany({
+        where: (t, { and, eq }) =>
+          and(eq(t.module, module), eq(t.status, 'scheduled')),
+        orderBy: (t, { desc }) => desc(t.scheduledBlock),
+        limit: 50,
+      }),
 }

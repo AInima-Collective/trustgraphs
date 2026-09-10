@@ -34,7 +34,7 @@ path = "src/bin/strict_input_check.rs"
 [dependencies]
 pagerank-core = { path = "../pagerank-core" }
 trustgraph-core = { path = "../trustgraph-core" }
-eas-offchain-v2 = { path = "../eas-offchain-v2" }
+eas-offchain = { path = "../eas-offchain" }
 contributions-core = { path = "../contributions-core" }
 weighted-prior-core = { path = "../weighted-prior-core" }
 zk-core = { path = "../zk-core" }

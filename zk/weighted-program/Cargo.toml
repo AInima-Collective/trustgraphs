@@ -8,7 +8,7 @@ name = "trustgraph-weighted-program"
 path = "src/main.rs"
 
 [dependencies]
-sp1-zkvm = "=6.3.1"
+sp1-zkvm = "=6.6.0"
 weighted-prior-core = { path = "../../crates/weighted-prior-core" }
 
 # This is a distinct guest workspace on purpose: adding the weighted program cannot perturb any
@@ -16,7 +16,7 @@ weighted-prior-core = { path = "../../crates/weighted-prior-core" }
 [workspace]
 
 [patch.crates-io]
-sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.0.0" }
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.2.0" }
 sha3 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha3", tag = "patch-sha3-0.11.0-sp1-6.0.0" }
 
 [profile.release]

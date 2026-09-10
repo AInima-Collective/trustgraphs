@@ -12,9 +12,9 @@ import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {Common} from "script/Common.s.sol";
 
 /// @title DeployTimelocks
-/// @notice Deploys the two-tier governance timelocks for a legacy/raw-role `MerkleSnapshot` and performs the
+/// @notice Deploys the two-tier governance timelocks for a raw-role `MerkleSnapshot` and performs the
 ///         bootstrap → handoff: grant the roles to the timelocks, then have the deployer renounce
-///         them so ONLY the timelocks retain authority (DECISIONS D7).
+///         them so ONLY the timelocks retain authority.
 /// @dev Factory-created trust graphs do not use this script for scoring authority: their snapshot's
 ///      operational role belongs permanently to `TrustgraphsParamsController`. Use
 ///      `DeployParamsTimelock.s.sol` to transfer that controller's two-step ownership instead.

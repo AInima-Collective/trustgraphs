@@ -1,68 +1,54 @@
-//! Point distribution — the integer port of `graph_computer.rs::distribute_points`.
+//! Full-precision Hamilton allocation of an integer pool across positive scores.
 //!
-//! Scores (scaled by S) are re-scaled to the legacy 1e6 quantum, sorted descending (ties broken by
-//! address ascending — a determinism fix over the legacy HashMap-order tie), and paid out
-//! proportionally; the last account absorbs the remainder so the total equals `total_pool` exactly.
+//! Each account receives its exact proportional floor, then the remaining units go to the
+//! largest fractional remainders (ties by key ascending). Zero scores receive nothing. This
+//! preserves the entire pool without quantizing away low scores or favoring the last account.
 
-use crate::fixed::mul_div;
 use crate::Params;
-use alloy_primitives::{Address, U256};
+use alloy_primitives::{Address, U256, U512};
 
-/// The legacy precision quantum: `f64` scores were scaled to `u64` by 1e6 before distribution.
-const QUANTUM: u64 = 1_000_000;
-
-/// Key-generic distribution core — the exact algorithm, over any node key type (the
-/// hypercerts program distributes over `B256` node ids). Wrappers only adapt key types.
+/// Key-generic Hamilton allocation. Scores must have unique keys and a sum fitting U256.
+/// The scale is retained in this shared API; proportional allocation depends on the actual
+/// sum of scores, which may be below the scale after fixed-point arithmetic.
 pub fn distribute_points_generic<K: Ord + Copy>(
     scores_fp: &[(K, U256)],
-    scale: U256,
+    _scale: U256,
     total_pool: U256,
 ) -> (Vec<(K, U256)>, U256) {
-    if scores_fp.is_empty() {
+    let mut scores: Vec<_> = scores_fp.iter().copied().filter(|(_, v)| !v.is_zero()).collect();
+    scores.sort_by_key(|(key, _)| *key);
+    assert!(scores.windows(2).all(|pair| pair[0].0 != pair[1].0), "duplicate allocation key");
+    if scores.is_empty() || total_pool.is_zero() {
         return (Vec::new(), U256::ZERO);
     }
-    let s = scale;
-    let quantum = U256::from(QUANTUM);
-
-    // score * 1e6 (truncating), kept as U256.
-    let mut scaled: Vec<(K, U256)> =
-        scores_fp.iter().map(|(a, sc)| (*a, mul_div(*sc, quantum, s))).collect();
-
-    let total_scaled: U256 = scaled.iter().map(|(_, v)| *v).fold(U256::ZERO, |a, b| a + b);
-    if total_scaled.is_zero() {
-        return (Vec::new(), U256::ZERO);
+    let total = scores
+        .iter()
+        .try_fold(U256::ZERO, |sum, (_, value)| sum.checked_add(*value))
+        .expect("allocation score sum overflow");
+    let denominator = U512::from(total);
+    let mut rows = Vec::with_capacity(scores.len());
+    let mut floor_sum = U256::ZERO;
+    for (key, score) in scores {
+        let product = U512::from(score) * U512::from(total_pool);
+        // score <= total, so each quotient is <= total_pool and fits U256.
+        let (quotient, remainder) = product.div_rem(denominator);
+        let floor = U256::from(quotient);
+        floor_sum = floor_sum.checked_add(floor).expect("allocation floor sum overflow");
+        rows.push((key, floor, remainder));
     }
-
-    // Sort by scaled score descending, then key ascending (deterministic tie-break).
-    scaled.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-
-    let mut remaining = total_pool;
-    let mut assigned: Vec<(K, U256)> = Vec::new();
-    let len = scaled.len();
-
-    for (i, (addr, sc)) in scaled.iter().enumerate() {
-        let points = if i == len - 1 {
-            remaining
-        } else {
-            let proportional = mul_div(*sc, total_pool, total_scaled);
-            if proportional > remaining {
-                remaining
-            } else {
-                proportional
-            }
-        };
-        let actual = if points > remaining { remaining } else { points };
-        if !actual.is_zero() {
-            remaining -= actual;
-            assigned.push((*addr, actual));
-        }
-        if remaining.is_zero() {
-            break;
-        }
+    let missing = total_pool.checked_sub(floor_sum).expect("allocation exceeds pool");
+    assert!(missing < U256::from(rows.len()), "invalid Hamilton remainder");
+    let missing = missing.to::<usize>();
+    let mut order: Vec<_> = (0..rows.len()).collect();
+    order.sort_by(|a, b| rows[*b].2.cmp(&rows[*a].2).then(rows[*a].0.cmp(&rows[*b].0)));
+    for index in order.into_iter().take(missing) {
+        rows[index].1 = rows[index].1.checked_add(U256::from(1)).expect("allocation overflow");
     }
-
-    let total_value: U256 = assigned.iter().map(|(_, v)| *v).fold(U256::ZERO, |a, b| a + b);
-    (assigned, total_value)
+    let assigned = rows
+        .into_iter()
+        .filter_map(|(key, value, _)| (!value.is_zero()).then_some((key, value)))
+        .collect();
+    (assigned, total_pool)
 }
 
 /// Distribute `total_pool` across `scores_fp` (normalized PageRank scores, scaled by S,

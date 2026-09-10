@@ -116,7 +116,7 @@ contract TrustComposeParamsControllerTest is Test {
         assertEq(uint8(commitment.status), uint8(ITrustComposeParamsController.ProposalStatus.Activated));
     }
 
-    function test_ConstructorRejectsZeroDelayAndLiveHashMismatch() public {
+    function test_ConstructorRejectsZeroDelayLiveHashMismatchAndForeignClass() public {
         vm.expectRevert(TrustComposeParamsController.ZeroActivationDelay.selector);
         _deploy(0);
 
@@ -126,6 +126,13 @@ contract TrustComposeParamsControllerTest is Test {
             abi.encodeWithSelector(TrustComposeParamsController.InitialHashMismatch.selector, initialHash, wrong)
         );
         _deploy(DELAY);
+
+        vm.mockCall(SNAPSHOT, abi.encodeWithSignature("paramsHash()"), abi.encode(initialHash));
+        TrustComposeParamsCodec.Params memory saved = initialParams;
+        initialParams.sourceCompatibilityClass = keccak256("foreign class");
+        vm.expectPartialRevert(TrustComposeValidator.InvalidCompatibilityClass.selector);
+        _deploy(DELAY);
+        initialParams = saved;
     }
 
     function test_InitialPublicationIsPublisherOnlyAndOneShot() public {

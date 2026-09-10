@@ -393,7 +393,7 @@ async function prepareDatabase({ chainId, head }) {
         ? stored.index_schema
         : localSchemaName(chainId, head, appFingerprint)
 
-      // First adoption also resets the legacy, chain-id-only cache. All three schemas contain only
+      // First adoption also resets any older chain-id-only cache. All three schemas contain only
       // data derived from the local chain and are deliberately disposable.
       if (!identityMatches) {
         const reason = stored

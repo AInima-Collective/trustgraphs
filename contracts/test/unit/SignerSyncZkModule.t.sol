@@ -3,8 +3,8 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {
     SignerSyncZkModule,
@@ -41,9 +41,9 @@ contract MockSignerActivitySource is ISignerActivitySource {
 }
 
 contract SignerSyncZkModuleTest is Test {
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
-    GnosisSafe internal safe;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
+    Safe internal safe;
 
     SignerSyncZkModule internal module;
     MockZkVerifier internal verifier;
@@ -66,8 +66,8 @@ contract SignerSyncZkModuleTest is Test {
     bytes internal constant PROOF = hex"1234";
 
     function setUp() public {
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
 
         // Safe with initial owners {A,B,C}, threshold 2.
         address[] memory initial = new address[](3);
@@ -85,7 +85,7 @@ contract SignerSyncZkModuleTest is Test {
             0,
             address(0)
         );
-        safe = GnosisSafe(
+        safe = Safe(
             payable(address(
                     safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(keccak256("salt")))
                 ))
@@ -111,7 +111,6 @@ contract SignerSyncZkModuleTest is Test {
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,
@@ -182,7 +181,6 @@ contract SignerSyncZkModuleTest is Test {
             accumulator_,
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,
@@ -197,8 +195,6 @@ contract SignerSyncZkModuleTest is Test {
         assertEq(module.avatar(), address(safe));
         assertEq(module.target(), address(safe));
         assertEq(module.owner(), owner);
-        assertEq(module.paramsAuthority(), owner);
-        assertEq(module.paramsHash(), PARAMS_HASH);
         assertEq(module.selectionParamsHash(), SEL_HASH);
         assertTrue(safe.isModuleEnabled(address(module)));
     }
@@ -213,7 +209,6 @@ contract SignerSyncZkModuleTest is Test {
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,
@@ -225,8 +220,6 @@ contract SignerSyncZkModuleTest is Test {
     function test_Governance_OnlyOwner() public {
         vm.startPrank(address(0xdead));
         vm.expectRevert();
-        module.setParamsHash(bytes32(uint256(1)));
-        vm.expectRevert();
         module.setSelectionParams(5, 2, 5_000, 151_200, 2);
         vm.expectRevert();
         module.setZkVerifier(IZkVerifier(address(0x1234)));
@@ -237,10 +230,8 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_Governance_OwnerUpdates() public {
         vm.startPrank(owner);
-        module.setParamsHash(bytes32(uint256(7)));
         module.setSelectionParams(4, 2, 6_000, 100_000, 2);
         vm.stopPrank();
-        assertEq(module.paramsHash(), bytes32(uint256(7)));
         assertEq(
             module.selectionParamsHash(),
             keccak256(abi.encode(uint32(4), uint32(2), uint32(6000), uint64(100_000), uint32(2)))
@@ -319,36 +310,9 @@ contract SignerSyncZkModuleTest is Test {
         bytes32 expected = _expectedDigest(module, keccak256("acc0"), 10, signers, 2);
         verifier.setExpectedDigest(expected);
 
-        vm.prank(owner);
-        module.setParamsHash(keccak256("next params"));
-        assertTrue(module.paramsHash() != PARAMS_HASH, "live status should show the rotation");
-
         module.submitSignerProof(0, 0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
     }
-
-    function test_Governance_ParamsAuthorityTransfersWithoutModuleOwnership() public {
-        vm.prank(owner);
-        module.transferParamsAuthority(D);
-        assertEq(module.paramsAuthority(), owner, "authority remains live until acceptance");
-        assertEq(module.pendingParamsAuthority(), D);
-
-        vm.prank(D);
-        module.acceptParamsAuthority();
-        assertEq(module.paramsAuthority(), D);
-        assertEq(module.pendingParamsAuthority(), address(0));
-        assertEq(module.owner(), owner, "verifier/accumulator governance stays with the owner");
-
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.NotParamsAuthority.selector, owner));
-        module.setParamsHash(bytes32(uint256(9)));
-
-        vm.prank(D);
-        module.setParamsHash(bytes32(uint256(9)));
-        assertEq(module.paramsHash(), bytes32(uint256(9)));
-    }
-
-    /*//////////////////////// rotation scenarios ////////////////////////*/
 
     function test_Rotate_FullSwap() public {
         // {A,B,C} -> {D,E,F} : 3 removes, 3 adds -> 3 swaps, count unchanged.
@@ -364,10 +328,11 @@ contract SignerSyncZkModuleTest is Test {
     }
 
     function test_Rotate_NetRemove() public {
-        // {A,B,C} -> {A} : 2 removes, threshold down to 1 (invariant preserved throughout).
-        module.submitSignerProof(0, 0, _arr(A), 1, PROOF);
-        _assertOwnerSet(_arr(A), 1);
-        assertFalse(safe.isOwner(B));
+        // {A,B,C}, threshold 3 -> {A,B}, threshold 2; retain the production 2-owner floor.
+        vm.prank(address(safe));
+        safe.changeThreshold(3);
+        module.submitSignerProof(0, 0, _arr(A, B), 2, PROOF);
+        _assertOwnerSet(_arr(A, B), 2);
         assertFalse(safe.isOwner(C));
     }
 
@@ -385,19 +350,19 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_Rotate_MixedSwapAndRemove() public {
         // {A,B,C} -> {A,D} : keep A; swap B->D; remove C. Final count 2.
-        module.submitSignerProof(0, 0, _arr(A, D), 1, PROOF);
-        _assertOwnerSet(_arr(A, D), 1);
+        module.submitSignerProof(0, 0, _arr(A, D), 2, PROOF);
+        _assertOwnerSet(_arr(A, D), 2);
     }
 
     function test_Rotate_NoMemberChange_ThresholdOnly() public {
-        // Same set, lower threshold 2 -> 1.
-        module.submitSignerProof(0, 0, _arr(A, B, C), 1, PROOF);
-        _assertOwnerSet(_arr(A, B, C), 1);
+        // Same set, raise threshold 2 -> 3.
+        module.submitSignerProof(0, 0, _arr(A, B, C), 3, PROOF);
+        _assertOwnerSet(_arr(A, B, C), 3);
     }
 
     function test_Rotate_SequentialCheckpoints() public {
-        module.submitSignerProof(0, 0, _arr(A, D), 1, PROOF);
-        _assertOwnerSet(_arr(A, D), 1);
+        module.submitSignerProof(0, 0, _arr(A, D), 2, PROOF);
+        _assertOwnerSet(_arr(A, D), 2);
         // Second, higher checkpoint rotates again from the new state.
         module.submitSignerProof(1, 0, _arr(A, B, C, D), 2, PROOF);
         _assertOwnerSet(_arr(A, B, C, D), 2);
@@ -432,10 +397,10 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_ZeroAndSentinelSignerRevert() public {
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0)));
-        module.submitSignerProof(0, 0, _arr(address(0)), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(address(0), A), 2, PROOF);
 
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0x1)));
-        module.submitSignerProof(0, 0, _arr(address(0x1)), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(address(0x1), A), 2, PROOF);
     }
 
     function test_InvalidThresholdReverts() public {
@@ -450,6 +415,98 @@ contract SignerSyncZkModuleTest is Test {
         verifier.setAccept(false);
         vm.expectRevert(bytes("MockZkVerifier: rejected"));
         module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
+        assertFalse(module.hasAppliedCheckpoint());
+        _assertOwnerSet(_arr(A, B, C), 2);
+    }
+
+    function test_SingletonNoopCannotConsumeBootstrapOrScoreCheckpoint() public {
+        vm.startPrank(address(safe));
+        safe.removeOwner(B, C, 2);
+        safe.removeOwner(A, B, 1);
+        vm.stopPrank();
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSignerCount.selector, 1));
+        module.submitSignerProof(0, 0, _arr(A), 1, PROOF);
+        assertFalse(module.hasAppliedCheckpoint());
+        assertEq(module.lastAppliedCheckpoint(), 0);
+        _assertOwnerSet(_arr(A), 1);
+        // A later eligible proof still uses the first score checkpoint.
+        module.submitSignerProof(0, 0, _arr(A, B), 2, PROOF);
+        assertTrue(module.hasAppliedCheckpoint());
+        _assertOwnerSet(_arr(A, B), 2);
+    }
+
+    function test_PreparedProofSurvivesNewActivityWithinAcceptanceWindow() public {
+        bytes32 expected = _expectedDigest(module, keccak256("acc0"), 10, _arr(D, E, F), 2);
+        verifier.setExpectedDigest(expected);
+        activitySource.push(keccak256("a later vote"), 3, uint64(block.number));
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
+        assertEq(module.lastAppliedActivityCheckpoint(), 0);
+        _assertOwnerSet(_arr(D, E, F), 2);
+    }
+
+    function test_ActivityCheckpointCannotRegressButCanBeReusedForNewScore() public {
+        activitySource.push(keccak256("later activity"), 3, uint64(block.number));
+        module.submitSignerProof(0, 1, _arr(D, E, F), 2, PROOF);
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.ActivityCheckpointRegression.selector, 0, 1));
+        module.submitSignerProof(1, 0, _arr(A, B, C), 2, PROOF);
+        module.submitSignerProof(1, 1, _arr(A, B, C), 2, PROOF);
+        assertEq(module.lastAppliedActivityCheckpoint(), 1);
+    }
+
+    function test_ActivityCheckpointAcceptanceClosesAfterOneDayOfBlocks() public {
+        uint256 activityBlock = vm.getBlockNumber();
+        vm.roll(activityBlock + module.MAX_ACTIVITY_CHECKPOINT_AGE());
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
+        vm.roll(activityBlock + module.MAX_ACTIVITY_CHECKPOINT_AGE() + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SignerSyncZkModule.ActivityCheckpointStale.selector, uint64(activityBlock), vm.getBlockNumber()
+            )
+        );
+        module.submitSignerProof(1, 0, _arr(A, B, C), 2, PROOF);
+    }
+
+    function test_ShortInactivityPolicyAlsoShortensProofAcceptance() public {
+        vm.prank(owner);
+        module.setSelectionParams(5, 2, 5_000, 10, 2);
+        uint64 activityBlock = uint64(vm.getBlockNumber());
+        vm.roll(uint256(activityBlock) + 11);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SignerSyncZkModule.ActivityCheckpointStale.selector, activityBlock, vm.getBlockNumber()
+            )
+        );
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
+    }
+
+    function test_ActivityCheckpointInFutureIsRejected() public {
+        activitySource.push(keccak256("future"), 3, uint64(block.number + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SignerSyncZkModule.ActivityCheckpointInFuture.selector, uint64(block.number + 1), block.number
+            )
+        );
+        module.submitSignerProof(0, 1, _arr(D, E, F), 2, PROOF);
+    }
+
+    function test_ActivitySourceRotationResetsOnlyItsCheckpointOrdering() public {
+        activitySource.push(keccak256("later activity"), 3, uint64(block.number));
+        module.submitSignerProof(0, 1, _arr(D, E, F), 2, PROOF);
+        MockSignerActivitySource replacement = new MockSignerActivitySource();
+        replacement.push(keccak256("replacement"), 2, uint64(block.number));
+        vm.prank(owner);
+        module.setActivitySource(replacement);
+        assertEq(module.lastAppliedActivityCheckpoint(), 0);
+        assertTrue(module.hasAppliedCheckpoint());
+        module.submitSignerProof(1, 0, _arr(A, B, C), 2, PROOF);
+    }
+
+    function test_SelectionUpdateRetainsMaximumSignerBound() public {
+        vm.prank(owner);
+        vm.expectRevert(SignerSyncZkModule.InvalidSelectionParams.selector);
+        module.setSelectionParams(65, 2, 5_000, 151_200, 2);
+        vm.prank(owner);
+        module.setSelectionParams(64, 2, 5_000, 151_200, 2);
     }
 
     /*//////////////////////// fuzz: owner diff always lands on desired ////////////////////////*/
@@ -464,13 +521,13 @@ contract SignerSyncZkModuleTest is Test {
         for (uint256 i = 0; i < 6; i++) {
             if (mask & (uint8(1) << uint8(i)) != 0) count++;
         }
-        vm.assume(count > 0);
+        vm.assume(count >= 2);
         address[] memory desired = new address[](count);
         uint256 j;
         for (uint256 i = 0; i < 6; i++) {
             if (mask & (uint8(1) << uint8(i)) != 0) desired[j++] = pool[i];
         }
-        uint256 threshold = bound(thresholdSeed, 1, count);
+        uint256 threshold = bound(thresholdSeed, 2, count);
         vm.assume(_ozRoot(desired) != _ozRoot(safe.getOwners()) || threshold != safe.getThreshold());
 
         module.submitSignerProof(0, 0, desired, threshold, PROOF);
@@ -493,7 +550,9 @@ contract SignerSyncZkModuleTest is Test {
             abi.encode(
                 acc,
                 leafCount,
-                mod_.paramsHash(),
+                // The digest binds the snapshot's checkpoint-pinned params hash; every mock
+                // checkpoint in this suite pins PARAMS_HASH.
+                PARAMS_HASH,
                 mod_.selectionParamsHash(),
                 activity.acc,
                 activity.count,
@@ -559,7 +618,6 @@ contract SignerSyncZkModuleTest is Test {
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
             activitySource,
-            PARAMS_HASH,
             5,
             2,
             5_000,

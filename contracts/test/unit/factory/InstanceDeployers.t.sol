@@ -47,7 +47,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         MockAccumulator accumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256("params");
         MerkleSnapshot snapshot =
-            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL);
+            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL, "");
 
         assertEq(address(snapshot.zkVerifier()), address(verifier));
         assertEq(address(snapshot.accumulator()), address(accumulator));
@@ -79,7 +79,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         params.lane2MaxHeadAge = 0;
         bytes32 paramsHash = ParamsCodec.hash(params);
         MerkleSnapshot snapshot =
-            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL);
+            snapshotDeployer.deploy(verifier, paramsHash, accumulator, CONSTITUTIONAL, OPERATIONAL, "");
         TrustgraphsParamsControllerDeployer directDeployer = new TrustgraphsParamsControllerDeployer();
         address owner = address(0xA11CE);
         TrustgraphsParamsController controller = directDeployer.deploy(
@@ -110,7 +110,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
     function test_MerkleGovModuleDeployerUsesOnlyExplicitAuthorityAndSnapshot() public {
         MockAccumulator accumulator = new MockAccumulator();
         MerkleSnapshot snapshot =
-            snapshotDeployer.deploy(verifier, keccak256("params"), accumulator, CONSTITUTIONAL, OPERATIONAL);
+            snapshotDeployer.deploy(verifier, keccak256("params"), accumulator, CONSTITUTIONAL, OPERATIONAL, "");
         MerkleGovModuleDeployer directDeployer = new MerkleGovModuleDeployer();
         MerkleGovModule module = directDeployer.deploy(SAFE, SAFE, SAFE, address(snapshot));
 
@@ -126,7 +126,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         InstanceDeployerVkeyVerifier signerVerifier = new InstanceDeployerVkeyVerifier(vkey);
         MockAccumulator accumulator = new MockAccumulator();
         SignerSyncModuleDeployer directDeployer = new SignerSyncModuleDeployer();
-        bytes32 paramsHash = keccak256("params");
         bytes32 instanceId = keccak256("instance");
         ISignerSyncCheckpointSource scoreSource = ISignerSyncCheckpointSource(address(0x501));
         ISignerActivitySource activitySource = ISignerActivitySource(address(0xA71));
@@ -138,7 +137,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             IAttestationAccumulator(address(accumulator)),
             scoreSource,
             activitySource,
-            paramsHash,
             vkey,
             5,
             2,
@@ -153,7 +151,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
         assertEq(address(module.accumulator()), address(accumulator));
         assertEq(address(module.scoreSnapshot()), address(scoreSource));
         assertEq(address(module.activitySource()), address(activitySource));
-        assertEq(module.paramsHash(), paramsHash);
         assertEq(
             module.selectionParamsHash(),
             keccak256(abi.encode(uint32(5), uint32(2), uint32(5_000), uint64(151_200), uint32(2)))
@@ -171,7 +168,6 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             accumulator,
             scoreSource,
             activitySource,
-            paramsHash,
             bytes32(uint256(1)),
             5,
             2,
@@ -186,19 +182,7 @@ contract InstanceDeployersTest is TrustgraphsFactoryBase {
             )
         );
         directDeployer.deploy(
-            instanceId,
-            SAFE,
-            signerVerifier,
-            accumulator,
-            scoreSource,
-            activitySource,
-            paramsHash,
-            vkey,
-            1,
-            1,
-            0,
-            151_200,
-            1
+            instanceId, SAFE, signerVerifier, accumulator, scoreSource, activitySource, vkey, 1, 1, 0, 151_200, 1
         );
     }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.27;
+pragma solidity 0.8.36;
 
 import {IEAS, Attestation} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {SchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/SchemaResolver.sol";
@@ -68,6 +68,9 @@ contract ContributionResolver is SchemaResolver, AttestationAccumulator, IAnchor
     /// @notice Attestation from a schema outside the allowlist.
     error UnknownSchema(bytes32 schemaUid);
 
+    /// @notice Contribution lifetimes end through explicit revocation; expiry is not in the fold.
+    error ExpirationNotSupported(uint64 expirationTime);
+
     /// @notice Creates a new ContributionResolver instance.
     /// @param eas The EAS contract instance.
     /// @param _schemaAdmin The address allowed to set the schema allowlist once (the deployer in
@@ -120,6 +123,7 @@ contract ContributionResolver is SchemaResolver, AttestationAccumulator, IAnchor
         returns (bool)
     {
         uint8 schemaIndex = _schemaIndex(attestation.schema);
+        if (attestation.expirationTime != 0) revert ExpirationNotSupported(attestation.expirationTime);
 
         // Emitted so off-chain indexers can consume attestation events generically (same events as
         // EASIndexerResolver, so Ponder's existing handlers apply).

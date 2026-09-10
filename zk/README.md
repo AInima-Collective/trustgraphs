@@ -6,8 +6,8 @@ verification keys of another.
 
 | Workspace | Responsibility |
 |---|---|
-| `program/` | Multi-bin guest workspace for the signer-sync, hypercerts, contributions, and conformance programs |
-| `trustgraph-program-v2/` | Strict hybrid trustgraph guest |
+| `program/` | Multi-bin guest workspace (`trustgraph-guests`) for the signer-sync, hypercerts, contributions, and conformance programs |
+| `trust-graph-program/` | The trust-graph guest: the root producer proven for `MerkleSnapshot.submitProof` (strict two-lane statement from `crates/trustgraph-core`) |
 | `weighted-program/` | Weighted-prior guest |
 | `composition-program/` | Trust-composition guest |
 | `nostr-program/` | Isolated Nostr guest and native conformance host |

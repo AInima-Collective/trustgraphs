@@ -11,6 +11,7 @@ test('composition APIs are additive, paginated, and name both provenance classes
   assert.match(routes, /app\.route\('\/compositions', compositions\)/)
   assert.match(source, /app\.get\('\/:instanceId'/)
   assert.match(source, /\/:instanceId\/policies/)
+  assert.match(source, /\/:instanceId\/metadata-revisions/)
   assert.match(source, /\/:instanceId\/epochs/)
   assert.match(source, /\/sources'/)
   assert.match(source, /\/attribution'/)
@@ -31,6 +32,7 @@ test('composition APIs are additive, paginated, and name both provenance classes
     new URL('../composition.ts', import.meta.url),
     'utf8'
   )
-  assert.match(eventHandler, /fetchMetadata\(metadataURI\)/)
-  assert.match(eventHandler, /metadataURI,\s+metadata,/)
+  assert.match(eventHandler, /fetchNetworkMetadata\(metadataURI\)/)
+  assert.match(eventHandler, /metadataURI,\s+metadataURIHash,/)
+  assert.match(eventHandler, /insert\(networkMetadataRevision\)/)
 })

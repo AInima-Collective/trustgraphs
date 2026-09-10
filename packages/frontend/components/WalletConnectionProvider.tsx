@@ -7,7 +7,7 @@ import {
   useContext,
   useState,
 } from 'react'
-import { useSwitchChain } from 'wagmi'
+import { useAccount, useSwitchChain } from 'wagmi'
 
 import {
   createNetworkAddParams,
@@ -15,27 +15,28 @@ import {
   getTargetChainId,
   loadWalletConnectors,
 } from '@/lib/wagmi'
+import { requestApplicationChainSwitch } from '@/lib/wallet-switch'
 
 const WalletConnectionContext = createContext<{
   _openId: number
   walletOptionsLoading: boolean
   prepareWalletConnectors: () => Promise<void>
   openConnectWallet: (event?: BaseSyntheticEvent) => void
-  switchToTarget: () => Promise<void>
+  switchToTarget: () => Promise<boolean>
   switchingTarget: boolean
+  switchError: string | null
 }>({
   _openId: 0,
   walletOptionsLoading: false,
   prepareWalletConnectors: async () => {},
   openConnectWallet: () => {},
-  switchToTarget: async () => {},
+  switchToTarget: async () => false,
   switchingTarget: false,
+  switchError: null,
 })
 
 export const useWalletConnectionContext = () =>
   useContext(WalletConnectionContext)
-export const useOpenWalletConnector = () =>
-  useWalletConnectionContext().openConnectWallet
 
 export const WalletConnectionProvider = ({
   children,
@@ -65,40 +66,33 @@ export const WalletConnectionProvider = ({
     [prepareWalletConnectors]
   )
 
-  const addTargetNetwork = useCallback(async () => {
-    try {
-      const chainConfig = getTargetChainConfig()
-      const networkParams = createNetworkAddParams(chainConfig)
-
-      await window.ethereum?.request({
-        method: 'wallet_addEthereumChain',
-        params: [networkParams],
-      })
-
-      console.log(`Added network: ${chainConfig.name} (${chainConfig.id})`)
-    } catch (err) {
-      console.error('Failed to add target network:', err)
-      throw err
-    }
-  }, [])
-
+  const { connector } = useAccount()
+  const [switchError, setSwitchError] = useState<string | null>(null)
   const { switchChainAsync, isPending: switchingTarget } = useSwitchChain()
 
   const switchToTarget = useCallback(async () => {
-    try {
-      const targetChainId = getTargetChainId()
-      await switchChainAsync({ chainId: targetChainId })
-    } catch (err) {
-      console.error('Failed to switch network:', err)
-      try {
-        await addTargetNetwork()
-        const targetChainId = getTargetChainId()
-        await switchChainAsync({ chainId: targetChainId })
-      } catch (addErr) {
-        console.error('Failed to add and switch network:', addErr)
-      }
+    setSwitchError(null)
+    if (!connector) {
+      setSwitchError('Connect your wallet before switching networks.')
+      return false
     }
-  }, [addTargetNetwork, switchChainAsync])
+    const chain = getTargetChainConfig()
+    const { chainId: _chainId, ...addEthereumChainParameter } =
+      createNetworkAddParams(chain)
+    // Wagmi's active connector handles 4902/unknown-chain responses, including wallet-specific
+    // error wrapping. Passing public chain metadata avoids adding our credentialed RPC proxy.
+    const result = await requestApplicationChainSwitch(
+      () =>
+        switchChainAsync({
+          connector,
+          chainId: getTargetChainId(),
+          addEthereumChainParameter,
+        }),
+      chain.name
+    )
+    if (!result.ok) setSwitchError(result.message)
+    return result.ok
+  }, [connector, switchChainAsync])
 
   return (
     <WalletConnectionContext.Provider
@@ -109,6 +103,7 @@ export const WalletConnectionProvider = ({
         openConnectWallet,
         switchToTarget,
         switchingTarget,
+        switchError,
       }}
     >
       {children}

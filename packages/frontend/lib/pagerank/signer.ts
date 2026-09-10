@@ -6,15 +6,15 @@
 //! root producer), then applies a deterministic top-N selection rule. It is float-free and
 //! deterministic so the SP1 guest, host, and browser all agree byte-for-byte.
 
-import { concat, keccak256, type Hex } from 'viem'
+import { type Hex, concat, keccak256 } from 'viem'
 
 import { compute } from './compute'
 import { selectionParamsHash, signerJournalDigest } from './encode'
 import { signerSetRoot } from './merkle'
 import {
   type GuestInput,
-  type SignerActivity,
   type SelectionParams,
+  type SignerActivity,
   type SignerComputeResult,
   type SignerInput,
   type SignerJournal,
@@ -23,6 +23,8 @@ import { ZERO_HASH, wordAddr, wordU256, wordU64 } from './words'
 
 /** `ceil(a / b)` for `b > 0`. */
 const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b
+
+export const MAX_SIGNERS = 64
 
 /** Numeric address comparison (compare as bigints of the 20-byte value), matching Rust `Address` ordering. */
 const cmpAddr = (a: Hex, b: Hex): number => {
@@ -118,7 +120,10 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     activityAcc = foldActivity(activityAcc, BigInt(index + 1), record)
     const account = record.account.toLowerCase() as Hex
     const previous = latest.get(account) ?? 0n
-    latest.set(account, record.blockNumber > previous ? record.blockNumber : previous)
+    latest.set(
+      account,
+      record.blockNumber > previous ? record.blockNumber : previous
+    )
   })
   if (activityCheckpoint.count !== BigInt(activity.length)) {
     throw new Error('activity count mismatch')
@@ -131,11 +136,17 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     (address) => address.toLowerCase() as Hex
   )
   currentSigners.sort(cmpAddr)
-  if (currentSigners.length === 0 || new Set(currentSigners).size !== currentSigners.length) {
+  if (
+    currentSigners.length === 0 ||
+    new Set(currentSigners).size !== currentSigners.length
+  ) {
     throw new Error('invalid current Safe owner set')
   }
   const currentThreshold = input.currentThreshold ?? 0n
-  if (currentThreshold < 1n || currentThreshold > BigInt(currentSigners.length)) {
+  if (
+    currentThreshold < 1n ||
+    currentThreshold > BigInt(currentSigners.length)
+  ) {
     throw new Error('invalid current Safe threshold')
   }
 
@@ -156,12 +167,12 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
   const witnessPool = input.wasInitialized
     ? currentSigners
     : [...positiveScores]
-  const witnessCount = witnessPool.filter((account) => fresh.has(account)).length
+  const witnessCount = witnessPool.filter((account) =>
+    fresh.has(account)
+  ).length
   const minimum = input.selection.minActivityWitnesses
   let activityApplied =
-    activityCheckpoint.count !== 0n &&
-    minimum >= 2 &&
-    witnessCount >= minimum
+    activityCheckpoint.count !== 0n && minimum >= 2 && witnessCount >= minimum
   let chosen = activityApplied
     ? selectSigners(
         base.scores.filter(([account]) =>
@@ -195,6 +206,33 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     instanceDomain: input.instanceDomain ?? (`0x${'00'.repeat(32)}` as Hex),
   }
   return { journal, signers, targetThreshold, activityApplied }
+}
+
+/** Mirrors the guest entry point; an ineligible native preview is never a valid proof. */
+export const computeSignersForProof = (
+  input: SignerInput
+): SignerComputeResult => {
+  const selection = input.selection
+  if (
+    !Number.isInteger(selection.topN) ||
+    selection.topN < 2 ||
+    selection.topN > MAX_SIGNERS ||
+    !Number.isInteger(selection.minThreshold) ||
+    selection.minThreshold < 2 ||
+    selection.minThreshold > selection.topN ||
+    !Number.isInteger(selection.targetThresholdBps) ||
+    selection.targetThresholdBps < 1 ||
+    selection.targetThresholdBps > 10_000 ||
+    selection.maxInactiveBlocks <= 0n ||
+    !Number.isInteger(selection.minActivityWitnesses) ||
+    selection.minActivityWitnesses < 2 ||
+    selection.minActivityWitnesses > selection.topN
+  )
+    throw new Error('invalid signer selection policy')
+  const result = computeSigners(input)
+  if (!result.activityApplied)
+    throw new Error('insufficient authenticated signer activity')
+  return result
 }
 
 /** The signer journal digest the on-chain `SignerSyncZkModule` binds. Re-exported for convenience. */

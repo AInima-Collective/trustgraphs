@@ -51,7 +51,7 @@ ponder.on(
 ponder.on(
   'graphLineageRegistry:LineageMetadataUpdated',
   async ({ event, context }) => {
-    // M0 hazard sweep: a lineage registered before the start block has no row and cannot be
+    // Out-of-universe guard: a lineage registered before the start block has no row and cannot be
     // reconstructed (the registry ABI exposes no lineage getter; instanceId/familyId are notNull
     // and absent from this event) — log and skip instead of wedging. This namespace is advisory
     // and consumers fold fail-closed (see the file header), so a skipped update degrades safely.
@@ -82,7 +82,7 @@ ponder.on(
       id: event.args.lineageId,
     })
     if (!lineage) {
-      // M0 hazard sweep: same out-of-universe rule as `LineageMetadataUpdated` — the lineage row
+      // Out-of-universe guard: same out-of-universe rule as `LineageMetadataUpdated` — the lineage row
       // is not reconstructible from this event or the registry ABI, and throwing here would
       // permanently wedge the indexer on a valid chain. Skipping also withholds the configuration
       // row, which is correct: consumers fail closed on lineages they cannot see.
@@ -163,7 +163,7 @@ ponder.on(
     const supersedes =
       event.args.supersedes === zeroHash ? null : event.args.supersedes
     if (supersedes) {
-      // M0 hazard sweep: the superseded endorsement may predate the start block. Its back-pointer
+      // Out-of-universe guard: the superseded endorsement may predate the start block. Its back-pointer
       // is decoration on out-of-universe history — log and skip it, but keep inserting the new
       // endorsement below (which carries the forward `supersedes` link regardless).
       const previous = await context.db.find(graphEndorsement, {
@@ -211,7 +211,7 @@ ponder.on(
 ponder.on(
   'graphLineageRegistry:EndorsementRevoked',
   async ({ event, context }) => {
-    // M0 hazard sweep: a revocation of an endorsement issued before the start block is
+    // Out-of-universe guard: a revocation of an endorsement issued before the start block is
     // out-of-universe — log and skip rather than wedge. Consumers must fold fail-closed (and
     // high-stakes ones confirm `endorsementStatus` on the contract), so an unseen revocation of an
     // unseen endorsement cannot make anything look more trusted than the chain says.

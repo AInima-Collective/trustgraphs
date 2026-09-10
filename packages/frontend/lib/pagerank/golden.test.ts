@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import { type Hex, concat, keccak256 } from 'viem'
 
 import { compute, journalDigest } from './compute'
+import { distributePoints } from './distribute'
 import {
   accumulate,
   domainSetHash,
@@ -27,12 +28,18 @@ import {
   signerJournalEncoded,
 } from './encode'
 import { signerSetRoot } from './merkle'
-import { computeSigners, foldActivity, selectSigners } from './signer'
+import {
+  computeSigners,
+  computeSignersForProof,
+  foldActivity,
+  selectSigners,
+} from './signer'
 import {
   type GuestInput,
   type Params,
   type RawEdge,
   type SelectionParams,
+  type SignerInput,
 } from './types'
 import { wordU256 } from './words'
 
@@ -123,16 +130,16 @@ const GOLDEN = {
   domainSetHash:
     '0xbf1cb4496241c117ba3d1998198867c6af2e29c154c9180662304713d9013d48',
   outputRoot:
-    '0x28487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f',
+    '0xfce3dd62ed0649524a718391dafd651189c94f7b27a7d652d2a65d6d83e722e4',
   ipfsHash:
-    '0x2a2d60868eef3792a13136cfd18d7520d9e7b1e2fbabe3ebd1f4b229069059a1',
-  cid: 'bafkreibkfvqindxpg6jkcmjwz7iy25ja3ht3dyx3vpr6xupuwiuqneczue',
+    '0x61d27a12570052d326e3b520b8f86909cd0af3991da156af164ae76f8e1db7fb',
+  cid: 'bafkreidb2j5bevyakljsny5vec4pq2ijzufphgi5uflk6fsk45xy4hnx7m',
   cidDigest:
-    '0x439bc4ab549608c1a887b5eef17a253e7e8b56ae63875fae3b581bad28156688',
+    '0x6846724a751aa12ca943794e0851c2151f38df903145b2f74067ed922872b301',
   journalEncoded:
-    '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a8ab5ec908b6a0ec70138497852a9ea2b351bda5c3d824b5a35a4489cc1a8b6828487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f2a2d60868eef3792a13136cfd18d7520d9e7b1e2fbabe3ebd1f4b229069059a1439bc4ab549608c1a887b5eef17a253e7e8b56ae63875fae3b581bad2815668800000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
+    '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a8ab5ec908b6a0ec70138497852a9ea2b351bda5c3d824b5a35a4489cc1a8b68fce3dd62ed0649524a718391dafd651189c94f7b27a7d652d2a65d6d83e722e461d27a12570052d326e3b520b8f86909cd0af3991da156af164ae76f8e1db7fb6846724a751aa12ca943794e0851c2151f38df903145b2f74067ed922872b30100000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
   journalDigest:
-    '0xecacb62ec0d494ca1db0c1276d19f74573bf5aea98ceddf718f5a8631b2f8d68', // journal v3 (two-lane + recipient/instanceDomain)
+    '0x39c1b0ee4d53459f3f7f8362295288836e24a2f39d171371064ad78dc64be86e', // journal v3 (two-lane + recipient/instanceDomain)
   recipient: '0xbebebebebebebebebebebebebebebebebebebebe',
   instanceDomain:
     '0x84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
@@ -144,13 +151,13 @@ const GOLDEN = {
   edge0Leaf:
     '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',
   blob:
-    '{"0x0101010101010101010101010101010101010101":"369963739927479854959709",' +
-    '"0x0202020202020202020202020202020202020202":"314467628935257870515742",' +
-    '"0x0303030303030303030303030303030303030303":"315568631137262274524549"}',
+    '{"0x0101010101010101010101010101010101010101":"369963244713634688000000",' +
+    '"0x0202020202020202020202020202020202020202":"314467970300360562000000",' +
+    '"0x0303030303030303030303030303030303030303":"315568784986004750000000"}',
   values: {
-    [addr(1)]: 369963739927479854959709n,
-    [addr(2)]: 314467628935257870515742n,
-    [addr(3)]: 315568631137262274524549n,
+    [addr(1)]: 369963244713634688000000n,
+    [addr(2)]: 314467970300360562000000n,
+    [addr(3)]: 315568784986004750000000n,
   } as Record<string, bigint>,
   // Signer-sync section (from tests/golden/trust-graph.json `.signer`).
   signer: {
@@ -177,6 +184,74 @@ const GOLDEN = {
     currentSignerSetRoot:
       '0xe4d47a1e33cbc779a23009a9cb602e84ba1bb1b9906177d37611329debea8811',
   },
+}
+
+// Zero confidence contributes neither reachability nor a shortcut through trust decay.
+{
+  const policy = {
+    ...params,
+    minWeightFp: 0n,
+    trustShareFp: S / 2n,
+    trustedSeeds: [addr(1)],
+    envelope0DomainSeparators: [],
+    lane2MaxHeadAge: 0,
+    totalPool: S,
+  }
+  const disconnected = [edge(2, 3, 1, 1n, 100n), edge(3, 2, 2, 1n, 100n)]
+  const before = compute({ edges: disconnected, params: policy })
+  const after = compute({
+    edges: [...disconnected, edge(1, 2, 3, 1n, 0n)],
+    params: policy,
+  })
+  assert.deepEqual(after.scores, before.scores)
+  const chain = [
+    edge(1, 2, 1, 1n, 100n),
+    edge(2, 3, 2, 1n, 100n),
+    edge(3, 4, 3, 1n, 100n),
+    edge(4, 5, 4, 1n, 100n),
+  ]
+  const fullShare = { ...policy, trustShareFp: S }
+  assert.deepEqual(
+    compute({ edges: [...chain, edge(1, 4, 5, 1n, 0n)], params: fullShare })
+      .scores,
+    compute({ edges: chain, params: fullShare }).scores
+  )
+  assert.deepEqual(
+    compute({
+      edges: [edge(1, 2, 1, 1n, 100n)],
+      params: { ...fullShare, totalPool: 1n },
+    }).scores,
+    [[addr(1), 1n]]
+  )
+  assert.deepEqual(
+    distributePoints(
+      [
+        [addr(1), S / 2n],
+        [addr(2), S / 2n - 1n],
+        [addr(3), 1n],
+      ],
+      { ...policy, totalPool: 2n }
+    ).assigned,
+    [
+      [addr(1), 1n],
+      [addr(2), 1n],
+    ]
+  )
+  const max = (1n << 256n) - 1n
+  assert.deepEqual(
+    distributePoints(
+      [
+        [addr(2), 1n],
+        [addr(3), 0n],
+        [addr(1), 1n],
+      ],
+      { ...policy, totalPool: max }
+    ).assigned,
+    [
+      [addr(1), max / 2n + 1n],
+      [addr(2), max / 2n],
+    ]
+  )
 }
 
 // ---- test -------------------------------------------------------------------
@@ -372,7 +447,11 @@ check(
   [addr(1), addr(2), addr(3)]
 )
 
-const loneRecord = { account: addr(1) as Hex, proposalId: 9n, blockNumber: 500n }
+const loneRecord = {
+  account: addr(1) as Hex,
+  proposalId: 9n,
+  blockNumber: 500n,
+}
 const lone = computeSigners({
   edges: input.edges,
   params,
@@ -389,6 +468,58 @@ const lone = computeSigners({
   instanceDomain: GOLDEN.signer.instanceDomain as Hex,
 })
 check('one current owner cannot activate removals', lone.activityApplied, false)
+
+// Production proof eligibility is stronger than a native preview: an unchanged fallback must
+// never consume the singleton bootstrap. The real selection may equal an existing owner set.
+const bootstrap: SignerInput = {
+  edges: input.edges,
+  params: { ...params, envelope0DomainSeparators: [], lane2MaxHeadAge: 0n },
+  selection,
+  activity: [loneRecord],
+  activityCheckpoint: {
+    acc: foldActivity(`0x${'00'.repeat(32)}` as Hex, 1n, loneRecord),
+    count: 1n,
+    blockNumber: 500n,
+  },
+  currentSigners: [addr(1)],
+  currentThreshold: 1n,
+  wasInitialized: false,
+}
+assert.equal(computeSigners(bootstrap).activityApplied, false)
+assert.throws(
+  () => computeSignersForProof(bootstrap),
+  /insufficient authenticated signer activity/
+)
+const secondRecord = { ...loneRecord, account: addr(2) }
+const eligible: SignerInput = {
+  ...bootstrap,
+  activity: [loneRecord, secondRecord],
+  activityCheckpoint: {
+    acc: foldActivity(bootstrap.activityCheckpoint!.acc, 2n, secondRecord),
+    count: 2n,
+    blockNumber: 500n,
+  },
+}
+const initialSelection = computeSignersForProof(eligible)
+assert.equal(initialSelection.signers.length, 2)
+assert.equal(initialSelection.targetThreshold, 2n)
+assert.equal(
+  computeSignersForProof({
+    ...eligible,
+    wasInitialized: true,
+    currentSigners: initialSelection.signers,
+    currentThreshold: initialSelection.targetThreshold,
+  }).activityApplied,
+  true
+)
+assert.throws(
+  () =>
+    computeSignersForProof({
+      ...eligible,
+      selection: { ...selection, topN: 65 },
+    }),
+  /invalid signer selection policy/
+)
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) FAILED`)

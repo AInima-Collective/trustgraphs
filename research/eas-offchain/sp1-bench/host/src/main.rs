@@ -1,10 +1,10 @@
 use alloy_primitives::{keccak256, Address, B256, U256};
 use anyhow::{ensure, Context, Result};
-use eas_offchain_v2::payload_v1::{
+use eas_offchain::payload::{
     anchor_digest, data_commitment, eip712_domain_separator, encode, AnchorMessage, PayloadV1,
     E0_ENTRY_WORK_UNITS, MAX_ENTRIES_PER_NODE, MAX_PAYLOAD_BYTES,
 };
-use eas_offchain_v2::{
+use eas_offchain::{
     address_node_id, attest_struct_hash, eip712_digest, log_head, offchain_uid_v2, LogEntry,
     OffchainAttestation, ENTRY_ATTEST, ENTRY_REVOKE,
 };
@@ -177,7 +177,7 @@ fn generated(count: usize, revoke_dense: bool) -> BenchInput {
 // Decode through the production codec so benchmark generation cannot accidentally use a different
 // head than the guest will parse.
 fn decode_entries(payload: &[u8]) -> Vec<LogEntry> {
-    eas_offchain_v2::payload_v1::decode(payload, SCHEMA).unwrap().entries
+    eas_offchain::payload::decode(payload, SCHEMA).unwrap().entries
 }
 
 fn run(

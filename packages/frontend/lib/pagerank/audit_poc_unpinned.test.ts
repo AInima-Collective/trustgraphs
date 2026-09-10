@@ -16,10 +16,18 @@ import { readFileSync } from 'node:fs'
 
 import { type Hex } from 'viem'
 
-import { domainSetHash, paramsHash } from './encode'
+import { compute as computeScores } from './compute'
 import * as encodeModule from './encode'
 import { seedSetRoot } from './merkle'
-import { type Params } from './types'
+import {
+  type GuestInput as GI,
+  type Journal,
+  type Params,
+  type RawEdge,
+} from './types'
+
+const { domainSetHash, journalDigest, journalEncoded, paramsHash } =
+  encodeModule
 
 const vectors = JSON.parse(
   readFileSync('../../contracts/test/audit-poc/audit-vectors.json', 'utf8')
@@ -95,7 +103,6 @@ check(
   false
 )
 
-
 // ---------------------------------------------------------------------------
 // Concatenation ambiguity in the TypeScript port only.
 //
@@ -104,8 +111,6 @@ check(
 // non-32-byte field; TypeScript can. Two DISTINCT logical journals therefore encode to the SAME
 // bytes and the SAME digest, and a field written `0x0` instead of `0x00..00` silently shifts
 // every following word.
-import { journalDigest, journalEncoded } from './encode'
-import { type Journal } from './types'
 
 const base = {
   acc: word(0xaa),
@@ -159,12 +164,16 @@ check(
 // Proving TS([A,A]) !== TS([A]) therefore proves the two ports disagree, without running Rust.
 // It is currently unreachable on chain only because TrustgraphsParamsValidator rejects a
 // duplicated seed; nothing in pagerank-core or in this port enforces that.
-import { compute as computeScores } from './compute'
-import { type GuestInput as GI, type RawEdge } from './types'
 
 const edgeData = (confidence: bigint): Hex =>
-  (`0x${'0'.repeat(64)}${confidence.toString(16).padStart(64, '0')}`) as Hex
-const mkEdge = (from: number, to: number, u: number, ts: bigint, c: bigint): RawEdge => ({
+  `0x${'0'.repeat(64)}${confidence.toString(16).padStart(64, '0')}` as Hex
+const mkEdge = (
+  from: number,
+  to: number,
+  u: number,
+  ts: bigint,
+  c: bigint
+): RawEdge => ({
   kind: 0,
   attester: addr(from),
   recipient: addr(to),
@@ -179,17 +188,23 @@ const dupEdges: RawEdge[] = [
   mkEdge(2, 3, 2, 101n, 75n),
   mkEdge(3, 1, 3, 102n, 90n),
 ]
-const once = computeScores({ edges: dupEdges, params: dupParams([addr(1)]) } as GI)
-const twice = computeScores({ edges: dupEdges, params: dupParams([addr(1), addr(1)]) } as GI)
+const once = computeScores({
+  edges: dupEdges,
+  params: dupParams([addr(1)]),
+} as GI)
+const twice = computeScores({
+  edges: dupEdges,
+  params: dupParams([addr(1), addr(1)]),
+} as GI)
 
-console.log('\naudit PoC: duplicate-seed count divergence (TS array length vs Rust BTreeSet)')
+console.log(
+  '\naudit PoC: duplicate-seed count divergence (TS array length vs Rust BTreeSet)'
+)
 // Status probe, not a pass/fail assertion: at git HEAD 9a34786 the two roots DIFFER (the port
 // counted the raw array while pagerank-core counted a BTreeSet). The params-schema v3 refactor
 // changed `trustedCount` to `seeds.size`, so on a tree that carries it the two roots MATCH.
 if (once.journal.outputRoot === twice.journal.outputRoot) {
-  console.log(
-    `  DEDUPED  TS([A,A]) === TS([A]) === ${once.journal.outputRoot}`
-  )
+  console.log(`  DEDUPED  TS([A,A]) === TS([A]) === ${once.journal.outputRoot}`)
   console.log(
     '           this port agrees with pagerank-core: `trustedCount = seeds.size`. Finding closed.'
   )

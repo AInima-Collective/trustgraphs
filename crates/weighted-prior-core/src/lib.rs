@@ -70,19 +70,7 @@ pub struct PriorEntry {
     pub weight: u64,
 }
 
-/// A folded EAS edge in accumulator order. This shape intentionally matches the binary program's
-/// lane-one witness without importing or modifying that program.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RawEdge {
-    /// 0 = attest, 1 = revoke. Other kinds are ignored by this program.
-    pub kind: u8,
-    pub attester: Address,
-    pub recipient: Address,
-    pub uid: B256,
-    pub block_timestamp: u64,
-    #[serde(with = "serde_bytes_hex")]
-    pub data: Vec<u8>,
-}
+pub use zk_core::edge::RawEdge;
 
 /// Governance-pinned weighted-program parameters. Edge weights remain relative integers; the
 /// prior and every rank vector use the constitutional [`SCALE`].
@@ -116,29 +104,13 @@ pub struct GuestInput {
     pub edges: Vec<RawEdge>,
     pub params: Params,
     /// Exact canonical `TGWP` bytes. The guest revalidates every commitment and list invariant.
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub manifest: Vec<u8>,
     #[serde(default)]
     pub binding: Binding,
 }
 
-/// Journal v3 uses the common root-producer shape. Weighted V1 is lane-one-only, so the lane-two
-/// and skipped fields are constitutionally zero.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Journal {
-    pub acc: B256,
-    pub leaf_count: u64,
-    pub anchor_acc: B256,
-    pub anchor_count: u64,
-    pub params_hash: B256,
-    pub output_root: B256,
-    pub ipfs_hash: B256,
-    pub cid_digest: B256,
-    pub total_value: U256,
-    pub skipped_digest: B256,
-    pub recipient: Address,
-    pub instance_domain: B256,
-}
+pub use zk_core::journal::Journal;
 
 #[derive(Clone, Debug)]
 pub struct ComputeResult {
@@ -177,27 +149,5 @@ impl Params {
             return Err(WeightedError::InvalidParamsChain(self.chain_id));
         }
         Ok(())
-    }
-}
-
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            serializer.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-        } else {
-            serializer.serialize_bytes(bytes)
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
-        if deserializer.is_human_readable() {
-            let value = String::deserialize(deserializer)?;
-            let value = value.strip_prefix("0x").unwrap_or(&value);
-            alloy_primitives::hex::decode(value).map_err(serde::de::Error::custom)
-        } else {
-            serde_bytes::ByteBuf::deserialize(deserializer).map(serde_bytes::ByteBuf::into_vec)
-        }
     }
 }

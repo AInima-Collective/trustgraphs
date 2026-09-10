@@ -20,7 +20,7 @@ import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 /// about the UID it is handed — not that the schema exists, not that its resolver is this
 /// contract. The doc comment argues the call is safe because "the caller cannot choose a UID that
 /// belongs to anyone else's instance"; the attack does not need a valid UID. Every script-based
-/// deployment (`DeployNetwork.s.sol`, `DeployEasResolver.s.sol`) broadcasts the resolver
+/// deployment (`DeployEasResolver.s.sol`) broadcasts the resolver
 /// deployment and the `bindSchema` call as SEPARATE transactions, so a watcher can bind garbage in
 /// between and permanently wedge the resolver: `_requireBoundSchema` then rejects every real
 /// attestation, and the accumulator can never receive another edge.

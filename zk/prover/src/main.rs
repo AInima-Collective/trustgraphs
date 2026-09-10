@@ -51,7 +51,8 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::weighted::Command,
     },
-    /// Normalized final-distribution composition over captured complete source outputs.
+    /// Normalized final-distribution composition over captured complete mixed
+    /// standard/weighted source outputs (closed compatibility class).
     #[command(name = "trust-compose")]
     Composition {
         #[command(subcommand)]
@@ -136,6 +137,10 @@ fn manifest(args: &ManifestArgs) -> Result<()> {
         "commit": args.commit,
         "tag": args.tag,
         "sp1": sp1_sdk::SP1_CIRCUIT_VERSION,
+        "guest_build": env!("TRUSTGRAPHS_GUEST_BUILD"),
+        "builder_image": if env!("TRUSTGRAPHS_GUEST_BUILD") == "docker" {
+            Some(include_str!("../../sp1-builder-image.txt").trim())
+        } else { None },
         "programs": programs,
     });
     println!("{}", serde_json::to_string_pretty(&doc)?);

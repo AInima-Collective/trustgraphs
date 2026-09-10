@@ -26,14 +26,15 @@ contract DirectCompositionAdapter is ICompositionSourceAdapter {
     bytes32 public immutable sourceId;
     address public immutable snapshot;
     bytes32 public immutable familyId = CompositionPolicyTestLib.family();
-    bytes32 public immutable programId = CompositionPolicyTestLib.sourceProgram();
+    bytes32 public immutable programId;
     bytes32 public immutable outputKind = CompositionPolicyTestLib.outputKind();
     bytes32 public immutable deploymentProvenance = keccak256("reviewed deployment");
     CapturedState private _state;
 
-    constructor(bytes32 sourceId_, address snapshot_) {
+    constructor(bytes32 sourceId_, address snapshot_, bytes32 programId_) {
         sourceId = sourceId_;
         snapshot = snapshot_;
+        programId = programId_;
         setState(uint64(block.number), uint64(block.number), uint256(sourceId_));
     }
 
@@ -92,8 +93,12 @@ contract CompositionSourceAccumulatorTest is Test {
         snapshot = new DirectCompositionSnapshotView(address(accumulator));
         accumulator.bind(address(snapshot), address(this));
 
-        first = new DirectCompositionAdapter(bytes32(uint256(1)), address(0x101));
-        second = new DirectCompositionAdapter(bytes32(uint256(2)), address(0x202));
+        first = new DirectCompositionAdapter(
+            bytes32(uint256(1)), address(0x101), CompositionPolicyTestLib.standardProgram()
+        );
+        second = new DirectCompositionAdapter(
+            bytes32(uint256(2)), address(0x202), CompositionPolicyTestLib.weightedProgram()
+        );
         adapterFactory.setAdapter(address(first), true);
         adapterFactory.setAdapter(address(second), true);
         adapters.push(address(first));

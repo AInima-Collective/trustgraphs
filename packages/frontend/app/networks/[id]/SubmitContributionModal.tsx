@@ -277,7 +277,7 @@ export const SubmitContributionModal = ({
         <Button
           form="submit-contribution-form"
           type="submit"
-          variant="brand"
+          variant="default"
           size="lg"
           disabled={!isConnected || isCreating || isResolvingAccounts}
           className="w-full"

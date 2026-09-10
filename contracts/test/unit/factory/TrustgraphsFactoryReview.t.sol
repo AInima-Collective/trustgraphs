@@ -20,7 +20,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
 /// @title TrustgraphsFactoryReviewTest
-/// @notice Regression suite for the M6 security review. Every test here began as a working proof of
+/// @notice Regression suite for the research/audits/2026-07-M6.md security review. Every test here began as a working proof of
 ///         concept against the pre-fix code; each now asserts that the hole is closed. The attack
 ///         setup is kept verbatim on purpose — these are the exact transactions an attacker sends,
 ///         and they must keep failing, for the stated reason.
@@ -210,7 +210,7 @@ contract TrustgraphsFactoryReviewTest is TrustgraphsFactoryBase {
     function test_F10_AnyoneCanMintAnUnregisteredSnapshotNamingTheFactory() public {
         vm.prank(attacker);
         MerkleSnapshot rogue = snapshotDeployer.deploy(
-            verifier, bytes32(uint256(1)), IAttestationAccumulator(address(0xACC)), address(factory), attacker
+            verifier, bytes32(uint256(1)), IAttestationAccumulator(address(0xACC)), address(factory), attacker, ""
         );
 
         assertTrue(rogue.hasRole(rogue.CONSTITUTIONAL_ROLE(), address(factory)), "as constructed");

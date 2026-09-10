@@ -4,16 +4,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Hex, WaitForTransactionReceiptReturnType, isAddressEqual } from 'viem'
-import {
-  useAccount,
-  useChainId,
-  usePublicClient,
-  useSignTypedData,
-} from 'wagmi'
+import { useAccount, useConfig, usePublicClient } from 'wagmi'
 
+import {
+  type ApplicationTypedData,
+  assertApplicationChain,
+  signApplicationTypedData,
+} from '@/lib/application-transaction'
 import { intoAttestationData, intoAttestationsData } from '@/lib/attestation'
+import { easAddress } from '@/lib/config'
 import { easAbi } from '@/lib/contract-abis'
-import { easAddress } from '@/lib/contracts'
 import {
   EAS_DELEGATION_TTL_SECONDS,
   EAS_DELEGATION_VERSION,
@@ -26,9 +26,12 @@ import {
   splitEasRelaySignature,
 } from '@/lib/eas-delegation'
 import { parseErrorMessage } from '@/lib/error'
+import { easAttestAndImportRouterAbi } from '@/lib/imported-eas'
 import { SchemaManager } from '@/lib/schemas'
 import { txToast } from '@/lib/tx'
+import type { Network } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
+import { getTargetChainConfig } from '@/lib/wagmi'
 import { attestationKeys } from '@/queries/attestation'
 import { ponderQueryFns } from '@/queries/ponder'
 
@@ -71,11 +74,20 @@ const intoAttestationRequestData = (attestationData: NewAttestationData) => {
 /**
  * Hook to manage attestation creation and revocation. If a UID is provided, the hook will also fetch attestation data for that UID.
  */
-export function useAttestation(uid?: Hex) {
+export function useAttestation(
+  uid?: Hex,
+  importedLane?: Network['importedLane']
+) {
   const { address: connectedAddress, isConnected } = useAccount()
-  const publicClient = usePublicClient()
-  const chainId = useChainId()
-  const { signTypedDataAsync } = useSignTypedData()
+  const config = useConfig()
+  const targetChain = getTargetChainConfig()
+  const chainId = targetChain.id
+  const publicClient = usePublicClient({ chainId })
+  const signTypedDataAsync = (parameters: ApplicationTypedData) =>
+    signApplicationTypedData(config, targetChain, {
+      ...parameters,
+      account: connectedAddress,
+    })
   const queryClient = useQueryClient()
 
   const [isCreating, setIsCreating] = useState(false)
@@ -196,6 +208,106 @@ export function useAttestation(uid?: Hex) {
     })
   }
 
+  const routeAttestations = async (
+    attestationsData: NewAttestationData[]
+  ): Promise<WaitForTransactionReceiptReturnType> => {
+    if (!publicClient || !connectedAddress || !importedLane) {
+      throw new Error('Imported EAS lane is not ready')
+    }
+    if (
+      attestationsData.some(
+        ({ schema }) =>
+          schema.toLowerCase() !== importedLane.schemaUid.toLowerCase()
+      )
+    ) {
+      throw new Error(
+        'This imported network accepts only its immutable EAS schema'
+      )
+    }
+    const version = await publicClient.readContract({
+      address: importedLane.eas,
+      abi: easAbi,
+      functionName: 'version',
+    })
+    if (version !== EAS_DELEGATION_VERSION) {
+      throw new Error(`Unsupported EAS delegation version ${version}`)
+    }
+    let nonce = await publicClient.readContract({
+      address: importedLane.eas,
+      abi: easAbi,
+      functionName: 'getNonce',
+      args: [connectedAddress],
+    })
+    const deadline =
+      BigInt(Math.floor(Date.now() / 1000)) + EAS_DELEGATION_TTL_SECONDS
+    const requests = []
+    for (const attestationData of attestationsData) {
+      const data = intoAttestationRequestData(attestationData)
+      const signature = splitEasRelaySignature(
+        await signTypedDataAsync({
+          domain: easDelegationDomain(chainId, importedLane.eas, version),
+          types: easDelegatedAttestTypes,
+          primaryType: 'Attest',
+          message: easDelegatedAttestMessage({
+            attester: connectedAddress,
+            schema: attestationData.schema,
+            data: {
+              ...data,
+              expirationTime: data.expirationTime.toString(),
+              value: data.value.toString(),
+            },
+            nonce,
+            deadline,
+          }),
+        })
+      )
+      requests.push({
+        schema: attestationData.schema,
+        data,
+        signature,
+        attester: connectedAddress,
+        deadline,
+      })
+      nonce += 1n
+    }
+    const grouped = [
+      {
+        schema: importedLane.schemaUid,
+        data: requests.map((request) => request.data),
+        signatures: requests.map((request) => request.signature),
+        attester: connectedAddress,
+        deadline,
+      },
+    ]
+    const transaction =
+      requests.length === 1
+        ? {
+            address: importedLane.router,
+            abi: easAttestAndImportRouterAbi,
+            functionName: 'attestAndImport' as const,
+            args: [requests[0]!] as const,
+            account: connectedAddress,
+          }
+        : {
+            address: importedLane.router,
+            abi: easAttestAndImportRouterAbi,
+            functionName: 'multiAttestAndImport' as const,
+            args: [grouped] as const,
+            account: connectedAddress,
+          }
+    const gasEstimate = await publicClient.estimateContractGas(transaction)
+    await publicClient.simulateContract(transaction)
+    const [receipt] = await txToast({
+      tx: { ...transaction, gas: (gasEstimate * 120n) / 100n } as any,
+      onTransactionSent: setHash,
+      successMessage:
+        requests.length === 1
+          ? 'Attestation saved and imported atomically.'
+          : `${requests.length} attestations saved and imported atomically.`,
+    })
+    return receipt
+  }
+
   const createAttestation = async (attestationData: NewAttestationData) => {
     if (!isConnected || !connectedAddress) {
       throw new Error('Please connect your wallet')
@@ -207,6 +319,13 @@ export function useAttestation(uid?: Hex) {
     setHash(null)
 
     try {
+      await assertApplicationChain(config, targetChain, connectedAddress)
+      if (importedLane) {
+        const receipt = await routeAttestations([attestationData])
+        setIsCreated(true)
+        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+        return receipt
+      }
       if (EAS_RELAY_ENABLED) {
         const receipt = await relayAttestations([attestationData])
         setIsCreated(true)
@@ -273,6 +392,13 @@ export function useAttestation(uid?: Hex) {
     setHash(null)
 
     try {
+      await assertApplicationChain(config, targetChain, connectedAddress)
+      if (importedLane) {
+        await routeAttestations(attestationsData)
+        setIsCreated(true)
+        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+        return
+      }
       if (EAS_RELAY_ENABLED) {
         await relayAttestations(attestationsData)
         setIsCreated(true)
@@ -341,6 +467,7 @@ export function useAttestation(uid?: Hex) {
     setHash(null)
 
     try {
+      await assertApplicationChain(config, targetChain, connectedAddress)
       // Validate input formats
       if (!uid.startsWith('0x') || uid.length !== 66) {
         throw new Error(`Invalid attestation UID format: ${uid}`)
@@ -415,7 +542,7 @@ export function useAttestation(uid?: Hex) {
     error,
     hash,
     isConnected,
-    isRelayEnabled: EAS_RELAY_ENABLED,
+    isRelayEnabled: EAS_RELAY_ENABLED || !!importedLane,
     userAddress: connectedAddress,
     query,
     canRevoke,

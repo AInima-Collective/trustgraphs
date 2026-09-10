@@ -142,6 +142,8 @@ contract OmegaPassB_Distributor is Test {
         );
         vm.stopPrank();
 
+        // Only a window closed before the pause remains sweepable during it.
+        vm.warp(dist.effectiveClaimDeadline(idx) + 1);
         vm.prank(owner);
         dist.pause();
 
@@ -149,7 +151,7 @@ contract OmegaPassB_Distributor is Test {
         vm.expectRevert(); // EnforcedPause
         dist.claim(idx, funderA, 1_000e18, proof);
 
-        vm.warp(block.timestamp + 2 days);
+        vm.warp(vm.getBlockTimestamp() + 2 days);
         uint256 swept = dist.sweep(idx);
 
         assertEq(swept, 1_000e18);

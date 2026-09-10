@@ -16,13 +16,19 @@ const { target } = loadTargetEnvironment({
   requireTargetOverlay: false,
   fromProcess: process.env.VERCEL === '1',
 })
-const suffix = target === 'sepolia' ? 'sepolia' : 'development'
+const targets = JSON.parse(
+  fs.readFileSync(
+    path.join(frontendDir, 'lib/application-targets.json'),
+    'utf8'
+  )
+)
+const suffix = target === 'local' ? 'development' : target
 
 if (!['config', 'networks'].includes(kind)) {
   throw new Error('Usage: link-deployment-config.mjs <config|networks>')
 }
-if (!['local', 'sepolia'].includes(target)) {
-  throw new Error('DEPLOY_TARGET must be local or sepolia for the frontend')
+if (!Object.hasOwn(targets, target)) {
+  throw new Error(`Unsupported application chain: ${target}`)
 }
 
 const generatedSource =

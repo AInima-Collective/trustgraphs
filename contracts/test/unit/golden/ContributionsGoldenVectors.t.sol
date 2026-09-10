@@ -70,7 +70,7 @@ contract ContributionsGoldenVectorsTest is Test {
         assertEq(ContributionsParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }
 
-    /// The worked-example (M1 compute family) params: the codec reproduces the fixture's
+    /// The worked-example params: the codec reproduces the fixture's
     /// `paramsHash` exactly as committed in its journal.
     function test_ComputeFixtureParamsHash() public view {
         ContributionsParamsCodec.Params memory p = ContributionsParamsCodec.Params({
@@ -102,7 +102,7 @@ contract ContributionsGoldenVectorsTest is Test {
         );
     }
 
-    /// Journal v3 reused unmodified (slot A = trust acc, slot B = contribution acc): abi.encode
+    /// The trust-graph journal shape reused unmodified (slot A = trust acc, slot B = contribution acc): abi.encode
     /// of the 10 fields reproduces the committed encoding, and its keccak the digest —
     /// exactly what the contrib `MerkleSnapshot.submitProof` binds.
     function test_ComputeJournalEncodingAndDigest() public view {

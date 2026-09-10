@@ -36,7 +36,7 @@ This document describes the functional attestation UI implementation for the tru
 
 ### Key Files
 - `lib/wagmi.ts`: Wagmi configuration with local chain support
-- `lib/contracts.ts`: Generated contract addresses and ABIs
+- `lib/contract-abis.ts`: Generated contract ABIs (addresses come from `config.json` via `lib/config.ts`)
 - `lib/schemas.ts` / `lib/schema-registry.ts`: Schema definitions, encoding, and decoding
 - `hooks/useAttestation.ts`: Custom hook for attestation creation
 - `app/attestations/page.tsx`: Main attestation page component

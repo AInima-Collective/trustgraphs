@@ -165,7 +165,17 @@ migration evidence; update the same instance-directory row; then have the old sn
 constitutional authority call `ProvingVault.migrate`. Directory events preserve the generation
 link and the old contracts remain queryable. Re-register identities and re-anchor/re-attest only
 live inputs. Budget `timelock delay + deployment + re-ingress + first proof` before the 100% point.
-The exact ceremony and rollback checks are in
+The directory update and vault migration do **not** change the snapshot stored by an installed
+`MerkleGovModule` or signer module. For a governed instance, deploy replacement modules against
+the new snapshot, prove its first root, and use the existing Safe's governance/recovery route to
+enable the replacements and disable the old modules. Preserve the Safe, its execution guard,
+recovery route and old distributors so existing claims remain payable. Child parent-authority
+modules now pin their accepted authority address: each affected child Safe must explicitly call
+`setParentAuthority` if that address changes. Rehearse this entire module handoff on the candidate
+contracts before depending on it for a funded mainnet instance; a registry-only rehearsal is
+insufficient. Pause new funding until the replacement proof and governance checks pass.
+
+The accumulator/directory ceremony and rollback checks are in
 [`research/ANCHOR_INGRESS.md`](../../research/ANCHOR_INGRESS.md).
 
 ### Run the indexer

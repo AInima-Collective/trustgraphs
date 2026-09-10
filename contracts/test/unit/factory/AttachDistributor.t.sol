@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {Vm} from "forge-std/Vm.sol";
 
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -45,7 +46,7 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
         for (uint256 i = 0; i < logs.length; i++) {
             if (
                 logs[i].emitter == address(factory)
-                    && logs[i].topics[0] == TrustgraphsFactory.DistributorAttached.selector
+                    && logs[i].topics[0] == DistributorAttaching.DistributorAttached.selector
                     && logs[i].topics[1] == created.instanceId
             ) {
                 (address emittedDistributor, address emittedToken) = abi.decode(logs[i].data, (address, address));
@@ -72,7 +73,7 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                TrustgraphsFactory.DistributorAlreadyAttached.selector, created.instanceId, created.distributor
+                DistributorAttaching.DistributorAlreadyAttached.selector, created.instanceId, created.distributor
             )
         );
         factory.attachDistributor(created.instanceId, admin, address(0));
@@ -83,7 +84,7 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
         Created memory again = _create(second);
         address attached = factory.attachDistributor(again.instanceId, admin, address(0));
         vm.expectRevert(
-            abi.encodeWithSelector(TrustgraphsFactory.DistributorAlreadyAttached.selector, again.instanceId, attached)
+            abi.encodeWithSelector(DistributorAttaching.DistributorAlreadyAttached.selector, again.instanceId, attached)
         );
         factory.attachDistributor(again.instanceId, admin, address(0));
     }
@@ -98,7 +99,7 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
         args.admin = admin;
         Created memory created = _create(args);
         vm.expectRevert(
-            abi.encodeWithSelector(TrustgraphsFactory.NotInstanceAuthority.selector, created.instanceId, stranger)
+            abi.encodeWithSelector(DistributorAttaching.NotInstanceAuthority.selector, created.instanceId, stranger)
         );
         factory.attachDistributor(created.instanceId, stranger, address(0));
     }
@@ -109,7 +110,7 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
         args.admin = eoaAdmin;
         Created memory created = _create(args);
 
-        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidDistributorSafe.selector, eoaAdmin));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, eoaAdmin));
         factory.attachDistributor(created.instanceId, eoaAdmin, address(0));
     }
 }

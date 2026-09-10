@@ -12,6 +12,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IEthUsdFeed} from "interfaces/vault/IEthUsdFeed.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
+import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {InputCapacity} from "src/limits/InputCapacity.sol";
 
@@ -177,6 +178,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
         IInstanceRegistry.Instance memory record = REGISTRY.getInstance(instanceId);
         if (record.snapshot == address(0)) revert UnknownInstance(instanceId);
+        _requireProvenance(record.snapshot);
         a.snapshot = record.snapshot;
         a.program = record.program;
         emit AccountBound(instanceId, record.snapshot, record.program);
@@ -194,6 +196,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         Account storage a = _accounts[instanceId];
         IInstanceRegistry.Instance memory record = REGISTRY.getInstance(instanceId);
         if (record.snapshot == address(0)) revert UnknownInstance(instanceId);
+        _requireProvenance(record.snapshot);
         // Either field may be the one that moved. Refusing when only the PROGRAM changed left
         // `a.program` stale forever, and a stale label bands at zero — a funded tank that can
         // never pay a fee again, with no recovery short of a 7-day withdrawal.
@@ -237,7 +240,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         if (a.snapshot == address(0)) revert UnknownInstance(instanceId);
         _requireUnclaimed(instanceId, a.snapshot, args.checkpointId);
 
-        Terms memory t = _terms(instanceId, a, args.checkpointId, args.outputRoot);
+        Terms memory t = _terms(instanceId, a, args.checkpointId);
 
         // Measure only the forwarded call. Deliberately excludes this function's own prologue, the
         // transaction's intrinsic gas, and everything after — every omission under-pays.
@@ -258,6 +261,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         if (!snapshot.hasAppliedCheckpoint() || snapshot.lastAppliedCheckpoint() != args.checkpointId) {
             revert CheckpointNotApplied(args.checkpointId, snapshot.lastAppliedCheckpoint());
         }
+        t.statement = _acceptedStatement(snapshot, args.checkpointId);
 
         (feeUsd, gasUsd) = _settle(instanceId, a, t, args.checkpointId, args.recipient, gasUsed, args.minPayoutUsd);
     }
@@ -277,11 +281,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         address recipient = snapshot.checkpointRecipient(checkpointId);
         if (recipient == address(0)) revert CheckpointNotApplied2(checkpointId);
 
-        // Read the state accepted for THIS checkpoint. The latest state may belong to a newer
-        // checkpoint, and combining its root with this checkpoint's input commitment would burn
-        // the newer checkpoint's bounty when an older root is claimed first.
-        (IMerkleSnapshot.MerkleState memory acceptedState,) = snapshot.getAcceptedCheckpoint(checkpointId);
-        Terms memory t = _terms(instanceId, a, checkpointId, acceptedState.root);
+        Terms memory t = _terms(instanceId, a, checkpointId);
+        t.statement = _acceptedStatement(snapshot, checkpointId);
         (feeUsd,) = _settle(instanceId, a, t, checkpointId, recipient, 0, 0);
     }
 
@@ -290,7 +291,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     /// Freeze the terms of the claim.
-    function _terms(bytes32 instanceId, Account storage a, uint256 checkpointId, bytes32 outputRoot)
+    function _terms(bytes32 instanceId, Account storage a, uint256 checkpointId)
         internal
         view
         returns (Terms memory t)
@@ -301,14 +302,51 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         t.maxPerRootUsd = p.maxPerRootUsd;
         t.minPaidIntervalBlocks = p.minPaidIntervalBlocks;
         t.lastPaidBlock = p.lastPaidBlock;
-        bytes32 checkpointAcc;
-        (checkpointAcc, t.leafCount, t.anchorCount, t.sizeKnown) = _sizeOf(a.snapshot, checkpointId);
-        // What was actually proven, independent of which checkpoint id carried it. The input
-        // accumulator is part of the journal and therefore part of proof identity. Counts plus
-        // output root alone collide on compose checkpoints whose source count and allocation are
-        // unchanged even though each checkpoint has a distinct accumulator and requires a
-        // distinct proof.
-        t.statement = keccak256(abi.encode(t.snapshot, checkpointAcc, t.leafCount, t.anchorCount, outputRoot));
+        (, t.leafCount, t.anchorCount, t.sizeKnown) = _sizeOf(a.snapshot, checkpointId);
+    }
+
+    /// Payment identity comes from the immutable accepted checkpoint, including the verifier that
+    /// actually accepted it, not the verifier currently configured or the one present at trigger.
+    /// Checkpoint numbers and recipients are deliberately excluded: changing either is not new work.
+    /// Returning to old parameters/verifiers cannot repay an already-paid statement, while a new
+    /// configuration over quiet inputs remains independently payable even if its allocation is equal.
+    function _acceptedStatement(MerkleSnapshot snapshot, uint256 checkpointId) private view returns (bytes32) {
+        (IMerkleSnapshot.MerkleState memory state, IMerkleSnapshotProvenance.StateProvenance memory provenance) =
+            snapshot.getAcceptedCheckpoint(checkpointId);
+        IAttestationAccumulator.Checkpoint memory c = snapshot.accumulator().getCheckpoint(checkpointId);
+        (bytes32 anchorAcc, uint64 anchorCount) = snapshot.anchorCheckpoints(checkpointId);
+        // SP1 wrappers with the same guest key can verify the same proof. Replacing only that
+        // wrapper must not create another bounty. Generic verifiers have no program identity seam,
+        // so their accepted address and bytecode define the fallback verification domain.
+        bool hasProgramKey = provenance.programVKey != bytes32(0);
+        bytes32 programIdentity = keccak256(
+            abi.encode(
+                provenance.programVKey,
+                hasProgramKey ? address(0) : provenance.verifier,
+                hasProgramKey ? bytes32(0) : provenance.verifierCodehash
+            )
+        );
+        return keccak256(
+            abi.encode(
+                address(snapshot),
+                c.acc,
+                c.leafCount,
+                anchorAcc,
+                anchorCount,
+                provenance.paramsHash,
+                programIdentity,
+                state.root,
+                state.ipfsHash,
+                keccak256(bytes(state.ipfsHashCid)),
+                state.totalValue
+            )
+        );
+    }
+
+    /// Both direct and fallback claims need append-only accepted history. Check before accepting
+    /// funds or migrating them because provenance cannot be enabled after the first root.
+    function _requireProvenance(address snapshot) private view {
+        if (!IMerkleSnapshotProvenance(snapshot).provenanceEnabled()) revert SnapshotProvenanceRequired(snapshot);
     }
 
     /// The money.
@@ -330,7 +368,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             return (0, 0);
         }
 
-        if (!t.sizeKnown || bandOf(t.program, t.leafCount, t.anchorCount) == 0) {
+        uint8 band = bandOf(t.program, t.leafCount, t.anchorCount);
+        if (!t.sizeKnown || band == 0) {
             _skip(instanceId, checkpointId, IneligibleReason.UnknownProgram, minPayoutUsd);
             return (0, 0);
         }
@@ -351,15 +390,13 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         }
 
         // --- the proving fee ----------------------------------------------------------------
-        if (t.sizeKnown) {
-            feeUsd = feePerRootUsd[t.program][bandOf(t.program, t.leafCount, t.anchorCount)];
-            if (feeUsd > cap) feeUsd = cap;
-        }
+        feeUsd = feePerRootUsd[t.program][band];
+        if (feeUsd > cap) feeUsd = cap;
 
         // --- the gas reimbursement ------------------------------------------------------------
         uint256 units = _refundSafeGasUnits(_min(gasUsed, maxGasUnitsPerClaim));
         if (units != 0) {
-            gasUsd = (units * block.basefee * ethUsdPrice) / 1e18;
+            gasUsd = _gasUsd(units, ethUsdPrice);
             uint256 room = cap > feeUsd ? cap - feeUsd : 0;
             if (gasUsd > room) gasUsd = room;
         }
@@ -372,8 +409,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
         uint256 ethSpent;
         uint256 usdcSpent;
-        (feeUsd, ethSpent, usdcSpent) = _pay(a, recipient, feeUsd, ethUsdPrice, feedOk);
-        (uint256 gasPaid, uint256 e2, uint256 u2) = _pay(a, msg.sender, gasUsd, ethUsdPrice, feedOk);
+        (feeUsd, ethSpent, usdcSpent) = _pay(a, recipient, feeUsd, ethUsdPrice);
+        (uint256 gasPaid, uint256 e2, uint256 u2) = _pay(a, msg.sender, gasUsd, ethUsdPrice);
         gasUsd = gasPaid;
         ethSpent += e2;
         usdcSpent += u2;
@@ -397,14 +434,20 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         emit ClaimSkipped(instanceId, checkpointId, uint8(reason));
     }
 
+    /// The one gas-USD formula, shared by `_settle` and `quote` so the pre-flight quote and the
+    /// settlement can never round apart and trip the operator's own minimum-payout guard.
+    function _gasUsd(uint256 units, uint256 ethUsdPrice) internal view returns (uint256) {
+        return (units * block.basefee * ethUsdPrice) / 1e18;
+    }
+
     /// Credit `usdAmount` to `to`, ETH first then USDC, returning what was actually paid.
-    function _pay(Account storage a, address to, uint256 usdAmount, uint256 ethUsdPrice, bool feedOk)
+    function _pay(Account storage a, address to, uint256 usdAmount, uint256 ethUsdPrice)
         internal
         returns (uint256 paidUsd, uint256 ethSpent, uint256 usdcSpent)
     {
         if (usdAmount == 0 || to == address(0)) return (0, 0, 0);
 
-        if (feedOk && ethUsdPrice != 0 && a.ethBalance != 0) {
+        if (a.ethBalance != 0) {
             uint256 wantWei = (usdAmount * 1e18) / ethUsdPrice;
             uint256 payWei = wantWei > a.ethBalance ? a.ethBalance : wantWei;
             if (payWei != 0) {
@@ -432,7 +475,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     /// The identity and size a checkpoint froze, and whether we actually know them.
-    /// @dev The flag is the whole point. An earlier version swallowed a failed read and left
+    /// @dev The flag is the whole point: a failed read must surface, not default to zero and leave
     ///      `leafCount = 0`, which `bandOf` maps to band 1 — the CHEAPEST PRICED band, the exact
     ///      opposite of the "unknown ⇒ unpriced" rule this file claims to follow. Now a failed
     ///      read pays no fee at all.
@@ -485,13 +528,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     ///      Band 0 is reserved as the "we do not price this" band and is never set.
     function bandOf(bytes32 program, uint64 leafCount, uint64 anchorCount) public pure returns (uint8) {
         // Size is the SUM of both lanes, for every program, because that is exactly what the
-        // operator's cycle estimate sums (`InstanceSize::estimated_cycles`). An earlier version
-        // used `max` for contributions and `leafCount` alone for trust-graph, which meant the
-        // shared `MAX_PRICED_INPUTS` boundary was off by up to 2x for any two-lane instance —
-        // priced here, refused there. Worse, a trust-graph instance with an anchor registry and
-        // 900 edges against 400k anchors priced at the CHEAPEST band for a proof far past the
-        // operator's limit. The "agreement" tests missed all of it because both sides only ever
-        // tested with the second lane at zero.
+        // operator's cycle estimate sums (`InstanceSize::estimated_cycles`). Any other size rule
+        // (`max`, or one lane alone) makes the shared `MAX_PRICED_INPUTS` boundary disagree with
+        // the operator's admission check for two-lane instances — priced here, refused there —
+        // and lets a small-edge, huge-anchor instance price at the cheapest band for a proof far
+        // past the operator's limit.
         //
         // Keeping a per-program `if` even though the arithmetic is now shared is deliberate: an
         // unrecognised program must fall through to the unpriced band, not inherit a default.
@@ -608,7 +649,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             revert InsufficientBalance(a.ethBalance, a.usdcBalance);
         }
 
-        // NOTE: requesting does NOT debit the balance. An earlier version did, and it handed the
+        // NOTE: requesting does NOT debit the balance. Debiting on request would hand the
         // community a free-roots machine: front-run a pending `submitAndClaim` with
         // `requestWithdrawal(everything)`, the root lands and `_claimed` is set while `_pay` finds
         // an empty tank, then `cancelWithdrawal` puts the money straight back. The prover has no
@@ -738,7 +779,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         // is instructed to trust before spending proving time; a reverting quote is
         // indistinguishable from an unreachable node and stops the loop for every instance.
         uint256 units = _refundSafeGasUnits(_min(nominalGasUnits, maxGasUnitsPerClaim));
-        q.gasUsd = ((units * block.basefee) / 1e9) * ethUsdPrice / 1e9;
+        q.gasUsd = _gasUsd(units, ethUsdPrice);
         uint256 room = cap > q.feeUsd ? cap - q.feeUsd : 0;
         if (q.gasUsd > room) q.gasUsd = room;
 

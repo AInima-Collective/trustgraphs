@@ -17,8 +17,7 @@ import {ContributionsParamsJson} from "script/lib/ContributionsParamsJson.sol";
 ///         pattern): the dev stack exercises the exact one-transaction path a community's
 ///         authority uses from the app, and the indexer discovers the round from the factory's
 ///         creation event — no static config entry, no params-file write-back, no per-round
-///         verifier or TestUSDC scaffolding. Replaces `DeployContributionsInstance` in the dev
-///         deploy chain (that script stays only as a legacy reference).
+///         verifier or TestUSDC scaffolding.
 ///
 /// @dev The broadcaster must hold the PARENT snapshot's `CONSTITUTIONAL_ROLE` — on a fresh dev
 ///      stack that is the deployer (CreateDevInstances names it the admin), so this must run

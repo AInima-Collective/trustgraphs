@@ -57,7 +57,7 @@ contract TrustgraphsGoldenVectorsTest is Test {
         bytes memory expectedEncoded = json.readBytes(".journal.encoded");
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
-        // Journal v3 (two-lane + the two bindings), field order FROZEN — must match
+        // The journal (two lanes + the recipient/instance-domain bindings), field order FROZEN — must match
         // MerkleSnapshot.submitProof.
         bytes memory encoded = abi.encode(
             acc,
@@ -172,7 +172,7 @@ contract TrustgraphsGoldenVectorsTest is Test {
         assertEq(keccak256(abi.encodePacked(separators)), json.readBytes32(".params.domainSetHash"));
     }
 
-    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork and by TrustgraphsFactory) must
+    /// paramsHash: `ParamsCodec.hash` (used by the deploy scripts and by TrustgraphsFactory) must
     /// reproduce the golden vector, locking the on-chain 17-field encoding to
     /// pagerank-core::encode::params_hash.
     function test_ParamsHashEncoding() public view {

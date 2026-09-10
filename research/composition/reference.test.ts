@@ -119,8 +119,8 @@ test('wrong bytes, wrong root, and stale source references fail closed', () => {
   wrongBlob.sources[0] = {
     ...wrongBlob.sources[0]!,
     blob: wrongBlob.sources[0]!.blob.replace(
-      '369963739927479854959709',
-      '369963739927479854959708'
+      '369963244713634688000000',
+      '369963244713634688000001'
     ),
   }
   assert.throws(

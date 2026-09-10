@@ -16,6 +16,7 @@ on:
 
 env:
   IMAGE: ghcr.io/ainima-collective/trustgraphs-operator
+  TRUSTGRAPHS_RELEASE_BUILD: '1'
 
 permissions: {}
 
@@ -33,9 +34,27 @@ jobs:
     permissions:
       contents: read
 
+  solidity:
+    uses: ./.github/workflows/contracts.yml
+    permissions:
+      contents: read
+
+  rust:
+    uses: ./.github/workflows/rust.yml
+    permissions:
+      contents: read
+
+  parity:
+    needs: guests
+    uses: ./.github/workflows/zk-parity.yml
+    with:
+      guest_artifact_ready: true
+    permissions:
+      contents: read
+
   manifest:
     name: Guest digest and vkey table
-    needs: guests
+    needs: [guests, solidity, rust, parity]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,7 +68,7 @@ jobs:
       # exactly what `cargo tree --edges build` does not show; `cargo tree -i prost-build` does.
       - uses: arduino/setup-protoc@v3
         with:
-          version: "27.3"
+          version: '27.3'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: Swatinem/rust-cache@v2
@@ -81,9 +100,19 @@ jobs:
           path: guest-manifest.json
           retention-days: 30
 
+  real-proofs:
+    needs: [guests, manifest]
+    uses: ./.github/workflows/release-proof-assurance.yml
+    permissions:
+      contents: read
+    # The called job runs under the `Actions` environment, so the proof credentials may live as
+    # environment secrets (with required reviewers gating every purchase) or repository secrets.
+    # An explicit mapping here could only forward repository secrets.
+    secrets: inherit
+
   image:
     name: Image (${{ matrix.platform }})
-    needs: [guests, manifest]
+    needs: [guests, manifest, real-proofs]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read

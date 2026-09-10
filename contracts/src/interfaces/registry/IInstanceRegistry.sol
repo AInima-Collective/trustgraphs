@@ -76,7 +76,7 @@ interface IInstanceRegistry {
     ///         one. This is the whole of a compromised factory's blast radius on the directory.
     function update(bytes32 instanceId, Instance calldata record) external;
 
-    /// @notice Associate a controller with a legacy row. `OPERATOR_ROLE` only.
+    /// @notice Associate a controller with a row registered without one. `OPERATOR_ROLE` only.
     function setParamsAuthority(bytes32 instanceId, address paramsAuthority_) external;
 
     /// @notice Change only this row's `paramsHash`; callable only by its registered authority.
@@ -88,7 +88,7 @@ interface IInstanceRegistry {
     /// @notice Whether an instance id has been registered.
     function isRegistered(bytes32 instanceId) external view returns (bool);
 
-    /// @notice The least-privilege params authority for an instance, or zero for a legacy row.
+    /// @notice The least-privilege params authority for an instance, or zero if the row was registered without one.
     function paramsAuthority(bytes32 instanceId) external view returns (address);
 
     /// @notice Number of registered instances.

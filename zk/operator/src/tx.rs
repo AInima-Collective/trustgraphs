@@ -74,7 +74,8 @@ impl Sender {
         self.signer.address()
     }
 
-    /// Estimate, simulate at the intended limit, then sign and broadcast.
+    /// Estimate, simulate at the intended limit, then sign and broadcast, with receipt watching
+    /// + stuck-transaction replacement.
     ///
     /// The simulation is not an optimisation. A submit into a paused instance, or one whose
     /// verifier rotated a block ago, reverts — and paying gas to discover that is exactly the
@@ -84,32 +85,10 @@ impl Sender {
     /// `eth_estimateGas` plus margin; an estimate above the cap is refused before any broadcast
     /// (previously the hard-coded limit was both blind to a too-big call AND invisible to the
     /// simulation, so an under-gassed revert passed `eth_call` and burned the full limit on-chain).
-    pub fn send(
-        &self,
-        rpc: &Rpc,
-        to: Address,
-        data: Vec<u8>,
-        gas_cap: u64,
-        max_fee_wei: u128,
-        simulate: bool,
-    ) -> Result<B256> {
-        let estimate = rpc
-            .estimate_gas(self.address(), to, &data)
-            .context("gas estimation failed/reverted; not broadcasting")?;
-        let gas_limit = gas_with_margin(estimate, gas_cap)?;
-
-        if simulate {
-            rpc.simulate(self.address(), to, &data, Some(gas_limit))
-                .context("simulation reverted; not broadcasting")?;
-        }
-
-        let nonce = rpc.transaction_count(self.address())?;
-        self.sign_and_broadcast(rpc, to, data, gas_limit, nonce, max_fee_wei, self.priority_fee_wei)
-    }
-
-    /// [`Self::send`] + receipt watching + stuck-transaction replacement (M-11, 2026-08-13
-    /// audit). A transaction stranded under the basefee gate used to queue everything behind its
-    /// pending nonce forever, despite the `replacement_after_s` knob claiming otherwise. Here:
+    ///
+    /// Replacement (M-11, 2026-08-13 audit): a transaction stranded under the basefee gate used
+    /// to queue everything behind its pending nonce forever, despite the `replacement_after_s`
+    /// knob claiming otherwise. Here:
     /// if no receipt arrives within `replacement_after_s`, the SAME nonce is re-signed with fees
     /// bumped ≥12.5% (the mempool replacement floor) and rebroadcast — up to two replacements —
     /// while every broadcast hash keeps being polled (the original may still land). A timeout is
@@ -167,7 +146,10 @@ impl Sender {
                 // ≥12.5% bump on both fee fields — the mempool floor for a same-nonce replace.
                 max_fee = max_fee.saturating_add(max_fee / 8).saturating_add(1);
                 priority = priority.saturating_add(priority / 8).saturating_add(1);
-                match self.sign_and_broadcast(
+                // A broadcast error ("already known" / "nonce too low") here means an earlier
+                // broadcast is winning — keep polling the hashes we have rather than failing
+                // the watch.
+                if let Ok(h) = self.sign_and_broadcast(
                     rpc,
                     to,
                     data.clone(),
@@ -176,13 +158,8 @@ impl Sender {
                     max_fee,
                     priority,
                 ) {
-                    Ok(h) => {
-                        replacements += 1;
-                        hashes.push(h);
-                    }
-                    // "already known" / "nonce too low" here means an earlier broadcast is
-                    // winning — keep polling the hashes we have rather than failing the watch.
-                    Err(_) => {}
+                    replacements += 1;
+                    hashes.push(h);
                 }
                 last_broadcast = std::time::Instant::now();
             }
@@ -244,21 +221,6 @@ pub fn gas_cost_cents(gas_used: u64, effective_gas_price_wei: u128, eth_usd: u64
     let wei = (gas_used as u128).saturating_mul(effective_gas_price_wei);
     let cents = wei.saturating_mul(eth_usd as u128).saturating_mul(100).div_ceil(10u128.pow(18));
     u64::try_from(cents).unwrap_or(u64::MAX).max(1)
-}
-
-/// Wait for a receipt, or give up. Giving up is not the same as failing: the transaction may still
-/// land, so the caller must treat a timeout as "unknown", never as "did not happen".
-pub fn await_receipt(rpc: &Rpc, tx: B256, timeout_s: u64, poll_s: u64) -> Result<Receipt> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_s);
-    loop {
-        if let Some(r) = rpc.receipt(tx)? {
-            return Ok(r);
-        }
-        if std::time::Instant::now() >= deadline {
-            bail!("no receipt for {tx:#x} within {timeout_s}s — treat as UNKNOWN, not failed");
-        }
-        std::thread::sleep(std::time::Duration::from_secs(poll_s));
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -335,6 +297,10 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
+    fn rpc(url: String) -> Rpc {
+        Rpc::with_timeout(url, std::time::Duration::from_secs(5))
+    }
+
     // ---- H-3 pure pieces ---------------------------------------------------
 
     #[test]
@@ -381,7 +347,7 @@ mod tests {
         });
 
         let receipt =
-            Rpc::new(format!("http://{addr}")).receipt(B256::from([0x11; 32])).unwrap().unwrap();
+            rpc(format!("http://{addr}")).receipt(B256::from([0x11; 32])).unwrap().unwrap();
         assert_eq!(receipt.block_number, 42);
         assert_eq!(receipt.block_hash, B256::from([0x77; 32]));
     }
@@ -435,7 +401,7 @@ mod tests {
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted: StaleCheckpoint"}}"#,
             r#"{"jsonrpc":"2.0","id":1,"result":"0x"}"#,
         );
-        let rpc = Rpc::new(url);
+        let rpc = rpc(url);
 
         std::env::set_var(
             "TEST_SUBMITTER_KEY",
@@ -444,7 +410,7 @@ mod tests {
         let sender = Sender::from_env("TEST_SUBMITTER_KEY", 31337, 100_000_000).unwrap();
 
         let err = sender
-            .send(&rpc, Address::ZERO, vec![0xAB; 4], 1_500_000, 80_000_000_000, true)
+            .send_watched(&rpc, Address::ZERO, vec![0xAB; 4], 1_500_000, 80_000_000_000, true, 1, 1)
             .unwrap_err()
             .to_string();
         assert!(err.contains("not broadcasting"), "{err}");
@@ -462,7 +428,7 @@ mod tests {
         );
         let sender = Sender::from_env("TEST_SUBMITTER_KEY", 31337, 100_000_000).unwrap();
 
-        let estimate_rpc = Rpc::new(stub_rpc(
+        let estimate_rpc = rpc(stub_rpc(
             Arc::new(AtomicBool::new(false)),
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted","data":"0xdeadbeef"}}"#,
             r#"{"jsonrpc":"2.0","id":1,"result":"0x"}"#,
@@ -481,7 +447,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(estimate.deterministic_class(), Some(SubmitFailureClass::EstimateRevert));
 
-        let simulation_rpc = Rpc::new(stub_rpc(
+        let simulation_rpc = rpc(stub_rpc(
             Arc::new(AtomicBool::new(false)),
             r#"{"jsonrpc":"2.0","id":1,"result":"0x186a0"}"#,
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"VM execution error: revert"}}"#,
@@ -508,7 +474,7 @@ mod tests {
             "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
         );
         let sender = Sender::from_env("TEST_SUBMITTER_KEY", 31337, 100_000_000).unwrap();
-        let rpc = Rpc::new(stub_rpc(
+        let rpc = rpc(stub_rpc(
             Arc::new(AtomicBool::new(false)),
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"rate limit exceeded; try again"}}"#,
             r#"{"jsonrpc":"2.0","id":1,"result":"0x"}"#,

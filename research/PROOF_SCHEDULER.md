@@ -182,7 +182,7 @@ on `dev`, and the sp1-helios/sp1-blobstream operator sources; market prices mark
   strategy `Auction`: reverse auction, lowest bid wins, prover stake slashed on missed
   deadline) and a reserved/hosted network (`rpc.production.succinct.xyz` — our current
   env points here — strategy `Hosted`, or `Reserved` under a contractual SLA). Needs
-  sp1-sdk ≥ 6.1; we're pinned to toolchain 6.3.1, so no upgrade cliff.
+  sp1-sdk ≥ 6.1; we're pinned to toolchain 6.6.0, so no upgrade cliff.
 - **Payment is PROVE, prepaid.** Requests draw from a PROVE (ERC-20) balance deposited
   into the SuccinctVApp escrow, tied to the requesting `NETWORK_PRIVATE_KEY` (secp256k1;
   AWS KMS supported). No USDC, no fiat credits on the auction network. Balances can be

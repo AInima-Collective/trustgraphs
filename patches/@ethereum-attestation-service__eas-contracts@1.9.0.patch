@@ -1,0 +1,180 @@
+diff --git a/contracts/EAS.sol b/contracts/EAS.sol
+index 54c9ba39de843e9959da4a9ce1584553c788d3f9..63fc5ee079f5ce017a809febc31c197d48c65ec0 100644
+--- a/contracts/EAS.sol
++++ b/contracts/EAS.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
+ 
+diff --git a/contracts/Indexer.sol b/contracts/Indexer.sol
+index f880ebc1ae5f25814584371ecf24e7eba59aad66..07b740de30d68459d059c1097e5358a8d0e3fd0f 100644
+--- a/contracts/Indexer.sol
++++ b/contracts/Indexer.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { IEAS, Attestation } from "./IEAS.sol";
+ import { EMPTY_UID } from "./Common.sol";
+diff --git a/contracts/SchemaRegistry.sol b/contracts/SchemaRegistry.sol
+index 2bd5f6ae0dcb80e9d5cbcd5916ab47020623ecef..011fa84dd9dace924a31d4ea93d1ae2a71bd4455 100644
+--- a/contracts/SchemaRegistry.sol
++++ b/contracts/SchemaRegistry.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { ISchemaResolver } from "./resolver/ISchemaResolver.sol";
+ 
+diff --git a/contracts/eip1271/EIP1271Verifier.sol b/contracts/eip1271/EIP1271Verifier.sol
+index 7cdaed001993c377f400d409450fcd1ba7c90f08..61d1316edbcd8cf4e339c5a90ddf2d3b4979ab09 100644
+--- a/contracts/eip1271/EIP1271Verifier.sol
++++ b/contracts/eip1271/EIP1271Verifier.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
+ import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+diff --git a/contracts/eip712/proxy/EIP712Proxy.sol b/contracts/eip712/proxy/EIP712Proxy.sol
+index c1564679bde16d783d6231f198f5c08bc9e034a1..6a26f9d0cd4103fcee8e34bd0d9f522598492d56 100644
+--- a/contracts/eip712/proxy/EIP712Proxy.sol
++++ b/contracts/eip712/proxy/EIP712Proxy.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+diff --git a/contracts/eip712/proxy/examples/PermissionedEIP712Proxy.sol b/contracts/eip712/proxy/examples/PermissionedEIP712Proxy.sol
+index b29dcb3d359d8ebe738fa01ea3de53155ffac3c5..6b559ce896c59b98eaad28a83f4e84ec56145d0c 100644
+--- a/contracts/eip712/proxy/examples/PermissionedEIP712Proxy.sol
++++ b/contracts/eip712/proxy/examples/PermissionedEIP712Proxy.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { Ownable, Ownable2Step } from "@openzeppelin/contracts/access/Ownable2Step.sol";
+ 
+diff --git a/contracts/resolver/examples/AttestationResolver.sol b/contracts/resolver/examples/AttestationResolver.sol
+index 9ecda07e290c4413454a947a10eb3302ef6068bd..9e54abc4cc66147ead2dce737a4c8694228ea904 100644
+--- a/contracts/resolver/examples/AttestationResolver.sol
++++ b/contracts/resolver/examples/AttestationResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 
+diff --git a/contracts/resolver/examples/AttesterResolver.sol b/contracts/resolver/examples/AttesterResolver.sol
+index 3074758474e474e1160f5bdb73ef06e4c1aeb3c3..69219d7a7f574574229348c7c7dc6647821d1b94 100644
+--- a/contracts/resolver/examples/AttesterResolver.sol
++++ b/contracts/resolver/examples/AttesterResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 
+diff --git a/contracts/resolver/examples/DataResolver.sol b/contracts/resolver/examples/DataResolver.sol
+index 458758a108d1e4e4194143427f757ec8a18fe024..18a62874646945ac6cc9899fcd21fd72b2b55aaf 100644
+--- a/contracts/resolver/examples/DataResolver.sol
++++ b/contracts/resolver/examples/DataResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 
+diff --git a/contracts/resolver/examples/ExpirationTimeResolver.sol b/contracts/resolver/examples/ExpirationTimeResolver.sol
+index 2bf0ca9d016e98707f7cd0c54eb3f2cb72f004ba..f342b10d223c2178c28e8ac348e29645df007f20 100644
+--- a/contracts/resolver/examples/ExpirationTimeResolver.sol
++++ b/contracts/resolver/examples/ExpirationTimeResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 
+diff --git a/contracts/resolver/examples/PayingResolver.sol b/contracts/resolver/examples/PayingResolver.sol
+index 69ebc32c61a697e800d6d3d4182b8992055c56e5..62e774ab1b56dfa778783974d25ec5fe8ba71e3b 100644
+--- a/contracts/resolver/examples/PayingResolver.sol
++++ b/contracts/resolver/examples/PayingResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
+ 
+diff --git a/contracts/resolver/examples/RecipientResolver.sol b/contracts/resolver/examples/RecipientResolver.sol
+index 992891d2f7c9c581e97af7a1248e3d26b98ba172..9d75bb48bfc217cf545b935f00a84340eedc9b4b 100644
+--- a/contracts/resolver/examples/RecipientResolver.sol
++++ b/contracts/resolver/examples/RecipientResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 
+diff --git a/contracts/resolver/examples/RevocationResolver.sol b/contracts/resolver/examples/RevocationResolver.sol
+index a553d9ad4428c402d4ba82874571de51f14bb581..eb721dd19dc411813877a730ca46cdbc75c816b2 100644
+--- a/contracts/resolver/examples/RevocationResolver.sol
++++ b/contracts/resolver/examples/RevocationResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 
+diff --git a/contracts/resolver/examples/TokenResolver.sol b/contracts/resolver/examples/TokenResolver.sol
+index 25db133baf6f885d85bf7e60923fb3f323815aab..bacbc9583400980108e7b97683c7e02a4edeeebb 100644
+--- a/contracts/resolver/examples/TokenResolver.sol
++++ b/contracts/resolver/examples/TokenResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+diff --git a/contracts/resolver/examples/ValueResolver.sol b/contracts/resolver/examples/ValueResolver.sol
+index 74d2464a84e46e7410797314079b03d983f6fbb8..503e8e14f79785cba0dc56b2c5dc7f1e272d58a0 100644
+--- a/contracts/resolver/examples/ValueResolver.sol
++++ b/contracts/resolver/examples/ValueResolver.sol
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ 
+-pragma solidity 0.8.29;
++pragma solidity 0.8.36;
+ 
+ import { SchemaResolver } from "../SchemaResolver.sol";
+ 

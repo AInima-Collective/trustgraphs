@@ -16,7 +16,7 @@ const manifest = JSON.parse(read('deployments/sepolia.json'))
 const packageManifest = JSON.parse(read('package.json'))
 
 const operatorImage =
-  'ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40'
+  'ghcr.io/ainima-collective/trustgraphs-operator@sha256:d37fad30f3007a1f0f515ffec1f8a1542248296d71b796705146f086e94f22e6'
 
 assert.equal(
   packageManifest.devDependencies?.railway,
@@ -41,6 +41,8 @@ for (const required of [
   "'/data': operatorState",
   "RAILWAY_RUN_UID: '0'",
   "FRONTEND_URL: 'https://trustgraphs.xyz'",
+  "PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v6'",
+  "PONDER_VIEWS_SCHEMA: 'trust-graph'",
   'ctx.shared.RPC_URL_11155111_0',
   // The indexer RPC list is pinned alchemy-first (as a resolved shared template) with the two
   // independent public fallbacks; a pool without a host independent of the metered primary is

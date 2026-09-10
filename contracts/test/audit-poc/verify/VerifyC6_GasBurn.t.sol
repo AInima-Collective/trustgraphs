@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
@@ -22,16 +25,16 @@ contract VerifyC6GasSignerVerifier is IZkVerifier {
 
 contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
-    GnosisSafe internal singleton;
-    GnosisSafeProxyFactory internal proxyFactory;
+    Safe internal singleton;
+    SafeProxyFactory internal proxyFactory;
 
     address internal victim = address(0xA11CE);
     address internal squatter = address(0x5D0A7);
 
     function setUp() public override {
         super.setUp();
-        singleton = new GnosisSafe();
-        proxyFactory = new GnosisSafeProxyFactory();
+        singleton = new Safe();
+        proxyFactory = new SafeProxyFactory();
         VerifyC6GasSignerVerifier signerVerifier = new VerifyC6GasSignerVerifier();
         gf = new GovernedTrustgraphsFactory(
             factory,
@@ -40,6 +43,8 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             signerVerifier,
             signerVerifier.programVKey()
         );
@@ -61,8 +66,8 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         );
     }
 
-    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig(false, 0, 0, 0);
+    function _noSigner() internal pure returns (GovernedFactoryBase.SignerSyncConfig memory) {
+        return GovernedFactoryBase.SignerSyncConfig(false, 0, 0, 0);
     }
 
     function test_HonestCostThenFrontRunAdoption() public {
@@ -73,7 +78,7 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         uint256 snap = vm.snapshotState();
         uint256 g = gasleft();
         vm.prank(victim);
-        gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner());
+        gf.createGovernedInstance(args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner());
         uint256 honest = g - gasleft();
         emit log_named_uint("honest createGovernedInstance gas", honest);
         vm.revertToState(snap);
@@ -91,7 +96,7 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         uint256 limit = (honest * 120) / 100;
         bytes memory data = abi.encodeCall(
             GovernedTrustgraphsFactory.createGovernedInstance,
-            (args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner())
+            (args, GovernedFactoryBase.InitialPolicy(0, 0), _noSigner())
         );
         uint256 g3 = gasleft();
         vm.prank(victim);

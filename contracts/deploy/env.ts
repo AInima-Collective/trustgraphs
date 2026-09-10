@@ -5,6 +5,7 @@ import { Command } from 'commander'
 import type { Hex } from 'viem'
 
 import { CHAIN_PROFILES, resolveDeploymentSelection } from './profiles'
+import { generationManifestPath, planGeneration } from './generation'
 import {
   type DeploymentRecord,
   type ReleaseManifest,
@@ -48,7 +49,7 @@ const ZERO_BYTES32 =
  */
 function requireProdBytes32(name: string): string {
   const v = process.env[name]
-  if (!v || v === ZERO_BYTES32 || /^0x0{64}$/i.test(v)) {
+  if (!v || !/^0x[0-9a-f]{64}$/i.test(v) || /^0x0{64}$/i.test(v)) {
     const how = name === 'PARAMS_HASH' ? 'paramshash' : 'vkey'
     throw new Error(
       `${name} must be set to the real guest-computed value for a production deployment ` +
@@ -67,7 +68,7 @@ function requireProdBytes32(name: string): string {
  */
 function requireProgramVkey(name: string, program: string): string {
   const value = process.env[name]
-  if (!value || /^0x0{64}$/i.test(value)) {
+  if (!value || !/^0x[0-9a-f]{64}$/i.test(value) || /^0x0{64}$/i.test(value)) {
     throw new Error(
       `${name} must be set to the ${program} guest vkey (got ${value ?? 'unset'}). ` +
         `Compute it with: cargo run -p trustgraph-prover -- ${program} vkey, or use ` +
@@ -145,6 +146,8 @@ function requireReleaseVkeys(): void {
   let manifest: {
     commit?: string
     tag?: string
+    guest_build?: string
+    builder_image?: string
     programs?: { program?: string; vkey?: string; elf_sha256?: string }[]
   }
   try {
@@ -160,10 +163,38 @@ function requireReleaseVkeys(): void {
         `being deployed; a manifest from a different build proves nothing about these vkeys.`
     )
   }
+  const builderImage = fs
+    .readFileSync('zk/sp1-builder-image.txt', 'utf8')
+    .trim()
+  if (
+    manifest.guest_build !== 'docker' ||
+    manifest.builder_image !== builderImage
+  ) {
+    throw new Error(
+      `${file} must describe guests built with the pinned Docker image ${builderImage}`
+    )
+  }
 
   const released = new Map(
     (manifest.programs ?? []).map((entry) => [entry.program, entry])
   )
+  if (released.size !== manifest.programs?.length) {
+    throw new Error(`${file} contains duplicate program entries`)
+  }
+  for (const entry of released.values()) {
+    if (
+      !entry.vkey ||
+      !/^0x[0-9a-f]{64}$/i.test(entry.vkey) ||
+      /^0x0{64}$/i.test(entry.vkey) ||
+      !entry.elf_sha256 ||
+      !/^[0-9a-f]{64}$/i.test(entry.elf_sha256) ||
+      /^0{64}$/.test(entry.elf_sha256)
+    ) {
+      throw new Error(
+        `${file} has an invalid vkey or ELF digest for ${entry.program ?? '<unnamed>'}`
+      )
+    }
+  }
 
   // Every guest vkey this environment carries, whether or not this particular deploy path
   // consumes it. A weighted vkey that disagrees with the release is not harmless here: it is
@@ -200,10 +231,10 @@ function requireReleaseVkeys(): void {
 
   const trustGraph = released.get('trust-graph')
   const digest = requireReleaseDigest()
-  if (trustGraph?.elf_sha256 && hex(digest) !== hex(trustGraph.elf_sha256)) {
+  if (!trustGraph?.elf_sha256 || hex(digest) !== hex(trustGraph.elf_sha256)) {
     throw new Error(
       `SP1_PROGRAM_ELF_SHA256 pins ${digest}, but trust-graph in the ${commit} release is ` +
-        `0x${hex(trustGraph.elf_sha256)}. The digest and the vkey describe the same ELF, so ` +
+        `${trustGraph?.elf_sha256 ?? '<missing>'}. The digest and the vkey describe the same ELF, so ` +
         `disagreement here means one of the two was copied from a different build.`
     )
   }
@@ -307,11 +338,17 @@ abstract class EnvBase implements IEnv {
       // snapshot / resolver / distributor from its `InstanceCreated` events, so this one address is
       // all the trust-graph configuration the indexer needs.
       factory: readJsonIfFileExists('.docker/factory_deploy.json'),
+      importedFactory: readJsonIfFileExists(
+        '.docker/imported_factory_deploy.json'
+      ),
       // One per chain: the frontend wizard calls this wrapper so a new instance, DAO Safe,
       // snapshot-specific Merkle governance, sealed owner guard, and delayed recovery module are
       // born in one transaction. The base factory remains the canonical event/catalog source.
       governedFactory: readJsonIfFileExists(
         '.docker/governed_factory_deploy.json'
+      ),
+      governedImportedFactory: readJsonIfFileExists(
+        '.docker/governed_imported_factory_deploy.json'
       ),
       // Governed wrappers for the weighted / compose programs (absent until their deploy scripts
       // have run). The indexer reads `governedWeightedFactory.governed_weighted_factory` and
@@ -617,6 +654,25 @@ export class DevEnv extends EnvBase {
             ) || '',
           ],
         },
+        {
+          name: 'Imported EAS Factory',
+          script:
+            'contracts/script/DeployImportedTrustgraphsFactory.s.sol:DeployImportedTrustgraphsFactory',
+          sig: 'run(string,string,string,uint64,string)',
+          args: () => [
+            readJsonKey('.docker/eas_deploy.json', 'eas'),
+            readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+            readJsonKeyIfFileExists<string>(
+              '.docker/proving_vault_deploy.json',
+              'proving_vault'
+            ) || '',
+          ],
+        },
         // The governed wrappers pin the signer verifier/vkey immutably, so the dedicated signer
         // adapter must exist before any wrapper is deployed. Never let the signer adapter fall
         // back to the root guest's vkey.
@@ -640,6 +696,22 @@ export class DevEnv extends EnvBase {
             'contracts/script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory',
           sig: 'run(string)',
           args: () => [readJsonKey('.docker/factory_deploy.json', 'factory')],
+        },
+        {
+          name: 'Governed Imported EAS Factory',
+          script:
+            'contracts/script/DeployGovernedImportedTrustgraphsFactory.s.sol:DeployGovernedImportedTrustgraphsFactory',
+          sig: 'run(string,string)',
+          args: () => [
+            readJsonKey(
+              '.docker/imported_factory_deploy.json',
+              'imported_factory'
+            ),
+            readJsonKey(
+              '.docker/governed_factory_deploy.json',
+              'governed_factory'
+            ),
+          ],
         },
         // Deploy the WEIGHTED verifier adapter (bound to the trust-graph-weighted guest's vkey —
         // a different program than the root). Own output file (`zk_verifier_weighted_deploy.json`)
@@ -736,7 +808,7 @@ export class DevEnv extends EnvBase {
         {
           name: 'Governed Weighted Factory',
           script:
-            'contracts/script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedWeightedTrustgraphsFactory',
           sig: 'run(string)',
           args: () => [
             readJsonKey(
@@ -749,7 +821,7 @@ export class DevEnv extends EnvBase {
         {
           name: 'Governed Compose Factory',
           script:
-            'contracts/script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedTrustComposeFactory',
           sig: 'run(string)',
           args: () => [
             readJsonKey(
@@ -770,8 +842,8 @@ export class DevEnv extends EnvBase {
           sig: 'run(string,string,string,string,uint256,uint256,bool,uint256,uint96)',
           args: () => [
             readJsonKey('.docker/factory_deploy.json', 'factory'),
-            // The governance params. Unlike the old DeployNetwork path, the factory derives
-            // `schema_uid`, `accumulator` and `chain_id` itself — the file supplies only knobs.
+            // The governance params. The factory derives `schema_uid`, `accumulator` and
+            // `chain_id` itself — the file supplies only knobs.
             process.env.PARAMS_JSON || 'params.json',
             networksConfigTemplateFile,
             'dev',
@@ -788,8 +860,7 @@ export class DevEnv extends EnvBase {
         // contributions SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = a nonzero dev
         // placeholder, valid only against the mock gateway), the controller deployer, the factory
         // (reusing the base factory's snapshot/distributor deployer singletons), and the
-        // append-only registrar grant. Replaces the per-instance DeployContributionsInstance
-        // script in this chain.
+        // append-only registrar grant.
         {
           name: 'Contributions Factory',
           script:
@@ -1002,11 +1073,12 @@ export class DevEnv extends EnvBase {
  * the hosted operator's explicit scope fence.
  */
 export class SepoliaEnv extends EnvBase {
-  private readonly releaseManifestFile = 'deployments/sepolia.json'
+  readonly releaseBase: ReleaseManifest
 
   constructor({
     rpcUrl,
     ipfsGateway = 'https://gateway.pinata.cloud/ipfs/',
+    newGeneration,
   }: EnvOverrides) {
     if (!rpcUrl) {
       throw new Error(
@@ -1022,12 +1094,25 @@ export class SepoliaEnv extends EnvBase {
     if (!['http:', 'https:'].includes(parsedRpc.protocol)) {
       throw new Error('Sepolia RPC URL must use http or https')
     }
-    const manifest = loadReleaseManifest('deployments/sepolia.json')
+    const activeManifest = loadReleaseManifest('deployments/sepolia.json')
+    if (newGeneration) requireReleaseVkeys()
+    const manifest = newGeneration
+      ? planGeneration(
+          activeManifest,
+          JSON.parse(
+            fs.readFileSync(
+              process.env.GUEST_MANIFEST || 'guest-manifest.json',
+              'utf8'
+            )
+          ),
+          requireReleaseCommit()
+        )
+      : activeManifest
     const continuing = (ctx: ProgramContext): boolean =>
       Boolean(ctx.options.continueExisting)
     const skipExisting =
       (key: keyof ReleaseManifest['contracts']) => (ctx: ProgramContext) =>
-        continuing(ctx) && manifest.contracts[key].address !== null
+        continuing(ctx) && Boolean(manifest.contracts[key]?.address)
     const requiredAddress = (name: string, value?: string | null): string => {
       if (
         !value ||
@@ -1050,15 +1135,46 @@ export class SepoliaEnv extends EnvBase {
       }
       return value
     }
-    const existingAddress = (key: keyof ReleaseManifest['contracts']): string =>
-      requiredAddress(
-        `manifest.contracts.${key}`,
-        manifest.contracts[key].address
+    const artifactAddresses: Partial<
+      Record<keyof ReleaseManifest['contracts'], [string, string]>
+    > = {
+      schemaRegistrar: ['eas', 'schema_registrar'],
+      rootVerifier: ['zk_verifier', 'zk_verifier'],
+      instanceRegistry: ['instance_registry', 'instance_registry'],
+      provingVault: ['proving_vault', 'proving_vault'],
+      trustgraphsFactory: ['factory', 'factory'],
+      importedTrustgraphsFactory: ['imported_factory', 'imported_factory'],
+      signerVerifier: ['zk_verifier_signer', 'zk_verifier'],
+      governedTrustgraphsFactory: ['governed_factory', 'governed_factory'],
+      weightedVerifier: ['zk_verifier_weighted', 'zk_verifier'],
+      weightedTrustgraphsFactory: ['weighted_factory', 'weighted_factory'],
+      compositionVerifier: ['zk_verifier_composition', 'zk_verifier'],
+      trustComposeFactory: ['trust_compose_factory', 'trust_compose_factory'],
+    }
+    const existingAddress = (
+      key: keyof ReleaseManifest['contracts']
+    ): string => {
+      const artifact = artifactAddresses[key]
+      return requiredAddress(
+        `deployment.contracts.${key}`,
+        manifest.contracts[key]?.address ||
+          (artifact
+            ? readJsonKeyIfFileExists<string>(
+                `.docker/${artifact[0]}_deploy.json`,
+                artifact[1]
+              )
+            : undefined)
       )
+    }
     const registrarGrant = (label: string, file: string, key: string) => () => {
       const factory = readJsonKeyIfFileExists<string>(file, key) || `<${label}>`
       const registry =
-        manifest.contracts.instanceRegistry.address || '<InstanceRegistry>'
+        manifest.contracts.instanceRegistry.address ||
+        readJsonKeyIfFileExists<string>(
+          '.docker/instance_registry_deploy.json',
+          'instance_registry'
+        ) ||
+        '<InstanceRegistry>'
       const admin = process.env.INSTANCE_REGISTRY_ADMIN || '<registry admin>'
       console.log(
         [
@@ -1105,7 +1221,12 @@ export class SepoliaEnv extends EnvBase {
 
     super({
       stage: 'production',
-      profile: CHAIN_PROFILES.sepolia,
+      profile: {
+        ...CHAIN_PROFILES.sepolia,
+        releaseManifestFile: newGeneration
+          ? generationManifestPath(newGeneration)
+          : CHAIN_PROFILES.sepolia.releaseManifestFile,
+      },
       rpcUrl,
       registry: process.env.SERVICE_REGISTRY_URL || '',
       serviceName: 'trust-graph',
@@ -1117,6 +1238,11 @@ export class SepoliaEnv extends EnvBase {
       },
       networksConfigFile: 'config/networks.sepolia.json',
       validateDeployment: () => {
+        if (newGeneration && process.env.SKIP_PROVING_VAULT === 'true') {
+          throw new Error(
+            'A new hosted Sepolia generation requires its own ProvingVault'
+          )
+        }
         requireReleaseCommit()
         requireReleaseDigest()
         requireReleaseVkeys()
@@ -1312,6 +1438,30 @@ export class SepoliaEnv extends EnvBase {
           },
         },
         {
+          name: 'Imported EAS Factory',
+          script:
+            'contracts/script/DeployImportedTrustgraphsFactory.s.sol:DeployImportedTrustgraphsFactory',
+          sig: 'run(string,string,string,uint64,string)',
+          env: () => ({ GRANT_REGISTRAR: 'false' }),
+          args: () => [
+            manifest.external.eas,
+            existingAddress('rootVerifier'),
+            existingAddress('instanceRegistry'),
+            requireProdUint64('FACTORY_EPOCH_FLOOR'),
+            process.env.SKIP_PROVING_VAULT === 'true'
+              ? ''
+              : existingAddress('provingVault'),
+          ],
+          skip: (ctx) =>
+            continuing(ctx) &&
+            manifest.contracts.importedTrustgraphsFactory?.address != null,
+          postRun: registrarGrant(
+            'ImportedTrustgraphsFactory',
+            '.docker/imported_factory_deploy.json',
+            'imported_factory'
+          ),
+        },
+        {
           name: 'Signer ZK Verifier',
           script: 'contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier',
           sig: 'run(string,bytes32,string)',
@@ -1328,17 +1478,8 @@ export class SepoliaEnv extends EnvBase {
             'contracts/script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory',
           sig: 'run(string,string,bytes32,string,string)',
           args: () => [
-            requiredAddress(
-              'manifest.contracts.trustgraphsFactory.address',
-              manifest.contracts.trustgraphsFactory.address
-            ),
-            requiredAddress(
-              'signer verifier',
-              readJsonKeyIfFileExists<string>(
-                '.docker/zk_verifier_signer_deploy.json',
-                'zk_verifier'
-              ) || manifest.contracts.signerVerifier.address
-            ),
+            existingAddress('trustgraphsFactory'),
+            existingAddress('signerVerifier'),
             requireProdBytes32('SP1_SIGNER_PROGRAM_VKEY'),
             requiredAddress(
               'manifest.contracts.safeSingleton.address',
@@ -1353,6 +1494,20 @@ export class SepoliaEnv extends EnvBase {
             continuing(ctx) &&
             manifest.contracts.governedTrustgraphsFactory.address !== null &&
             manifest.contracts.signerSyncModuleDeployer.address !== null,
+        },
+        {
+          name: 'Governed Imported EAS Factory',
+          script:
+            'contracts/script/DeployGovernedImportedTrustgraphsFactory.s.sol:DeployGovernedImportedTrustgraphsFactory',
+          sig: 'run(string,string)',
+          args: () => [
+            existingAddress('importedTrustgraphsFactory'),
+            existingAddress('governedTrustgraphsFactory'),
+          ],
+          skip: (ctx) =>
+            continuing(ctx) &&
+            manifest.contracts.governedImportedTrustgraphsFactory?.address !=
+              null,
         },
         {
           name: 'Weighted ZK Verifier',
@@ -1396,7 +1551,7 @@ export class SepoliaEnv extends EnvBase {
         {
           name: 'Governed Weighted Factory',
           script:
-            'contracts/script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedWeightedTrustgraphsFactory',
           sig: 'run(string,string)',
           args: () => [
             readJsonKey(
@@ -1445,7 +1600,7 @@ export class SepoliaEnv extends EnvBase {
         {
           name: 'Governed Compose Factory',
           script:
-            'contracts/script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory',
+            'contracts/script/DeployGovernedProgramFactories.s.sol:DeployGovernedTrustComposeFactory',
           sig: 'run(string,string)',
           args: () => [
             readJsonKey(
@@ -1485,10 +1640,11 @@ export class SepoliaEnv extends EnvBase {
         },
       ],
     })
+    this.releaseBase = manifest
   }
 
   generateReleaseManifest(ctx?: ProgramContext): object {
-    const base = loadReleaseManifest(this.releaseManifestFile)
+    const base = this.releaseBase
     const continuing = Boolean(ctx?.options.continueExisting)
     const broadcasts = readBroadcastDeployments('.', this.profile.chainId)
     // A continuation treats the tracked manifest as the sole source of truth for the original
@@ -1529,11 +1685,22 @@ export class SepoliaEnv extends EnvBase {
       : readJsonIfFileExists<Record<string, string>>(
           '.docker/governed_factory_deploy.json'
         )
+    const importedFactory = base.contracts.importedTrustgraphsFactory?.address
+      ? null
+      : readJsonIfFileExists<Record<string, string>>(
+          '.docker/imported_factory_deploy.json'
+        )
+    const governedImportedFactory = base.contracts
+      .governedImportedTrustgraphsFactory?.address
+      ? null
+      : readJsonIfFileExists<Record<string, string>>(
+          '.docker/governed_imported_factory_deploy.json'
+        )
     const additiveArtifact = (
       key: keyof ReleaseManifest['contracts'],
       file: string
     ): Record<string, string> | null =>
-      base.contracts[key].address
+      base.contracts[key]?.address
         ? null
         : readJsonIfFileExists<Record<string, string>>(file) || null
     const weightedVerifier = additiveArtifact(
@@ -1653,6 +1820,11 @@ export class SepoliaEnv extends EnvBase {
       existing: DeploymentRecord
     ): DeploymentRecord =>
       address ? deploymentRecord(address, broadcasts) : existing
+    const emptyRecord: DeploymentRecord = {
+      address: null,
+      block: null,
+      txHash: null,
+    }
     const contracts = {
       schemaRegistrar: mergedRecord(
         eas?.schema_registrar,
@@ -1674,6 +1846,10 @@ export class SepoliaEnv extends EnvBase {
         factory?.factory,
         base.contracts.trustgraphsFactory
       ),
+      importedTrustgraphsFactory: mergedRecord(
+        importedFactory?.imported_factory,
+        base.contracts.importedTrustgraphsFactory ?? emptyRecord
+      ),
       signerVerifier: mergedRecord(
         signerVerifier?.zk_verifier,
         base.contracts.signerVerifier
@@ -1682,9 +1858,21 @@ export class SepoliaEnv extends EnvBase {
         governedFactory?.governed_factory,
         base.contracts.governedTrustgraphsFactory
       ),
+      governedImportedTrustgraphsFactory: mergedRecord(
+        governedImportedFactory?.governed_imported_factory,
+        base.contracts.governedImportedTrustgraphsFactory ?? emptyRecord
+      ),
       signerSyncModuleDeployer: mergedRecord(
         governedFactory?.signer_sync_deployer,
         base.contracts.signerSyncModuleDeployer
+      ),
+      parentAuthorityModuleDeployer: mergedRecord(
+        governedFactory?.parent_authority_deployer,
+        base.contracts.parentAuthorityModuleDeployer ?? emptyRecord
+      ),
+      subnetworkRegistry: mergedRecord(
+        governedFactory?.subnetwork_registry,
+        base.contracts.subnetworkRegistry ?? emptyRecord
       ),
       safeSingleton: {
         ...base.contracts.safeSingleton,
@@ -1838,6 +2026,14 @@ export const initProgram = (program: Command): ProgramContext => {
     stage: options.stage || process.env.DEPLOY_STAGE,
     target: options.chain || process.env.DEPLOY_TARGET,
   })
+  if (options.newGeneration !== undefined) {
+    if (selection.target !== 'sepolia' || options.continueExisting) {
+      throw new Error(
+        '--new-generation requires Sepolia and cannot be combined with --continue-existing'
+      )
+    }
+    generationManifestPath(options.newGeneration)
+  }
   options.env = selection.envName
   options.stage = selection.stage
   options.chain = selection.target

@@ -1,0 +1,29 @@
+name: Frontend browser regressions
+
+on:
+  pull_request:
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm --dir packages/frontend exec playwright install --with-deps chromium
+      - name: Mobile accessibility and governance smoke
+        run: node packages/frontend/scripts/frontend-review-smoke.mjs
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-browser-evidence
+          path: .trustgraph/shots/review-smoke
+          if-no-files-found: warn

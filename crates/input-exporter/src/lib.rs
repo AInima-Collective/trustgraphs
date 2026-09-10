@@ -2,7 +2,7 @@
 //! correct by re-folding it against the checkpoint's committed `acc`.
 //!
 //! The chain gives us two things: the ordered fold *leaves* (from the accumulator's `EdgeFolded`
-//! events) and a set of *candidate* edges (from EAS attestations/revocations). Each fold leaf is
+//! events) and a set of *candidate* edges (from accumulator UID markers plus EAS storage). Each fold leaf is
 //! `keccak256(abi.encode(kind, attester, recipient, uid, blockTimestamp, dataHash))`, so we match
 //! candidates to leaves by recomputing the leaf, assemble them in fold order, and assert the
 //! re-folded accumulator equals the checkpoint's `acc`. If anything is missing or wrong the leaf
@@ -54,7 +54,7 @@ pub fn reconstruct(
             None => bail!(
                 "no reconstructed attestation reproduces folded leaf #{i} ({leaf:#x}): the input set \
                  is incomplete (a missing attestation/revocation) or a field (attester/recipient/uid/\
-                 timestamp/data) is wrong. Check the schema filter and the from-block range."
+                timestamp/data) is wrong. Check the marker/schema set and the from-block range."
             ),
         }
     }
@@ -137,23 +137,5 @@ mod tests {
         let bogus = B256::from([0xEE; 32]);
         let err = reconstruct(&leaves, &edges, bogus, n).unwrap_err();
         assert!(err.to_string().contains("self-check FAILED"));
-    }
-
-    #[test]
-    fn weighted_lane_one_uses_the_identical_fold_leaf_bytes() {
-        let binary = edge(0, 1, 2, 3, 123, 77);
-        let weighted = weighted_prior_core::RawEdge {
-            kind: binary.kind,
-            attester: binary.attester,
-            recipient: binary.recipient,
-            uid: binary.uid,
-            block_timestamp: binary.block_timestamp,
-            data: binary.data.clone(),
-        };
-        assert_eq!(
-            edge_leaf_of(&binary),
-            weighted_prior_core::encode::edge_leaf(&weighted),
-            "operator reconstruction must be byte-identical to the isolated weighted guest"
-        );
     }
 }

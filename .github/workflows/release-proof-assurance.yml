@@ -1,0 +1,116 @@
+name: Candidate real proof assurance
+
+# Only the Release workflow calls this, on a `v*` tag push or a manual dispatch. It never runs for
+# a pull request or a branch push, because every job below buys a real Groth16 proof.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    name: Groth16 (${{ matrix.program }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    # Credentials come from this environment (or from repository secrets, which the caller's
+    # `secrets: inherit` also forwards). Adding required reviewers to the environment makes every
+    # proof purchase wait for an approval.
+    environment: Actions
+    strategy:
+      fail-fast: false
+      matrix:
+        program:
+          [
+            trust-graph,
+            trust-graph-weighted,
+            trust-compose,
+            signer,
+            contributions,
+            hypercerts,
+            nostr-workspace,
+          ]
+    env:
+      TRUSTGRAPHS_RELEASE_BUILD: '1'
+      SP1_SKIP_PROGRAM_BUILD: 'true'
+      NETWORK_PRIVATE_KEY: ${{ secrets.SP1_NETWORK_PRIVATE_KEY }}
+      RELEASE_PROOF_RPC_URL: ${{ secrets.EAS_OFFCHAIN_TESTNET_RPC_URL }}
+      PROGRAM: ${{ matrix.program }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require real proof credentials
+        run: test -n "$NETWORK_PRIVATE_KEY" && test -n "$RELEASE_PROOF_RPC_URL"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '27.3'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zk/prover -> target
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: sp1-guest-elfs
+      - uses: actions/download-artifact@v4
+        with:
+          name: guest-manifest
+      - run: tar -xzf sp1-guest-elfs.tar.gz
+      - name: Build host around the exact candidate ELFs
+        run: cargo build --release --locked --features network --manifest-path zk/prover/Cargo.toml
+      - name: Check embedded candidate identity and execute guest
+        env:
+          SP1_PROVER: mock
+        run: |
+          set -eu
+          zk/prover/target/release/trustgraph-prover manifest > embedded-manifest.json
+          jq -S '[.programs[] | {program, elf_sha256, vkey}]' guest-manifest.json > candidate.json
+          jq -S '[.programs[] | {program, elf_sha256, vkey}]' embedded-manifest.json > embedded.json
+          diff -u candidate.json embedded.json
+          test "$(jq -r .commit guest-manifest.json)" = "$GITHUB_SHA"
+          mkdir -p proof-evidence
+          zk/prover/target/release/trustgraph-prover "$PROGRAM" execute | tee proof-evidence/execution.txt
+      - name: Produce and locally verify a real Groth16 proof
+        env:
+          SP1_PROVER: network
+        run: |
+          set -eu
+          zk/prover/target/release/trustgraph-prover "$PROGRAM" prove --groth16 --out-dir proof-evidence
+      - name: Verify through the actual EVM gateway on a read-only fork
+        run: |
+          set -eu
+          export RELEASE_REAL_PROOF=true
+          export RELEASE_PROOF_GATEWAY=$(jq -r .external.sp1Gateway deployments/sepolia.json)
+          export RELEASE_PROOF_BLOCK=$(cast block-number --rpc-url "$RELEASE_PROOF_RPC_URL")
+          manifest_program="$PROGRAM"
+          case "$PROGRAM" in signer) manifest_program=signer-sync ;; esac
+          export RELEASE_PROOF_VKEY=$(jq -er --arg p "$manifest_program" '.programs[] | select(.program==$p) | .vkey' guest-manifest.json)
+          case "$PROGRAM" in
+            signer) proof_file=signer_proof.bin ;;
+            contributions) proof_file=contributions_proof.bin ;;
+            hypercerts) proof_file=hypercerts_proof.bin ;;
+            nostr-workspace) proof_file=nostr_workspace_proof.bin ;;
+            *) proof_file=proof.bin ;;
+          esac
+          export RELEASE_PROOF_FILE="proof-evidence/$proof_file"
+          test -s "$RELEASE_PROOF_FILE"
+          forge test --match-contract ReleaseGroth16Test -vv
+          jq -n --arg commit "$GITHUB_SHA" --arg program "$manifest_program" \
+            --arg vkey "$RELEASE_PROOF_VKEY" --arg gateway "$RELEASE_PROOF_GATEWAY" \
+            --arg block "$RELEASE_PROOF_BLOCK" --arg run "$GITHUB_RUN_ID" \
+            '{commit:$commit,program:$program,vkey:$vkey,gateway:$gateway,block:$block,run:$run,backend:"sp1-network-groth16",evmGatewayVerified:true}' \
+            > proof-evidence/evidence.json
+          sha256sum guest-manifest.json proof-evidence/*.bin > proof-evidence/digests.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-proof-${{ matrix.program }}
+          path: proof-evidence/
+          if-no-files-found: error
+          retention-days: 90

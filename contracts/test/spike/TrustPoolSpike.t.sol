@@ -173,11 +173,10 @@ contract TrustPoolSpikeTest is Test {
         governor = new SpikeGovernor(token);
         snap = new MockSnapshotHistory();
 
-        // Pool is funded, then self-delegates in its constructor.
-        address poolAddr = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
-        token.mint(poolAddr, 1_000_000e18);
+        // The pool self-delegates in its constructor; later mints are checkpointed
+        // to that delegate by ERC20Votes.
         pool = new TrustPool(token, governor, snap, POOL_CAP);
-        require(address(pool) == poolAddr, "prediction");
+        token.mint(address(pool), 1_000_000e18);
 
         root1 = _buildRoot(600, 300, 90, 10);
         root2 = _buildRoot(100, 300, 90, 10); // alice's score collapsed

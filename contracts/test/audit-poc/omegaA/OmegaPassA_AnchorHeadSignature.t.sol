@@ -34,13 +34,13 @@ contract OmegaPassA_AnchorHeadSignature is Test {
 
         accA = new MockAccumulator();
         registryA = new AnchorRegistry(admin, 200_000);
-        snapshotA = new MerkleSnapshot(verifier, keccak256("p"), accA, address(this), address(this));
+        snapshotA = new MerkleSnapshot(verifier, keccak256("p"), accA, address(this), address(this), "");
         snapshotA.setAnchorRegistry(IAnchorRegistry(address(registryA)));
         registryA.bindSnapshot(address(snapshotA));
 
         accB = new MockAccumulator();
         registryB = new AnchorRegistry(admin, 200_000);
-        snapshotB = new MerkleSnapshot(verifier, keccak256("p"), accB, address(this), address(this));
+        snapshotB = new MerkleSnapshot(verifier, keccak256("p"), accB, address(this), address(this), "");
         snapshotB.setAnchorRegistry(IAnchorRegistry(address(registryB)));
         registryB.bindSnapshot(address(snapshotB));
 

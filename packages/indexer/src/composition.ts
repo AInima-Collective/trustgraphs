@@ -4,12 +4,14 @@ import {
   compositionCapture,
   compositionInstance,
   compositionPolicyVersion,
+  networkMetadataRevision,
 } from 'ponder:schema'
 import {
   type Hex,
   encodeAbiParameters,
   keccak256,
   sha256,
+  stringToHex,
   zeroAddress,
 } from 'viem'
 
@@ -24,7 +26,8 @@ import {
   policyManifestFromCapture,
   verifyCompositionPolicy,
 } from './composition-shared'
-import { fetchMetadata } from './factory'
+import { fetchNetworkMetadata } from './factory'
+import { revalidateNetwork } from './utils'
 import {
   compositionAccumulatorAbi,
   compositionSourceAdapterAbi,
@@ -33,14 +36,16 @@ import {
 const sameHex = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase()
 
-export const compositionParamsFromChain = (params: any): CompositionParams => ({
+export const compositionParamsFromChain = (
+  params: any
+): CompositionParams => ({
   version: Number(params.version),
   programId: params.programId,
   scopeHash: params.scopeHash,
   identityDomain: params.identityDomain,
   outputKind: params.outputKind,
   outputDomain: params.outputDomain,
-  admittedProgramId: params.admittedProgramId,
+  sourceCompatibilityClass: params.sourceCompatibilityClass,
   weightScale: BigInt(params.weightScale),
   outputPool: BigInt(params.outputPool),
   sourcePolicyRoot: params.sourcePolicyRoot,
@@ -208,7 +213,9 @@ ponder.on(
     } = event.args
     const params = compositionParamsFromChain(eventParams)
     const normalized = normalizeCompositionParams(params)
-    const metadata = await fetchMetadata(metadataURI)
+    const { metadata, status: metadataStatus } =
+      await fetchNetworkMetadata(metadataURI)
+    const metadataURIHash = keccak256(stringToHex(metadataURI))
     await context.db
       .insert(compositionInstance)
       .values({
@@ -220,6 +227,12 @@ ponder.on(
         admin,
         name,
         metadataURI,
+        metadataURIHash,
+        metadataRevision: 0n,
+        metadataStatus,
+        metadataUpdatedBlock: event.block.number,
+        metadataUpdatedTimestamp: event.block.timestamp,
+        metadataUpdatedTxHash: event.transaction.hash,
         metadata,
         accumulator,
         snapshot,
@@ -228,6 +241,7 @@ ponder.on(
           distributorToken === zeroAddress ? null : distributorToken,
         epochLength,
         programVKey,
+        sourceCompatibilityClass: params.sourceCompatibilityClass,
         currentVersion: 1n,
         currentParamsHash: normalized.hash,
         params: normalized.paramsJson,
@@ -237,6 +251,27 @@ ponder.on(
         createdTxHash: event.transaction.hash,
       })
       .onConflictDoNothing()
+
+    await context.db
+      .insert(networkMetadataRevision)
+      .values({
+        id: `${snapshot.toLowerCase()}-0`,
+        instanceId,
+        snapshot,
+        revision: 0n,
+        authority: admin,
+        metadataURI,
+        metadataURIHash,
+        previousMetadataURIHash: null,
+        metadata,
+        status: metadataStatus,
+        blockNumber: event.block.number,
+        timestamp: event.block.timestamp,
+        txHash: event.transaction.hash,
+      })
+      .onConflictDoNothing()
+
+    await revalidateNetwork(instanceId)
   }
 )
 
@@ -455,7 +490,7 @@ ponder.on(
       id: `${event.args.instanceId}-${event.args.version}`,
     })
     if (!policy || !sameHex(policy.proposalId ?? '', event.args.proposalId)) {
-      // M0 hazard sweep: a cancellation can reference a proposal outside our universe (proposed
+      // Out-of-universe guard: a cancellation can reference a proposal outside our universe (proposed
       // before the start block) or a version row recorded without a proposal id — log and skip
       // rather than wedge the indexer; the contract remains the authority on proposal state.
       console.warn(

@@ -52,9 +52,6 @@ import { cn, formatBigNumber, isHexEqual } from '@/lib/utils'
 const forceAtlas2SettingsOverrides: ForceAtlas2Settings = {
   // Bind nodes more tightly together.
   gravity: 1,
-
-  // Push hubs outwards to highlight them (disrupts spatial balance)
-  // outboundAttractionDistribution: true,
 }
 const forceAtlas2Duration = 250
 
@@ -88,7 +85,6 @@ export interface NetworkGraphProps {
   onlyAddress?: Hex
   /** Induce the existing address graph on current ERC-8004 verified wallets. */
   agentsOnly?: boolean
-  className?: string
   /** Initial zoom level. > 1.0 zooms out, < 1.0 zooms in. Defaults to 1.25. */
   initialZoom?: number
   /**
@@ -126,7 +122,6 @@ export function NetworkGraph({
   title,
   onlyAddress,
   agentsOnly = false,
-  className,
   initialZoom = 1.25,
   chrome = true,
   inspector = chrome,
@@ -134,6 +129,23 @@ export function NetworkGraph({
   guide,
 }: NetworkGraphProps) {
   const router = useRouter()
+  const [graphicsAvailable, setGraphicsAvailable] = useState<boolean | null>(
+    null
+  )
+  useEffect(() => {
+    // Browsers may disable GPU drawing. Detect that before Sigma creates its
+    // renderers so the surrounding network and member list remain usable.
+    const canvas = document.createElement('canvas')
+    try {
+      const options = { preserveDrawingBuffer: false, antialias: false }
+      const context = (canvas.getContext('webgl2', options) ||
+        canvas.getContext('webgl', options)) as WebGLRenderingContext | null
+      setGraphicsAvailable(!!context)
+      context?.getExtension('WEBGL_lose_context')?.loseContext()
+    } catch {
+      setGraphicsAvailable(false)
+    }
+  }, [])
 
   // `graphLoading`, not `isLoading`. The aggregate folds in the Gnosis Safe read,
   // which this component never draws and which climbs a four-attempt retry
@@ -199,6 +211,7 @@ export function NetworkGraph({
 
   // Load graph from data.
   useEffect(() => {
+    if (graphicsAvailable !== true) return
     if (!accountData || !attestationsData) {
       setGraph(null)
       setIsLoadingGraph(false)
@@ -439,6 +452,7 @@ export function NetworkGraph({
       killLayout()
     }
   }, [
+    graphicsAvailable,
     accountData,
     attestationsData,
     isTrustedSeed,
@@ -450,21 +464,33 @@ export function NetworkGraph({
     router,
   ])
 
-  const settling = graphLoading || (isLoadingGraph && !graph)
+  const settling =
+    graphicsAvailable === null ||
+    (graphicsAvailable && (graphLoading || (isLoadingGraph && !graph)))
 
   return (
     <div
-      className={cn(
-        'relative w-full h-full overflow-hidden isolate',
-        className
-      )}
+      className="relative w-full h-full overflow-hidden isolate"
       // The screenshot harness (packages/frontend/scripts/shots.mjs) waits for every
       // [data-settling] node to clear before it shoots, so a review matrix
       // never captures a spinner and calls it a design. Keep the attribute
       // absent rather than "false" when settled: the harness counts nodes.
       data-settling={settling ? 'true' : undefined}
     >
-      {settling ? (
+      {graphicsAvailable === false ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3 border border-border p-6 pt-32 text-center">
+          <p className="text-sm">The graph is unavailable in this browser.</p>
+          <p className="max-w-[32ch] text-sm text-muted-foreground">
+            You can still explore members and their scores.
+          </p>
+          <Link
+            className="inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+            href={`/networks/${network.id}#network-members`}
+          >
+            View members and scores
+          </Link>
+        </div>
+      ) : settling ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-border p-4">
           <LoaderCircle size={20} className="animate-spin text-text-subtle" />
           <span className="tg-label">Building graph</span>
@@ -515,7 +541,6 @@ export function NetworkGraph({
               title={title}
               graph={graph}
               setShowCursor={setShowCursor}
-              defaultLayout="forceatlas2"
               initialZoom={initialZoom}
               chrome={chrome}
               inspector={inspector}
@@ -534,7 +559,6 @@ const SigmaControls = ({
   title,
   graph,
   setShowCursor,
-  defaultLayout,
   initialZoom,
   chrome = true,
   inspector,
@@ -545,7 +569,6 @@ const SigmaControls = ({
   title?: string
   graph: MultiDirectedGraph<NetworkGraphNode, NetworkGraphEdge>
   setShowCursor: (hovering: boolean) => void
-  defaultLayout: 'circular' | 'forceatlas2'
   initialZoom?: number
   chrome?: boolean
   inspector: boolean
@@ -675,7 +698,9 @@ const SigmaControls = ({
       },
     })
 
-  const [layout, setLayout] = useState<typeof defaultLayout>(defaultLayout)
+  const [layout, setLayout] = useState<'circular' | 'forceatlas2'>(
+    'forceatlas2'
+  )
 
   const stopAnimationRef = useRef<() => void>(() => {})
 
@@ -840,20 +865,40 @@ function GraphInspector({
   cameraControls: boolean
   guide?: NetworkGraphProps['guide']
 }) {
+  const guideContent = (
+    <GraphGuide
+      title={title}
+      graph={graph}
+      cameraControls={cameraControls}
+      guide={guide}
+    />
+  )
   return (
     <section
       aria-live="polite"
       aria-label="Graph inspector"
       className="pointer-events-none absolute inset-x-3 bottom-3 z-10 sm:right-auto sm:w-[22rem]"
     >
-      <div className="border border-hairline-strong bg-surface/95 px-3.5 py-3 backdrop-blur-md shadow-[var(--shadow-elevated)] transition-[opacity,transform] duration-150">
+      <div
+        className={cn(
+          'border border-hairline-strong bg-surface/95 backdrop-blur-md shadow-[var(--shadow-elevated)] transition-[opacity,transform] duration-150',
+          !hoverState && cameraControls ? 'sm:px-3.5 sm:py-3' : 'px-3.5 py-3'
+        )}
+      >
         {!hoverState ? (
-          <GraphGuide
-            title={title}
-            graph={graph}
-            cameraControls={cameraControls}
-            guide={guide}
-          />
+          cameraControls ? (
+            <>
+              <details className="pointer-events-auto sm:hidden">
+                <summary className="min-h-11 cursor-pointer px-3.5 py-3 text-xs text-text-muted focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink">
+                  How to read the graph
+                </summary>
+                <div className="px-3.5 pb-3">{guideContent}</div>
+              </details>
+              <div className="hidden sm:block">{guideContent}</div>
+            </>
+          ) : (
+            guideContent
+          )
         ) : hoverState.type === 'edge' ? (
           <EdgeInspector graph={graph} hoverState={hoverState} />
         ) : (

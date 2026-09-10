@@ -25,13 +25,22 @@ export type ContributionsInstanceRow = {
   admin: Hex
   name: string
   metadataURI: string
+  metadataURIHash: Hex
+  metadataRevision: string
+  metadataStatus: string
+  metadataUpdated: {
+    block: string
+    timestamp: string
+    txHash: Hex
+  }
   metadata: {
-    name?: string
-    description?: string
-    criteria?: string
-    image?: string
-    applicationUrl?: string
+    name: string
+    description: string
+    criteria: string
+    image: string
+    applicationUrl: string
   } | null
+  governance: { module: Hex; safe: Hex } | null
   contracts: {
     merkleSnapshot: Hex
     contributionResolver: Hex
@@ -91,56 +100,69 @@ const schemaEntry = (
 /** A catalog row, shaped like the static config entries the round pages already consume. */
 export const toContributionsNetwork = (
   row: ContributionsInstanceRow
-): ContributionsNetwork => ({
-  program: 'contributions',
-  id: row.id,
-  instanceId: row.id,
-  parentInstanceId: row.parentInstanceId,
-  admin: row.admin,
-  createdTimestamp: row.createdTimestamp,
-  roundStart: row.roundStart,
-  roundEnd: row.roundEnd,
-  totalPool: row.totalPool,
-  name: row.metadata?.name || row.name,
-  about:
-    row.metadata?.description ||
-    'A contribution round: members submit their work, respond to being named on it, and rate ' +
-      "each other's contributions. Ratings are weighted by the parent network's trust scores, " +
-      'and the pool splits accordingly.',
-  criteria: row.metadata?.criteria,
-  applicationUrl: row.metadata?.applicationUrl,
-  contracts: {
-    merkleSnapshot: row.contracts.merkleSnapshot,
-    contributionResolver: row.contracts.contributionResolver,
-    trustAccumulatorMirror: row.contracts.trustAccumulatorMirror,
-    trustAccumulator: row.contracts.trustAccumulator,
-    merkleFundDistributor: row.contracts.merkleFundDistributor,
-    poolToken: row.contracts.distributorToken ?? undefined,
-  },
-  schemas: [
-    schemaEntry(
-      'claim',
-      'Contribution',
-      'A claimed contribution',
-      row.schemaUids.claim,
-      row.contracts.contributionResolver
-    ),
-    schemaEntry(
-      'response',
-      'Response',
-      'Accept or reject being named on a contribution',
-      row.schemaUids.response,
-      row.contracts.contributionResolver
-    ),
-    schemaEntry(
-      'valuation',
-      'Valuation',
-      'Score a contribution from 0 to 100',
-      row.schemaUids.valuation,
-      row.contracts.contributionResolver
-    ),
-  ],
-})
+): ContributionsNetwork => {
+  const revisedProfile = BigInt(row.metadataRevision) > 0n
+  return {
+    program: 'contributions',
+    id: row.id,
+    instanceId: row.id,
+    parentInstanceId: row.parentInstanceId,
+    admin: row.admin,
+    createdTimestamp: row.createdTimestamp,
+    roundStart: row.roundStart,
+    roundEnd: row.roundEnd,
+    totalPool: row.totalPool,
+    name: row.metadata?.name.trim() || row.name,
+    ...(row.metadata?.image.trim() ? { image: row.metadata.image.trim() } : {}),
+    metadataURI: row.metadataURI,
+    metadataURIHash: row.metadataURIHash,
+    metadataRevision: row.metadataRevision,
+    metadataStatus: row.metadataStatus,
+    ...(row.metadata ? { profile: row.metadata } : {}),
+    governance: row.governance,
+    about: revisedProfile
+      ? row.metadata?.description.trim() || ''
+      : row.metadata?.description.trim() ||
+        'A contribution round: members submit their work, respond to being named on it, and rate ' +
+          "each other's contributions. Ratings are weighted by the parent network's trust scores, " +
+          'and the pool splits accordingly.',
+    criteria: revisedProfile
+      ? row.metadata?.criteria.trim() || ''
+      : row.metadata?.criteria,
+    applicationUrl: row.metadata?.applicationUrl.trim() || undefined,
+    contracts: {
+      merkleSnapshot: row.contracts.merkleSnapshot,
+      contributionResolver: row.contracts.contributionResolver,
+      trustAccumulatorMirror: row.contracts.trustAccumulatorMirror,
+      trustAccumulator: row.contracts.trustAccumulator,
+      merkleFundDistributor: row.contracts.merkleFundDistributor,
+      poolToken: row.contracts.distributorToken ?? undefined,
+    },
+    schemas: [
+      schemaEntry(
+        'claim',
+        'Contribution',
+        'A claimed contribution',
+        row.schemaUids.claim,
+        row.contracts.contributionResolver
+      ),
+      schemaEntry(
+        'response',
+        'Response',
+        'Accept or reject being named on a contribution',
+        row.schemaUids.response,
+        row.contracts.contributionResolver
+      ),
+      schemaEntry(
+        'valuation',
+        'Valuation',
+        'Score a contribution from 0 to 100',
+        row.schemaUids.valuation,
+        row.contracts.contributionResolver
+      ),
+    ],
+  }
+}
 
 /** Same request budget as the trust-graph catalog: a stalled indexer degrades, never hangs. */
 export const CONTRIBUTIONS_CATALOG_TIMEOUT_MS = 3_000
@@ -165,7 +187,9 @@ export const fetchContributionsInstances = async (
     }`
     const response = await fetch(url, { ...init, signal: controller.signal })
     if (!response.ok) {
-      throw new Error(`GET /contributions/instances responded ${response.status}`)
+      throw new Error(
+        `GET /contributions/instances responded ${response.status}`
+      )
     }
     const { instances } = (await response.json()) as {
       instances: ContributionsInstanceRow[]
@@ -208,7 +232,9 @@ export const fetchContributionsNetwork = async (
     )
     if (response.status === 404) return { round: null, error: null }
     if (!response.ok) {
-      throw new Error(`GET /contributions/instances/${id} responded ${response.status}`)
+      throw new Error(
+        `GET /contributions/instances/${id} responded ${response.status}`
+      )
     }
     const row = (await response.json()) as ContributionsInstanceRow
     return { round: toContributionsNetwork(row), error: null }

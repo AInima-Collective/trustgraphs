@@ -75,6 +75,7 @@ export default function ProposalPage() {
         <ProposalCard
           proposal={proposal.core}
           actions={proposal.actions}
+          actionsError={proposal.actionsError}
           votes={votes}
           quorum={Number(proposal.core.quorumFraction) / 1e18}
           currentBlockNumber={currentBlockNumber}

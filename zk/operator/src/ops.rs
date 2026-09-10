@@ -101,9 +101,8 @@ fn vault_reason_name(reason: u8) -> &'static str {
         3 => "cadence_not_elapsed",
         4 => "insufficient_balance",
         5 => "unknown_program",
-        6 => "withdrawal_pending",
-        7 => "already_claimed",
-        8 => "price_feed_unavailable",
+        6 => "already_claimed",
+        7 => "price_feed_unavailable",
         u8::MAX => "quote_below_authenticated_proving_cost",
         _ => "unknown",
     }

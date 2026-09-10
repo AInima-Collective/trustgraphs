@@ -2,8 +2,8 @@
 //! artifacts. Mirrors `pagerank_core::compute` in shape; this program is LANE-2-ONLY
 //! (`acc = 0, leafCount = 0` — empty-lane-as-zero, the guest asserts it).
 //!
-//! Pipeline: re-fold the anchor log → rule Φ per node (newest usable head within the
-//! staleness window; envelope-1 verification per head) → decode records → §3 edge
+//! Pipeline: re-fold the anchor log → select the latest head per node from committed history
+//! (complete envelope-1 witness required when fresh) → decode records → §3 edge
 //! semantics → key-generic Trust-Aware PageRank (pagerank-core's exact algorithm) →
 //! point distribution → output tree with BOTH leaf domains (unified `keccak(nodeId,
 //! value)` for every node; v1 address leaves additionally for bound actors so
@@ -150,37 +150,33 @@ pub struct ComputeResult {
     pub rank: pagerank_core::RankTelemetry,
 }
 
-/// The canonical hypercerts blob: `{"0x<nodeId>":"<decimal>",...}` sorted ascending —
-/// same shape as v1's blob with 32-byte node ids in place of addresses.
-fn canonical_blob(scores: &[(B256, U256)]) -> Vec<u8> {
-    let mut s = String::from("{");
-    for (i, (id, value)) in scores.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
-        }
-        s.push('"');
-        s.push_str("0x");
-        s.push_str(&alloy_primitives::hex::encode(id.as_slice()));
-        s.push_str("\":\"");
-        s.push_str(&value.to_string());
-        s.push('"');
-    }
-    s.push('}');
-    s.into_bytes()
+use zk_core::cid::canonical_node_blob as canonical_blob;
+
+pub use zk_core::merkle::node_output_leaf;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComputeError {
+    UnsupportedEnvelope,
+    DuplicateWitness(B256),
+    OrphanWitness(B256),
+    MissingWitness(B256),
+    InvalidWitness(B256, envelopes::EnvelopeError),
+    InvalidRecordKey,
+    Semantics(semantics::SemanticsError),
 }
 
-/// The unified output leaf: `keccak256(bytes.concat(keccak256(abi.encode(bytes32 nodeId,
-/// uint256 value))))` — the nodeId twin of `merkle::output_leaf` (OFFCHAIN §5).
-pub fn node_output_leaf(node_id: B256, value: U256) -> B256 {
-    let mut buf = [0u8; 64];
-    buf[..32].copy_from_slice(node_id.as_slice());
-    buf[32..].copy_from_slice(&word_u256(value));
-    let inner = keccak256(buf);
-    keccak256(inner.as_slice())
+impl core::fmt::Display for ComputeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{self:?}")
+    }
 }
+impl std::error::Error for ComputeError {}
 
 /// Run the full hypercerts pipeline. Deterministic and float-free.
-pub fn compute(input: &GuestInput) -> ComputeResult {
+pub fn compute(input: &GuestInput) -> Result<ComputeResult, ComputeError> {
+    if input.anchors.iter().any(|anchor| anchor.envelope_kind != ENVELOPE_ATPROTO) {
+        return Err(ComputeError::UnsupportedEnvelope);
+    }
     let p = &input.params;
     let ph = params_hash(p);
 
@@ -206,7 +202,7 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     }
     let anchor_count = input.anchors.len() as u64;
 
-    // 2. Rule Φ per node over envelope-1 heads (deterministic "now" = latest anchor ts).
+    // 2. Canonical newest head per node (deterministic "now" = latest anchor ts).
     let now = input.anchors.iter().map(|a| a.block_timestamp).max().unwrap_or(0);
     // (global fold index, anchor) per node — the fold index is the cross-repo tie-break.
     let mut per_node: BTreeMap<B256, Vec<(u64, &AnchorRecord)>> = BTreeMap::new();
@@ -215,7 +211,13 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     }
     let mut by_node_id: BTreeMap<B256, &AtprotoWitness> = BTreeMap::new();
     for w in &input.witnesses {
-        by_node_id.entry(atproto::did_node_id(&w.did)).or_insert(w);
+        let node_id = atproto::did_node_id(&w.did);
+        if !per_node.contains_key(&node_id) {
+            return Err(ComputeError::OrphanWitness(node_id));
+        }
+        if by_node_id.insert(node_id, w).is_some() {
+            return Err(ComputeError::DuplicateWitness(node_id));
+        }
     }
 
     let mut skips: Vec<SkipEntry> = Vec::new();
@@ -223,49 +225,37 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let cols: Vec<&str> = COLLECTIONS.to_vec();
 
     for (node_id, anchors) in &per_node {
-        let newest_ts = anchors.last().map(|(_, a)| a.block_timestamp).unwrap_or(0);
-        let mut consumed: Option<u64> = None;
-        for (fold_idx, a) in anchors.iter().rev() {
-            if now.saturating_sub(a.block_timestamp) > p.lane2_max_head_age {
-                break;
-            }
-            if a.envelope_kind != ENVELOPE_ATPROTO {
-                continue;
-            }
-            let Some(w) = by_node_id.get(node_id) else { continue };
-            match atproto::verify(*node_id, a.head, now, &cols, w) {
-                Ok(records) => {
-                    repos.push(RepoRecords {
-                        did: w.did.clone(),
-                        anchor_fold_index: *fold_idx,
-                        records: records
-                            .into_iter()
-                            .map(|r| (String::from_utf8_lossy(&r.key).into_owned(), r.record_bytes))
-                            .collect(),
-                    });
-                    consumed = Some(a.block_timestamp);
-                    break;
-                }
-                Err(_) => continue,
-            }
-        }
-        match consumed {
-            Some(ts) if ts == newest_ts => {}
-            Some(ts) => skips.push(SkipEntry {
-                node_id: *node_id,
-                reason: phi_reason::CARRIED,
-                epoch_observed: ts,
-            }),
-            None => skips.push(SkipEntry {
+        let (fold_idx, anchor) = anchors.last().expect("nonempty anchor group");
+        // Staleness depends only on public anchor times; missing private data never creates
+        // a skip or selects an earlier repo version.
+        if now.saturating_sub(anchor.block_timestamp) > p.lane2_max_head_age {
+            skips.push(SkipEntry {
                 node_id: *node_id,
                 reason: phi_reason::DROPPED,
-                epoch_observed: newest_ts,
-            }),
+                epoch_observed: anchor.block_timestamp,
+            });
+            continue;
         }
+        let witness = by_node_id.get(node_id).ok_or(ComputeError::MissingWitness(*node_id))?;
+        let records = atproto::verify(*node_id, anchor.head, now, &cols, witness)
+            .map_err(|error| ComputeError::InvalidWitness(*node_id, error))?;
+        repos.push(RepoRecords {
+            did: witness.did.clone(),
+            anchor_fold_index: *fold_idx,
+            records: records
+                .into_iter()
+                .map(|record| {
+                    let key = String::from_utf8(record.key)
+                        .map_err(|_| ComputeError::InvalidRecordKey)?;
+                    Ok((key, record.record_bytes))
+                })
+                .collect::<Result<_, ComputeError>>()?,
+        });
     }
 
     // 3. §3 edge semantics (adds its own deterministic record-level skips).
-    let graph = semantics::derive(&repos, &input.strongref_targets, &p.edge_params());
+    let graph = semantics::derive(&repos, &input.strongref_targets, &p.edge_params())
+        .map_err(ComputeError::Semantics)?;
     skips.extend(graph.skips.iter().copied());
 
     // 4. Rank (the exact pagerank-core algorithm, B256-keyed) + distribute.
@@ -323,7 +313,7 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         recipient: input.binding.recipient,
         instance_domain: input.binding.instance_domain,
     };
-    ComputeResult {
+    Ok(ComputeResult {
         journal,
         scores: assigned,
         bindings: graph.bindings,
@@ -331,5 +321,5 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         blob,
         cid: cid_str,
         rank,
-    }
+    })
 }

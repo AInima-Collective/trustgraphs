@@ -1,4 +1,5 @@
-//! Full lane-2 computation: anchor fold, rule Φ, mixed A/C event semantics, rank, and journal v3.
+//! Full lane-2 computation: deterministic latest-head selection, complete required witnesses,
+//! mixed A/C event semantics, rank, and journal v3.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -15,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zk_core::anchor::{anchor_leaf, skipped_digest, SkipEntry};
 use zk_core::fold::fold;
-use zk_core::words::word_u256;
 
 use crate::params::{params_hash, Params, ParamsError};
 use crate::semantics::{self, Provenance, SemanticEvent};
@@ -45,6 +45,8 @@ pub enum ComputeError {
     LimitExceeded,
     WorkExceeded,
     State,
+    MissingWitness(B256),
+    InvalidWitness(B256),
 }
 
 impl From<ParamsError> for ComputeError {
@@ -87,29 +89,9 @@ fn witness_commitment(bytes: &[u8]) -> B256 {
     B256::from(<[u8; 32]>::from(Sha256::digest(bytes)))
 }
 
-fn canonical_blob(scores: &[(B256, U256)]) -> Vec<u8> {
-    let mut output = String::from("{");
-    for (index, (node, value)) in scores.iter().enumerate() {
-        if index != 0 {
-            output.push(',');
-        }
-        output.push_str("\"0x");
-        output.push_str(&alloy_primitives::hex::encode(node.as_slice()));
-        output.push_str("\":\"");
-        output.push_str(&value.to_string());
-        output.push('"');
-    }
-    output.push('}');
-    output.into_bytes()
-}
+use zk_core::cid::canonical_node_blob as canonical_blob;
 
-pub fn node_output_leaf(node_id: B256, value: U256) -> B256 {
-    let mut words = [0; 64];
-    words[..32].copy_from_slice(node_id.as_slice());
-    words[32..].copy_from_slice(&word_u256(value));
-    let inner = keccak256(words);
-    keccak256(inner.as_slice())
-}
+pub use zk_core::merkle::node_output_leaf;
 
 fn provenance(variant: CommitmentVariant) -> Provenance {
     match variant {
@@ -226,59 +208,34 @@ pub fn compute(input: &GuestInput) -> Result<ComputeResult, ComputeError> {
             .rev()
             .find(|(_, anchor)| anchor.count == max_count)
             .expect("nonempty anchor group");
-        let mut chosen = None;
-        for (index, anchor) in anchors.iter().rev() {
-            if now.saturating_sub(anchor.block_timestamp) > params.lane2_max_head_age {
-                break;
-            }
-            // H-5: a lower signed count is a stale replay, never a carry-forward candidate.
-            if anchor.count < max_count {
-                continue;
-            }
-            let Some(witness) = decoded.get(&anchor.data_commitment) else {
-                continue;
-            };
-            let Some(bundle) = &witness.bundle else {
-                continue;
-            };
-            let claim = NostrAnchor {
-                node_id: anchor.node_id,
-                head: anchor.head,
-                count: anchor.count,
-                data_commitment: anchor.data_commitment,
-            };
-            if let Ok(verified) =
-                verify_cached(&claim, &config, &witness.bytes, &mut verification_cache)
-            {
-                debug_assert_eq!(
-                    tgnw::encode(bundle).ok().as_deref(),
-                    Some(witness.bytes.as_slice())
-                );
-                chosen = Some(SelectedHead {
-                    anchor_index: *index,
-                    observed_at: anchor.block_timestamp,
-                    verified,
-                });
-                break;
-            }
-        }
-        match chosen {
-            Some(head) => {
-                if head.anchor_index != newest.0 {
-                    skips.push(SkipEntry {
-                        node_id: *node,
-                        reason: pagerank_core::skip_reason::CARRIED,
-                        epoch_observed: head.observed_at,
-                    });
-                }
-                selected.push(head);
-            }
-            None => skips.push(SkipEntry {
+        // Select from the committed history alone. Missing or invalid private bytes cannot
+        // choose an older head or erase a current one from the scored statement.
+        let (index, anchor) = newest;
+        if now.saturating_sub(anchor.block_timestamp) > params.lane2_max_head_age {
+            skips.push(SkipEntry {
                 node_id: *node,
                 reason: pagerank_core::skip_reason::DROPPED,
-                epoch_observed: newest.1.block_timestamp,
-            }),
+                epoch_observed: anchor.block_timestamp,
+            });
+            continue;
         }
+        let witness =
+            decoded.get(&anchor.data_commitment).ok_or(ComputeError::MissingWitness(*node))?;
+        let bundle = witness.bundle.as_ref().ok_or(ComputeError::InvalidWitness(*node))?;
+        let claim = NostrAnchor {
+            node_id: anchor.node_id,
+            head: anchor.head,
+            count: anchor.count,
+            data_commitment: anchor.data_commitment,
+        };
+        let verified = verify_cached(&claim, &config, &witness.bytes, &mut verification_cache)
+            .map_err(|_| ComputeError::InvalidWitness(*node))?;
+        debug_assert_eq!(tgnw::encode(bundle).ok().as_deref(), Some(witness.bytes.as_slice()));
+        selected.push(SelectedHead {
+            anchor_index: *index,
+            observed_at: anchor.block_timestamp,
+            verified,
+        });
     }
     if selected.len() > params.limits.selected_heads as usize {
         return Err(ComputeError::LimitExceeded);
@@ -347,13 +304,8 @@ pub fn compute(input: &GuestInput) -> Result<ComputeResult, ComputeError> {
     skips.extend(graph.skips.iter().copied());
     skips.sort();
 
-    let node_set: BTreeSet<_> = graph.nodes.iter().copied().collect();
-    let seeds = params
-        .trusted_seed_pubkeys
-        .iter()
-        .map(nostr_envelope::nostr::nostr_node_id)
-        .filter(|seed| node_set.contains(seed))
-        .collect();
+    let seeds =
+        params.trusted_seed_pubkeys.iter().map(nostr_envelope::nostr::nostr_node_id).collect();
     let rank = RankConfig {
         damping_fp: params.damping_fp,
         tolerance_fp: params.tolerance_fp,

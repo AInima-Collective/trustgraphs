@@ -1,4 +1,4 @@
-import { Popover } from '@base-ui-components/react/popover'
+import { Popover } from '@base-ui/react/popover'
 import clsx from 'clsx'
 import { ComponentProps, ReactElement, ReactNode, isValidElement } from 'react'
 
@@ -18,6 +18,8 @@ export type TooltipProps = {
    * tree. Set this whenever the child is interactive.
    */
   asChild?: boolean
+  /** False when an asChild trigger is a link rather than a button. */
+  nativeButton?: boolean
 }
 
 export const Tooltip = ({
@@ -25,15 +27,19 @@ export const Tooltip = ({
   children,
   className,
   asChild = false,
+  nativeButton = true,
 }: TooltipProps) => {
   if (!title) {
     return <>{children}</>
   }
 
   return (
-    <Popover.Root openOnHover delay={0}>
+    <Popover.Root>
       <Popover.Trigger
-        aria-label={typeof title === 'string' ? title : undefined}
+        openOnHover
+        delay={0}
+        nativeButton={nativeButton}
+        aria-label={!asChild && typeof title === 'string' ? title : undefined}
         className={className}
         onClick={(e) => e.stopPropagation()}
         {...(asChild && isValidElement(children)

@@ -31,6 +31,7 @@ import { db } from 'ponder:api'
 import {
   instance,
   merkleGovModule,
+  networkMetadataRevision,
   parameterVersion,
   scoreProgramBinding,
   signerSyncModule,
@@ -53,7 +54,7 @@ const MAX_LIMIT = 200
 type InstanceRow = typeof instance.$inferSelect
 type GovernanceRow = Pick<
   typeof merkleGovModule.$inferSelect,
-  'address' | 'merkleSnapshot' | 'target'
+  'address' | 'merkleSnapshot' | 'target' | 'recoveryModule' | 'executionGuard'
 >
 type SignerRow = typeof signerSyncModule.$inferSelect
 type SignerRotationRow = typeof signerSyncRotation.$inferSelect
@@ -92,6 +93,14 @@ const serialize = (
   admin: row.admin,
   name: row.name,
   metadataURI: row.metadataURI,
+  metadataURIHash: row.metadataURIHash,
+  metadataRevision: row.metadataRevision.toString(),
+  metadataStatus: row.metadataStatus,
+  metadataUpdated: {
+    block: row.metadataUpdatedBlock.toString(),
+    timestamp: row.metadataUpdatedTimestamp.toString(),
+    txHash: row.metadataUpdatedTxHash,
+  },
   // The presentation blob `{name, description, criteria, image, applicationUrl}`, or null when the
   // instance shipped no URI (or it could not be resolved). Nothing here is consensus-relevant.
   metadata: row.metadata ?? null,
@@ -107,6 +116,8 @@ const serialize = (
         ? {
             proxy: governance?.target ?? signer!.safe,
             signerSyncManager: signer?.address ?? null,
+            recoveryModule: governance?.recoveryModule ?? null,
+            executionGuard: governance?.executionGuard ?? null,
           }
         : null,
   },
@@ -117,6 +128,17 @@ const serialize = (
         maxTotalInputs: row.offchainMaxTotalInputs?.toString() ?? null,
       }
     : null,
+  importedLane:
+    row.importedEas && row.importedRouter
+      ? {
+          eas: row.importedEas,
+          importer: row.resolver,
+          router: row.importedRouter,
+          schemaUid: row.schemaUid,
+          completeness:
+            'Checkpoint-complete when the permissionless sweep is live; anyone can import a missing UID.',
+        }
+      : null,
   signerSync: signer
     ? {
         operatorInstanceId: signer.operatorInstanceId,
@@ -170,7 +192,7 @@ const serialize = (
   epochLength: row.epochLength.toString(),
   paramsHash: row.paramsHash,
   params: row.params as InstanceParamsJson,
-  paramsControl: row.paramsController ? 'typed' : 'legacy',
+  paramsControl: row.paramsController ? 'typed' : 'raw-hash',
   paramsVersion: row.paramsVersion?.toString() ?? null,
   paramsState: row.paramsController
     ? row.paramsFirstCheckpoint === null
@@ -216,6 +238,8 @@ const governanceFor = async (rows: InstanceRow[]) => {
       address: merkleGovModule.address,
       merkleSnapshot: merkleGovModule.merkleSnapshot,
       target: merkleGovModule.target,
+      recoveryModule: merkleGovModule.recoveryModule,
+      executionGuard: merkleGovModule.executionGuard,
     })
     .from(merkleGovModule)
     .where(
@@ -392,7 +416,7 @@ app.get('/:id/params', async (c) => {
       controller: row.paramsController,
       currentVersion: row.paramsVersion?.toString() ?? null,
       currentParamsHash: row.paramsHash,
-      control: row.paramsController ? 'typed' : 'legacy',
+      control: row.paramsController ? 'typed' : 'raw-hash',
       versions: versions.map((version) => ({
         version: version.version.toString(),
         paramsHash: version.paramsHash,
@@ -418,6 +442,44 @@ app.get('/:id/params', async (c) => {
     console.error('Error fetching parameter versions:', error)
     return c.json({ error: 'Failed to fetch parameter versions' }, 500)
   }
+})
+
+app.get('/:id/metadata-revisions', async (c) => {
+  const id = c.req.param('id')
+  if (!isHex(id) || id.length !== 66) {
+    return c.json({ error: 'id must be a 32-byte instanceId hex string' }, 400)
+  }
+  const limit = intParam(c.req.query('limit'), DEFAULT_LIMIT, MAX_LIMIT)
+  const offset = intParam(c.req.query('offset'), 0, Number.MAX_SAFE_INTEGER)
+  if (limit === null || offset === null) {
+    return c.json(
+      { error: 'limit and offset must be non-negative integers' },
+      400
+    )
+  }
+
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(networkMetadataRevision)
+      .where(eq(networkMetadataRevision.instanceId, id))
+      .orderBy(desc(networkMetadataRevision.revision))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: count(networkMetadataRevision.id) })
+      .from(networkMetadataRevision)
+      .where(eq(networkMetadataRevision.instanceId, id)),
+  ])
+  return c.json({
+    revisions: rows.map((row) => ({
+      ...row,
+      revision: row.revision.toString(),
+      blockNumber: row.blockNumber.toString(),
+      timestamp: row.timestamp.toString(),
+    })),
+    pagination: { limit, offset, total: totalRow[0]?.total ?? 0 },
+  })
 })
 
 app.get('/:id', async (c) => {

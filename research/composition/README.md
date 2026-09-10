@@ -1,12 +1,20 @@
-# Trust composition V1
+# Trust composition
 
-This directory contains both the accepted Phase-0 decision evidence from issue #36 and the
-independent TypeScript oracle for the production core/guest boundary implemented in issue #63.
-Issue #64 adds the atomic onchain capture, authenticated source provenance, timelocked policy
-lifecycle, and factory/deployment wiring described below. Operator/indexer integration and product
-UI remain separate child issues.
+This directory contains the accepted Phase-0 decision evidence from issue #36, the
+independent TypeScript oracle for the production core/guest boundary implemented in issue #63,
+and the mixed standard/weighted reference (`reference-v2.ts` / `production-v2.ts`, historical
+file names) whose output is the frozen `tests/golden/trust-compose.json` vector. Issue #64 added
+the atomic onchain capture, authenticated source provenance, timelocked policy lifecycle, and
+factory/deployment wiring described below.
 
-## Production V1 implementation
+The mixed-source design record is [`MIXED_COMPOSITION_V2.md`](../MIXED_COMPOSITION_V2.md)
+(historical file name). Per the 2026-09-01 ruling there is ONE trust-compose generation: the
+mixed-class semantics are the program, the earlier single-program generation was deleted rather
+than kept beside it, and the encodings carry version word 1. The `reference.ts`/`production.ts`
+modules preserved here are the original single-program research evidence plus shared primitives;
+they are not a shipped format.
+
+## Production implementation
 
 The implementation deliberately isolates the new program from every legacy guest:
 
@@ -14,7 +22,7 @@ The implementation deliberately isolates the new program from every legacy guest
   source blobs and their CID/SHA-256/Merkle/total commitments, validates the frozen capture and
   static policy, performs two-stage uint128 Hamilton allocation with uint256 products, and emits
   the canonical output blob/CID/root plus per-source attribution.
-- `zk/composition-program` is the dedicated SP1 6.3.1 guest. `zk/prover/src/programs/composition.rs`
+- `zk/composition-program` is the dedicated SP1 6.6.0 guest. `zk/prover/src/programs/composition.rs`
   is its native adapter and refuses any guest/native journal difference.
 - `contracts/src/params/TrustComposeParamsCodec.sol` and `TrustComposeValidator.sol` freeze the
   policy/params boundary.
@@ -94,7 +102,7 @@ overflow.
 
 ```sh
 node --import tsx --test research/composition/reference.test.ts
-pnpm exec tsc research/composition/*.ts --noEmit \
+pnpm exec tsc --ignoreConfig research/composition/*.ts --noEmit \
   --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --strict \
   --types node --typeRoots packages/indexer/node_modules/@types
 pnpm exec tsx research/composition/simulate.ts

@@ -117,8 +117,7 @@ fn the_ports_agree_wherever_both_are_defined() {
         attest(3, 1, 4, 103, 10),
     ];
     let p = live_params(100);
-    let input =
-        pagerank_core::GuestInput { edges, params: p, lane2: None, binding: Default::default() };
+    let input = pagerank_core::GuestInput { edges, params: p, binding: Default::default() };
     let r = pagerank_core::compute::compute(&input);
     let total: U256 = r.scores.iter().map(|(_, v)| *v).fold(U256::ZERO, |a, b| a + b);
     assert_eq!(total, U256::from(1_000_000u64), "payouts sum to the pool");

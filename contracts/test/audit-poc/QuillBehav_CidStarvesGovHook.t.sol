@@ -29,7 +29,8 @@ contract QuillBehav_CidStarvesGovHook is Test {
             keccak256("params"),
             IAttestationAccumulator(address(acc)),
             address(this),
-            address(this)
+            address(this),
+            ""
         );
         module = new MerkleGovModule(address(this), address(this), address(this), address(snapshot));
         snapshot.addHook(IMerkleSnapshotHook(address(module)));

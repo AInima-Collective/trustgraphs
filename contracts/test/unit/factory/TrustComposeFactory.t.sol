@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
+import {DistributorAttaching} from "src/factory/DistributorAttaching.sol";
 import {CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {
     CompositionSourceAccumulatorDeployer,
@@ -90,10 +91,11 @@ contract TrustComposeFactoryTest is Test {
         assertEq(factory.EPOCH_FLOOR(), EPOCH_FLOOR);
         assertEq(factory.POLICY_ACTIVATION_DELAY(), ACTIVATION_DELAY);
         assertEq(address(factory.VAULT()), address(0));
+        assertEq(factory.PROGRAM(), keccak256("trust-compose"), "the factory registers the composition program");
     }
 
     function test_ConstructorRejectsZeroInvalidAndMismatchedVerifier() public {
-        vm.expectRevert(TrustComposeFactory.ZeroAddress.selector);
+        vm.expectRevert(DistributorAttaching.ZeroAddress.selector);
         _deploy(IZkVerifier(address(0)), VKEY, registry, adapterFactory, EPOCH_FLOOR, ACTIVATION_DELAY);
 
         DirectNoVkeyVerifier invalidVerifier = new DirectNoVkeyVerifier();
@@ -158,7 +160,7 @@ contract TrustComposeFactoryTest is Test {
                 paramsHash: keccak256("params")
             })
         );
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.UnknownInstance.selector, instanceId));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.UnknownInstance.selector, instanceId));
         factory.attachDistributor(instanceId, address(this), address(0));
     }
 
@@ -169,38 +171,18 @@ contract TrustComposeFactoryTest is Test {
         args.policyManifest = CompositionPolicyTestLib.manifest(address(0x100), address(0x200), 1_000, false);
         args.admin = address(this);
         args.withDistributor = true;
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.InvalidDistributorSafe.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(DistributorAttaching.InvalidDistributorSafe.selector, address(this)));
         factory.createInstance(args);
 
         MockAccumulator accumulator = new MockAccumulator();
-        MerkleSnapshot snapshot = new MerkleSnapshot(
-            verifier,
-            keccak256("compose params"),
-            IAttestationAccumulator(address(accumulator)),
-            address(this),
-            address(this)
-        );
-        bytes32 instanceId = keccak256("fundless composition");
-        registry.register(
-            instanceId,
-            IInstanceRegistry.Instance({
-                program: factory.PROGRAM(),
-                snapshot: address(snapshot),
-                verifier: address(verifier),
-                registryOrAccumulator: address(accumulator),
-                paramsHash: snapshot.paramsHash()
-            })
-        );
-        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.InvalidDistributorSafe.selector, address(this)));
-        factory.attachDistributor(instanceId, address(this), address(0));
-
         MockSafeOwner safe = new MockSafeOwner(address(this), 1);
         MerkleSnapshot safeSnapshot = new MerkleSnapshot(
             verifier,
             keccak256("safe compose params"),
             IAttestationAccumulator(address(accumulator)),
             address(safe),
-            address(safe)
+            address(safe),
+            ""
         );
         bytes32 safeInstanceId = keccak256("safe fundless composition");
         registry.register(

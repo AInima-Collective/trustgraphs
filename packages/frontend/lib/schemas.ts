@@ -12,14 +12,6 @@ import { Hex, stringToHex, toHex } from 'viem'
 
 import { maybeSchemaForUid, schemaForUid } from './schema-registry'
 
-// Schema definitions with metadata for UI
-export type SchemaFieldType =
-  | 'string'
-  | 'bytes'
-  | 'bytes32'
-  | 'uint256'
-  | 'address'
-
 export { registerSchemas } from './schema-registry'
 
 export class SchemaManager {

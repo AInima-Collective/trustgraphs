@@ -152,13 +152,27 @@ export default async function LandingPage() {
     <div className="flex flex-col gap-20 sm:gap-28 lg:gap-36">
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section aria-label="Live trust graph" className="relative">
-        <div className="pointer-events-none absolute left-3 top-3 z-20 max-w-[calc(100%-1.5rem)] border-l-2 border-ink bg-surface/90 px-3 py-2.5 backdrop-blur-md sm:max-w-[34rem] sm:px-4 sm:py-3">
+        <div className="absolute left-3 top-3 z-20 max-w-[calc(100%-1.5rem)] border-l-2 border-ink bg-surface/90 px-3 py-2.5 backdrop-blur-md sm:max-w-[34rem] sm:px-4 sm:py-3">
           <p className="text-[9px] uppercase tracking-wider text-text-subtle">
             {graphReachable ? 'Live example' : 'Example'} · {featuredName}
           </p>
           <h1 className="mt-1 max-w-[22ch] text-xl leading-[1.05] text-text text-balance sm:text-3xl">
             Your community already knows who to trust.
           </h1>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ButtonLink href="/networks" prefetch={false}>
+              Browse networks
+            </ButtonLink>
+            {featured && (
+              <ButtonLink
+                href={`/networks/${featured.id}`}
+                variant="outline"
+                prefetch={false}
+              >
+                View network
+              </ButtonLink>
+            )}
+          </div>
         </div>
         {/* The graph is the product, so it gets the whole first screen. The
          * figure is rendered BY the island, not around it: a figcaption only
@@ -219,9 +233,8 @@ export default async function LandingPage() {
            * rule, so the three panels read as one figure in three parts.
            *
            * Every panel carries a figure, and every figure is pinned to the
-           * bottom of its panel (see `Move`). Two of the three used to be text
-           * alone next to a drawing, which read as one finished panel and two
-           * that had not been got to yet. */}
+           * bottom of its panel (see `Move`) — text-only panels next to a
+           * drawing read as unfinished. */}
           <Move n="1" title="Vouch" figure={<VouchFigure />}>
             Sign a public, weighted vouch. Update or revoke it at any time.
           </Move>
@@ -288,7 +301,7 @@ export default async function LandingPage() {
       <section className="bg-ink px-6 py-10 text-ink-fg shadow-[var(--shadow-elevated)] sm:px-10 sm:py-12 lg:px-14 lg:py-16">
         <div className="grid gap-8 lg:grid-cols-[minmax(15rem,0.72fr)_minmax(0,1.28fr)] lg:gap-16">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-ink-fg opacity-55">
+            <p className="text-[10px] uppercase tracking-widest text-ink-fg opacity-65">
               Verification
             </p>
             <h2 className="mt-4 max-w-[16ch] text-3xl leading-[1.02] text-ink-fg text-balance sm:text-4xl">
@@ -372,7 +385,7 @@ export default async function LandingPage() {
         </div>
 
         <div className="flex flex-col bg-ink p-6 text-ink-fg sm:p-10 lg:p-12">
-          <p className="text-[10px] uppercase tracking-widest text-ink-fg opacity-55">
+          <p className="text-[10px] uppercase tracking-widest text-ink-fg opacity-65">
             Open source
           </p>
           <h2 className="mt-4 max-w-[10ch] text-3xl leading-none text-ink-fg text-balance sm:text-4xl">

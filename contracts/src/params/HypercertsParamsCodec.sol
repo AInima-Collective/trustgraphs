@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {OzMerkle} from "../merkle/OzMerkle.sol";
+
 /// @title HypercertsParamsCodec
 /// @notice On-chain encoder for the hypercerts program's governance-pinned `paramsHash`,
 ///         byte-identical to `hypercerts_core::compute::params_hash` (Rust), the SP1 guest, and
@@ -82,45 +84,11 @@ library HypercertsParamsCodec {
             ids[i] = didNodeId(dids[i]);
         }
         // sort nodeIds ascending, then leaf = keccak256(nodeId).
-        _sort(ids);
+        OzMerkle.sortInPlace(ids);
         bytes32[] memory leaves = new bytes32[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {
             leaves[i] = keccak256(abi.encodePacked(ids[i]));
         }
-        return _ozRoot(leaves);
-    }
-
-    /// @dev insertion sort (small n) of bytes32 ascending.
-    function _sort(bytes32[] memory a) private pure {
-        for (uint256 i = 1; i < a.length; i++) {
-            bytes32 key = a[i];
-            uint256 j = i;
-            while (j > 0 && a[j - 1] > key) {
-                a[j] = a[j - 1];
-                j--;
-            }
-            a[j] = key;
-        }
-    }
-
-    /// @dev Minimal OpenZeppelin StandardMerkleTree root: sort leaves, then hash each parent as the
-    ///      commutative `keccak256(abi.encode(min, max))`. Identical to the guest's tree builder.
-    function _ozRoot(bytes32[] memory leaves) private pure returns (bytes32) {
-        uint256 n = leaves.length;
-        if (n == 0) return bytes32(0);
-        _sort(leaves);
-        if (n == 1) return leaves[0];
-        uint256 size = 2 * n - 1;
-        bytes32[] memory tree = new bytes32[](size);
-        for (uint256 i = 0; i < n; i++) {
-            tree[size - 1 - i] = leaves[i];
-        }
-        for (uint256 i = n - 1; i > 0; i--) {
-            uint256 idx = i - 1;
-            bytes32 a = tree[2 * idx + 1];
-            bytes32 b = tree[2 * idx + 2];
-            tree[idx] = a <= b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
-        }
-        return tree[0];
+        return OzMerkle.root(leaves);
     }
 }

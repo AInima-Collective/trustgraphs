@@ -60,6 +60,8 @@ export const VISIBLE_HYPERCERTS_NETWORKS = HYPERCERTS_NETWORKS.filter(
 export const CHAIN = CONFIG.chain
 export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
+// The chain's public EAS singleton, typed for direct use in wagmi/viem calls.
+export const easAddress = CONTRACT_CONFIG.EAS as `0x${string}`
 export const WEIGHTED_FACTORY = (CONFIG as { weightedFactory?: string })
   .weightedFactory as `0x${string}` | '' | undefined
 // The governed wrapper for the weighted factory. Absent/empty means the weighted workspace does
@@ -67,6 +69,13 @@ export const WEIGHTED_FACTORY = (CONFIG as { weightedFactory?: string })
 export const GOVERNED_WEIGHTED_FACTORY = (
   CONFIG as { governedWeightedFactory?: string }
 ).governedWeightedFactory as `0x${string}` | '' | undefined
+export const IMPORTED_FACTORY_CONFIG = (
+  CONFIG as {
+    importedFactory?: { factory?: string; governedFactory?: string }
+  }
+).importedFactory as
+  | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
+  | undefined
 // The contributions ROUND factory. Absent/empty on a deployment that has not stood it up; the
 // "start a contribution round" flow then explains the feature is not available here.
 export const CONTRIBUTIONS_FACTORY = (
@@ -84,6 +93,28 @@ export const GRAPH_LINEAGE_CONFIG = (
     graphLineage?: { registry?: string }
   }
 ).graphLineage as { registry?: `0x${string}` | '' } | undefined
+export const SUBNETWORK_CONFIG = (
+  CONFIG as {
+    subnetworks?: {
+      factory?: string
+      governedFactory?: string
+      registry?: string
+      parentModuleDeployer?: string
+    }
+  }
+).subnetworks as
+  | {
+      factory?: `0x${string}` | ''
+      governedFactory?: `0x${string}` | ''
+      registry?: `0x${string}` | ''
+      parentModuleDeployer?: `0x${string}` | ''
+    }
+  | undefined
+export const isSubnetworkFeatureAvailable = (): boolean =>
+  (SUBNETWORK_CONFIG?.factory?.length ?? 0) === 42 &&
+  (SUBNETWORK_CONFIG?.governedFactory?.length ?? 0) === 42 &&
+  (SUBNETWORK_CONFIG?.registry?.length ?? 0) === 42 &&
+  (SUBNETWORK_CONFIG?.parentModuleDeployer?.length ?? 0) === 42
 export const SIGNER_SYNC_CONFIG = (
   CONFIG as {
     signerSync?: { verifier?: string; programVKey?: string }

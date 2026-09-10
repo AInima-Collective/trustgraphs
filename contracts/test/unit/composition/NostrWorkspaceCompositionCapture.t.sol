@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
+import {TrustComposeValidator} from "src/params/TrustComposeValidator.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -21,8 +22,9 @@ contract NostrCaptureVerifier is IZkVerifier {
     function verify(bytes calldata, bytes32) external pure {}
 }
 
-/// @notice Proves the capture boundary accepts an authenticated Nostr workspace without ever
-///         treating its bytes32 score blob as an address-keyed trust-compose blob.
+/// @notice Proves the capture boundary REJECTS an authenticated Nostr workspace outright: the
+///         composition admits only the closed standard/weighted TrustGraph class, so a Nostr
+///         source can neither enter a policy nor be relabelled as an address program.
 contract NostrWorkspaceCompositionCaptureTest is Test {
     bytes32 internal constant NOSTR_PROGRAM = keccak256("nostr-workspace");
     bytes32 internal constant NOSTR_OUTPUT_DOMAIN = keccak256("trustgraphs.output.nostr-member.v1");
@@ -45,44 +47,40 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         _createNostrSource(1);
     }
 
-    function test_NostrOutputIsCapturedWithExactProgramVkeyParamsAndRoot() public {
+    function test_NostrAdapterIsOutsideTheClosedAdmissionAndFailsClosed() public {
         CompositionSourceAccumulator accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
         NostrCaptureVerifier composeVerifier = new NostrCaptureVerifier(keccak256("capture-only compose verifier"));
         MerkleSnapshot snapshot = new MerkleSnapshot(
-            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this)
+            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this), ""
         );
         accumulator.bind(address(snapshot), address(this));
 
-        bytes memory policy = _policy(NOSTR_PROGRAM);
-        accumulator.installPolicy(1, policy, adapters);
-        vm.roll(100);
-        uint256 checkpoint = snapshot.trigger();
-        bytes memory capture = accumulator.getCaptureManifest(checkpoint);
-
-        assertEq(bytes4(capture), bytes4("TGCM"));
-        assertEq(_word(capture, 23 + 84), NOSTR_PROGRAM, "program identity retained");
-        assertEq(_word(capture, 23 + 132), roots[0], "unified Nostr root retained");
-        assertEq(_word(capture, 23 + 261 + 84), NOSTR_PROGRAM, "second source identity retained");
-        assertEq(accumulator.getCheckpoint(checkpoint).acc, sha256(capture));
-
+        // The adapter itself authenticates fine — the refusal is the composition's admission
+        // class, not source provenance.
         CompositionSourceAdapter first = CompositionSourceAdapter(adapters[0]);
         assertEq(first.programId(), NOSTR_PROGRAM);
         assertEq(first.programVKey(), NOSTR_VKEY);
         assertEq(first.readLatest().paramsHash, paramsHashes[0]);
         assertEq(first.readLatest().outputRoot, roots[0]);
         assertNotEq(NOSTR_OUTPUT_DOMAIN, keccak256("trustgraphs.output.trust-compose-account.v1"));
+
+        bytes memory policy = _policy(NOSTR_PROGRAM, NOSTR_OUTPUT_DOMAIN);
+        vm.expectPartialRevert(TrustComposeValidator.UnadmittedSourceProgram.selector);
+        accumulator.installPolicy(1, policy, adapters);
     }
 
     function test_ManifestCannotRelabelNostrAdapterAsAddressProgram() public {
         CompositionSourceAccumulator accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
         NostrCaptureVerifier composeVerifier = new NostrCaptureVerifier(keccak256("capture-only compose verifier"));
         MerkleSnapshot snapshot = new MerkleSnapshot(
-            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this)
+            composeVerifier, keccak256("capture-only compose params"), accumulator, address(this), address(this), ""
         );
         accumulator.bind(address(snapshot), address(this));
 
+        // Claiming the standard program (and its derived domain) for a Nostr adapter is a
+        // policy/adapter identity mismatch before admission is even considered.
         bytes32 wrongProgram = keccak256("trust-graph");
-        bytes memory relabeled = _policy(wrongProgram);
+        bytes memory relabeled = _policy(wrongProgram, keccak256("trustgraphs.output.trust-graph-account.v1"));
         vm.expectPartialRevert(CompositionSourceAccumulator.AdapterPolicyMismatch.selector);
         accumulator.installPolicy(1, relabeled, adapters);
     }
@@ -91,7 +89,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         MockAccumulator sourceAccumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256(abi.encode(NOSTR_OUTPUT_DOMAIN, "nostr params", index));
         MerkleSnapshot sourceSnapshot =
-            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this));
+            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this), "");
         sourceSnapshot.enableStateProvenance();
         bytes32 instanceId = bytes32(index + 1);
         registry.registerWithParamsAuthority(
@@ -132,7 +130,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
         paramsHashes.push(paramsHash);
     }
 
-    function _policy(bytes32 program) internal view returns (bytes memory manifest) {
+    function _policy(bytes32 program, bytes32 outputDomain) internal view returns (bytes memory manifest) {
         manifest = abi.encodePacked(bytes4("TGCP"), uint16(1), uint64(block.chainid), uint8(2));
         for (uint256 i; i < 2; ++i) {
             CompositionSourceAdapter adapter = CompositionSourceAdapter(adapters[i]);
@@ -143,6 +141,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
                     adapter.snapshot(),
                     adapter.familyId(),
                     program,
+                    outputDomain,
                     uint64(5e17),
                     uint64(500),
                     uint8(1)

@@ -3,14 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Wallet } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import {
-  Hex,
-  erc20Abi,
-  formatUnits,
-  isAddressEqual,
-  parseEther,
-  parseUnits,
-} from 'viem'
+import { Hex, erc20Abi, isAddress, isAddressEqual, zeroAddress } from 'viem'
 import {
   useAccount,
   usePublicClient,
@@ -36,9 +29,18 @@ import {
 } from '@/components/Select'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
+import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetworkIfAvailable } from '@/contexts/NetworkContext'
+import { useApplicationChain } from '@/hooks/useApplicationChain'
+import { useTokenMetadata } from '@/hooks/useTokenMetadata'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
+import {
+  contractReadState,
+  financialReadState,
+  formatFinancialAmount,
+  parseFinancialAmount,
+} from '@/lib/financial-state'
 import {
   distributeArgs as buildDistributeArgs,
   fundingTermsAbi,
@@ -47,7 +49,6 @@ import {
 import { txToast } from '@/lib/tx'
 import type { Network } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
-import { formatBigNumber } from '@/lib/utils'
 import { merkleFundDistribution } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
@@ -69,7 +70,15 @@ export const DistributePage = ({
   }
 
   const { address: connectedAddress, isConnected } = useAccount()
-  const publicClient = usePublicClient()
+  const {
+    targetChainId,
+    targetChain,
+    wrongChain,
+    switchToTarget,
+    switchingTarget,
+    switchError,
+  } = useApplicationChain()
+  const publicClient = usePublicClient({ chainId: targetChainId })
 
   const [isDistributing, setIsDistributing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,23 +93,24 @@ export const DistributePage = ({
     .merkleFundDistributor || '') as Hex
 
   // Query distributions from ponder
-  const { data: distributions = [], isLoading: isLoadingDistributions } =
-    usePonderQuery({
-      queryFn: ponderQueryFns.getFundDistributions(
-        merkleFundDistributorAddress
-      ),
-      enabled: !!merkleFundDistributorAddress,
-    })
+  const distributionsQuery = usePonderQuery({
+    queryFn: ponderQueryFns.getFundDistributions(merkleFundDistributorAddress),
+    enabled: !!merkleFundDistributorAddress,
+  })
+
+  const { data: distributions = [] } = distributionsQuery
 
   // Query the latest merkle snapshot to get the root
-  const { data: latestMerkleSnapshot } = usePonderQuery({
+  const latestSnapshotQuery = usePonderQuery({
     queryFn: ponderQueryFns.getLatestMerkleSnapshot(
       network.contracts.merkleSnapshot
     ),
   })
 
+  const latestMerkleSnapshot = latestSnapshotQuery.data
+
   // Query the full merkle tree using the latest root (for create distribution)
-  const { data: latestMerkleTree, isLoading: isLoadingMerkleTree } = useQuery({
+  const treeQuery = useQuery({
     ...ponderQueries.merkleTree({
       snapshot: network.contracts.merkleSnapshot,
       root: latestMerkleSnapshot?.root,
@@ -108,11 +118,15 @@ export const DistributePage = ({
     enabled: !!latestMerkleSnapshot?.root,
   })
 
+  const latestMerkleTree = treeQuery.data
+
   // Query distributor state from ponder
-  const { data: distributorState } = usePonderQuery({
+  const distributorQuery = usePonderQuery({
     queryFn: ponderQueryFns.getFundDistributor(merkleFundDistributorAddress),
     enabled: !!merkleFundDistributorAddress,
   })
+
+  const distributorState = distributorQuery.data
 
   // Fee terms come from the chain, not the indexer: these are the numbers the funder is shown
   // AND the numbers `distribute` is bound to, so a rounded or stale copy would either mis-state
@@ -120,20 +134,24 @@ export const DistributePage = ({
   const feeTermsRead = {
     address: merkleFundDistributorAddress as Hex,
     abi: fundingTermsAbi,
+    chainId: targetChainId,
     query: { enabled: !!merkleFundDistributorAddress },
   } as const
-  const { data: feePercentageRaw } = useReadContract({
+  const feePercentageQuery = useReadContract({
     ...feeTermsRead,
     functionName: 'feePercentage',
   })
-  const { data: feeRange } = useReadContract({
+  const feeRangeQuery = useReadContract({
     ...feeTermsRead,
     functionName: 'FEE_RANGE',
   })
-  const { data: feeRecipient } = useReadContract({
+  const feeRecipientQuery = useReadContract({
     ...feeTermsRead,
     functionName: 'feeRecipient',
   })
+  const feePercentageRaw = feePercentageQuery.data
+  const feeRange = feeRangeQuery.data
+  const feeRecipient = feeRecipientQuery.data
   const feePercentage =
     feePercentageRaw !== undefined && feeRange
       ? (Number(feePercentageRaw) / Number(feeRange)) * 100
@@ -152,55 +170,113 @@ export const DistributePage = ({
 
   const canDistribute = !allowlistEnabled || isAllowlisted
 
-  // Read ERC20 token info if an address is provided
-  const { data: tokenInfo, refetch: refetchTokenInfo } = useReadContracts({
+  const selectedToken =
+    tokenType === 'native' ? zeroAddress : tokenAddress.trim()
+  const validToken =
+    isAddress(selectedToken) &&
+    (tokenType === 'native' || selectedToken.toLowerCase() !== zeroAddress)
+  const tokenMetadata = useTokenMetadata([
+    ...distributions.map((distribution) => distribution.token),
+    selectedToken,
+  ])
+  const selectedMetadata = tokenMetadata.get(selectedToken)
+  const tokenSymbol = selectedMetadata?.symbol
+  const tokenInfoQuery = useReadContracts({
     contracts:
-      tokenType === 'erc20' && tokenAddress
+      validToken && tokenType === 'erc20' && connectedAddress
         ? [
             {
-              address: tokenAddress as Hex,
-              abi: erc20Abi,
-              functionName: 'symbol',
-            },
-            {
-              address: tokenAddress as Hex,
-              abi: erc20Abi,
-              functionName: 'decimals',
-            },
-            {
-              address: tokenAddress as Hex,
+              address: selectedToken as Hex,
+              chainId: targetChainId,
               abi: erc20Abi,
               functionName: 'allowance',
-              args: connectedAddress
-                ? [connectedAddress, merkleFundDistributorAddress]
-                : undefined,
+              args: [connectedAddress, merkleFundDistributorAddress],
+            },
+            {
+              address: selectedToken as Hex,
+              chainId: targetChainId,
+              abi: erc20Abi,
+              functionName: 'balanceOf',
+              args: [connectedAddress],
             },
           ]
         : [],
     query: {
       enabled:
+        validToken &&
         tokenType === 'erc20' &&
-        tokenAddress.length === 42 &&
         !!connectedAddress &&
         !!merkleFundDistributorAddress,
     },
   })
-
-  const tokenSymbol = tokenInfo?.[0]?.result as string | undefined
-  const tokenDecimals = (tokenInfo?.[1]?.result as number | undefined) ?? 18
-  const tokenAllowance = tokenInfo?.[2]?.result as bigint | undefined
-
-  // Calculate if approval is needed
-  const parsedAmount = useMemo(() => {
-    try {
-      if (!amount) return 0n
-      return tokenType === 'native'
-        ? parseEther(amount)
-        : parseUnits(amount, tokenDecimals)
-    } catch {
-      return 0n
-    }
-  }, [amount, tokenType, tokenDecimals])
+  const tokenAllowance = tokenInfoQuery.data?.[0]?.result as bigint | undefined
+  const tokenBalance = tokenInfoQuery.data?.[1]?.result as bigint | undefined
+  const parsed = parseFinancialAmount(amount, selectedMetadata?.decimals)
+  const parsedAmount = parsed.amount ?? 0n
+  const feeState = financialReadState([
+    feePercentageQuery,
+    feeRangeQuery,
+    feeRecipientQuery,
+  ])
+  const proofState = financialReadState([
+    latestSnapshotQuery,
+    ...(latestMerkleSnapshot?.root ? [treeQuery] : []),
+  ])
+  const distributorStatus = financialReadState([distributorQuery])
+  const fundingProblem = !isConnected
+    ? 'Connect a wallet to fund rewards.'
+    : wrongChain
+      ? `Switch to ${targetChain.name} to fund rewards.`
+      : !validToken
+        ? 'Enter a valid token address.'
+        : tokenMetadata.state(selectedToken) === 'loading'
+          ? 'Loading token details…'
+          : tokenMetadata.state(selectedToken) !== 'ready'
+            ? 'Token details could not be verified. Retry before funding.'
+            : feeState === 'loading'
+              ? 'Loading the current fee…'
+              : feeState !== 'ready' || !feeRange || !feeRecipient
+                ? 'The current fee could not be verified. Retry before funding.'
+                : proofState === 'loading'
+                  ? 'Loading the latest proven scores…'
+                  : proofState !== 'ready'
+                    ? 'The latest proven scores could not be loaded. Retry before funding.'
+                    : !latestMerkleTree?.tree
+                      ? 'Funding opens after the network’s first proven scores are published.'
+                      : distributorStatus === 'loading'
+                        ? 'Checking funding access…'
+                        : distributorStatus !== 'ready' || !distributorState
+                          ? 'Funding access could not be verified. Retry before funding.'
+                          : isPaused
+                            ? 'Reward funding is paused.'
+                            : !canDistribute
+                              ? 'This wallet is not allowed to fund this network.'
+                              : tokenType === 'erc20' &&
+                                  contractReadState(tokenInfoQuery, 2) ===
+                                    'loading'
+                                ? 'Checking token balance and approval…'
+                                : tokenType === 'erc20' &&
+                                    contractReadState(tokenInfoQuery, 2) !==
+                                      'ready'
+                                  ? 'Token balance and approval could not be verified. Retry before funding.'
+                                  : tokenType === 'erc20' &&
+                                      tokenBalance !== undefined &&
+                                      parsedAmount > tokenBalance
+                                    ? 'The amount exceeds your token balance.'
+                                    : null
+  const retryFunding = () => {
+    void Promise.allSettled([
+      latestSnapshotQuery.refetch(),
+      distributorQuery.refetch(),
+      feePercentageQuery.refetch(),
+      feeRangeQuery.refetch(),
+      feeRecipientQuery.refetch(),
+      ...(latestMerkleSnapshot?.root ? [treeQuery.refetch()] : []),
+      ...(validToken && tokenType === 'erc20'
+        ? [tokenMetadata.refetch(), tokenInfoQuery.refetch()]
+        : []),
+    ])
+  }
 
   // Exactly what `distribute` will charge, computed the way the contract computes it.
   const feeAmount =
@@ -215,15 +291,25 @@ export const DistributePage = ({
 
   // Approve ERC20 tokens
   const handleApprove = async () => {
-    if (!connectedAddress || !publicClient || !merkleFundDistributorAddress)
+    if (
+      fundingProblem ||
+      !parsed.amount ||
+      !connectedAddress ||
+      !publicClient ||
+      !merkleFundDistributorAddress
+    ) {
+      setError(
+        fundingProblem ?? parsed.error ?? 'Enter an amount before approving.'
+      )
       return
+    }
 
     setError(null)
     setIsDistributing(true)
 
     try {
       const gasEstimate = await publicClient.estimateContractGas({
-        address: tokenAddress as Hex,
+        address: selectedToken as Hex,
         abi: erc20Abi,
         functionName: 'approve',
         args: [merkleFundDistributorAddress, parsedAmount],
@@ -232,7 +318,9 @@ export const DistributePage = ({
 
       await txToast({
         tx: {
-          address: tokenAddress as Hex,
+          account: connectedAddress,
+          chainId: targetChainId,
+          address: selectedToken as Hex,
           abi: erc20Abi,
           functionName: 'approve',
           args: [merkleFundDistributorAddress, parsedAmount],
@@ -240,10 +328,7 @@ export const DistributePage = ({
         },
         successMessage: 'Token approval successful!',
       })
-        .then(() => {
-          refetchTokenInfo()
-        })
-        .catch(() => {})
+      await tokenInfoQuery.refetch()
     } catch (err) {
       console.error('Approval error:', err)
       setError(parseErrorMessage(err))
@@ -255,14 +340,22 @@ export const DistributePage = ({
   // Create a new distribution
   const handleDistribute = async () => {
     if (
+      !!fundingProblem ||
+      !parsed.amount ||
       !connectedAddress ||
       !publicClient ||
       !merkleFundDistributorAddress ||
       !latestMerkleTree?.tree ||
       feeAmount === undefined ||
       !feeRecipient
-    )
+    ) {
+      setError(
+        fundingProblem ??
+          parsed.error ??
+          'Funding details are not ready. Retry the checks.'
+      )
       return
+    }
 
     setError(null)
     setIsDistributing(true)
@@ -271,7 +364,7 @@ export const DistributePage = ({
       const token =
         tokenType === 'native'
           ? '0x0000000000000000000000000000000000000000'
-          : tokenAddress
+          : selectedToken
       // Every guard `distribute` takes, pinned to what this screen showed the funder: the root,
       // the payout denominator that root committed, the fee, and who receives it.
       const expectedRoot = latestMerkleTree.tree.root as Hex
@@ -296,6 +389,8 @@ export const DistributePage = ({
 
       await txToast({
         tx: {
+          account: connectedAddress,
+          chainId: targetChainId,
           abi: merkleFundDistributorAbi,
           address: merkleFundDistributorAddress,
           functionName: 'distribute',
@@ -305,30 +400,14 @@ export const DistributePage = ({
         } as any,
         successMessage: 'Network rewards funded.',
       })
-        .then(() => {
-          // Reset form
-          setAmount('')
-          setTokenAddress('')
-        })
-        .catch(() => {})
+      setAmount('')
+      void distributionsQuery.refetch()
     } catch (err) {
       console.error('Distribution error:', err)
       setError(parseErrorMessage(err))
     } finally {
       setIsDistributing(false)
     }
-  }
-
-  // Format token amount
-  const formatTokenAmount = (
-    tokenAmount: bigint,
-    token: Hex,
-    decimals: number = 18
-  ) => {
-    const isNative = token === '0x0000000000000000000000000000000000000000'
-    return `${formatUnits(tokenAmount, decimals)} ${
-      isNative ? 'ETH' : 'tokens'
-    }`
   }
 
   // Table columns for distributions
@@ -364,14 +443,19 @@ export const DistributePage = ({
       header: 'FUNDED',
       sortable: true,
       accessor: (row) => Number(row.amountFunded),
-      render: (row) => formatTokenAmount(row.amountFunded, row.token),
+      render: (row) =>
+        formatFinancialAmount(row.amountFunded, tokenMetadata.get(row.token)),
     },
     {
       key: 'distributed',
       header: 'CLAIMED',
       sortable: true,
       accessor: (row) => Number(row.amountDistributed),
-      render: (row) => formatTokenAmount(row.amountDistributed, row.token),
+      render: (row) =>
+        formatFinancialAmount(
+          row.amountDistributed,
+          tokenMetadata.get(row.token)
+        ),
     },
     {
       key: 'timestamp',
@@ -383,7 +467,8 @@ export const DistributePage = ({
     },
   ]
 
-  const isLoading = isLoadingDistributions || isLoadingMerkleTree
+  const historyState = financialReadState([distributionsQuery])
+  const isLoading = historyState === 'loading'
 
   const content = (
     <>
@@ -407,13 +492,19 @@ export const DistributePage = ({
           <StatisticCard
             title="TOTAL REWARD POOLS"
             tooltip="The total number of fund distributions created for this network."
-            value={isLoading ? '...' : distributions.length.toString()}
+            value={
+              historyState === 'ready'
+                ? distributions.length.toString()
+                : historyState === 'loading'
+                  ? '…'
+                  : 'Unavailable'
+            }
           />
         </div>
       </div>
 
       {/* Create Distribution Section */}
-      {isConnected && canDistribute && !isPaused && (
+      {isConnected && (
         <Card type="accent" size="lg" className="space-y-6">
           <div>
             <SectionHeading>Fund network rewards</SectionHeading>
@@ -426,12 +517,12 @@ export const DistributePage = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>Token Type</Label>
+              <Label htmlFor="reward-token-type">Token type</Label>
               <Select
                 value={tokenType}
                 onValueChange={(v) => setTokenType(v as 'native' | 'erc20')}
               >
-                <SelectTrigger>
+                <SelectTrigger id="reward-token-type" disabled={isDistributing}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -443,8 +534,12 @@ export const DistributePage = ({
 
             {tokenType === 'erc20' && (
               <div className="space-y-2">
-                <Label>Token Address</Label>
+                <Label htmlFor="reward-token-address">Token address</Label>
                 <Input
+                  id="reward-token-address"
+                  disabled={isDistributing}
+                  aria-invalid={!!tokenAddress && !validToken}
+                  aria-describedby="reward-funding-status"
                   placeholder="0x..."
                   value={tokenAddress}
                   onChange={(e) => setTokenAddress(e.target.value)}
@@ -458,20 +553,69 @@ export const DistributePage = ({
             )}
 
             <div className="space-y-2">
-              <Label>Amount</Label>
+              <Label htmlFor="reward-funding-amount">Amount</Label>
               <Input
-                type="number"
+                id="reward-funding-amount"
+                inputMode="decimal"
+                disabled={isDistributing}
+                aria-invalid={!!parsed.error}
+                aria-describedby="reward-funding-amount-error reward-funding-status"
                 placeholder="0.0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              {feeAmount !== undefined && parsedAmount > 0n && (
-                <p className="text-xs text-muted-foreground">
-                  Fee: {formatBigNumber(feeAmount ?? 0n, 18, true)}{' '}
-                  {tokenType === 'native' ? 'ETH' : tokenSymbol || 'tokens'}
+              {parsed.error && (
+                <p
+                  id="reward-funding-amount-error"
+                  role="alert"
+                  className="text-xs text-error"
+                >
+                  {parsed.error}
                 </p>
               )}
+              {feeState === 'ready' &&
+                selectedMetadata &&
+                feeAmount !== undefined &&
+                parsedAmount > 0n && (
+                  <p className="text-xs text-muted-foreground">
+                    Fee: {formatFinancialAmount(feeAmount, selectedMetadata)}
+                    {' · '}Members receive{' '}
+                    {formatFinancialAmount(
+                      parsedAmount - feeAmount,
+                      selectedMetadata
+                    )}
+                  </p>
+                )}
             </div>
+          </div>
+
+          <div
+            id="reward-funding-status"
+            role="status"
+            className="space-y-2 text-sm text-muted-foreground"
+          >
+            {fundingProblem && <p>{fundingProblem}</p>}
+            {wrongChain ? (
+              <Button
+                onClick={() => void switchToTarget()}
+                disabled={switchingTarget}
+                variant="outline"
+              >
+                Switch to {targetChain.name}
+              </Button>
+            ) : (
+              fundingProblem && (
+                <Button
+                  onClick={retryFunding}
+                  variant="outline"
+                  size="sm"
+                  disabled={isDistributing}
+                >
+                  Retry checks
+                </Button>
+              )
+            )}
+            {switchError && <p className="text-error">{switchError}</p>}
           </div>
 
           {error && (
@@ -484,16 +628,14 @@ export const DistributePage = ({
             {needsApproval ? (
               <Button
                 onClick={handleApprove}
-                disabled={isDistributing || !parsedAmount}
+                disabled={isDistributing || !!fundingProblem || !parsed.amount}
               >
                 {isDistributing ? 'Approving...' : 'Approve Tokens'}
               </Button>
             ) : (
               <Button
                 onClick={handleDistribute}
-                disabled={
-                  isDistributing || !parsedAmount || !latestMerkleTree?.tree
-                }
+                disabled={isDistributing || !!fundingProblem || !parsed.amount}
               >
                 {isDistributing ? 'Funding Rewards...' : 'Fund Rewards'}
               </Button>
@@ -512,15 +654,9 @@ export const DistributePage = ({
                   alwaysShowCopyIcon
                 />
               </p>
-            ) : (
-              <p className="text-xs text-warn">
-                Distribution is disabled because the network graph does not yet
-                exist. Once attestations are made and the graph is computed, you
-                will be able to create distributions.
-              </p>
-            )}
+            ) : null}
 
-            {feePercentage !== undefined && (
+            {feeState === 'ready' && feePercentage !== undefined && (
               <p className="text-xs text-muted-foreground">
                 A {feePercentage.toFixed(2)}% fee will be deducted from the
                 distribution amount.
@@ -539,6 +675,7 @@ export const DistributePage = ({
             Connect your wallet to fund rewards. You can review funding history
             without connecting.
           </p>
+          <WalletConnectionButton />
         </Card>
       )}
 
@@ -569,7 +706,45 @@ export const DistributePage = ({
           </div>
         )}
 
-        {!isLoading && distributions.length === 0 && (
+        {(historyState === 'error' || historyState === 'stale') && (
+          <Card type="outline" size="md" className="space-y-3" role="status">
+            <p>
+              {historyState === 'stale'
+                ? 'Funding history could not be refreshed. Previously loaded pools are shown below.'
+                : 'Funding history could not be loaded.'}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void distributionsQuery.refetch()}
+              disabled={distributionsQuery.isFetching}
+            >
+              Retry history
+            </Button>
+          </Card>
+        )}
+        {distributions.some(
+          (row) => tokenMetadata.state(row.token) !== 'ready'
+        ) && (
+          <div
+            className="space-y-2 text-sm text-muted-foreground"
+            role="status"
+          >
+            <p>
+              Some token details are unavailable. Amounts are shown only when
+              their decimal precision is known.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void tokenMetadata.refetch()}
+              disabled={tokenMetadata.isFetching}
+            >
+              Retry token details
+            </Button>
+          </div>
+        )}
+        {historyState === 'ready' && distributions.length === 0 && (
           <Card type="outline" size="lg" className="text-center">
             <p className="text-muted-foreground">
               No reward pools have been funded for this network yet.

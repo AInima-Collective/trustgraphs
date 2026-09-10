@@ -100,7 +100,7 @@ contract VerifyVaultSiblings is Test {
     function _setUpVault() internal {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational, "");
         vm.prank(constitutional);
         snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));

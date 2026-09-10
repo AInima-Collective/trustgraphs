@@ -7,8 +7,8 @@
 use alloy_primitives::{hex, keccak256, Address, B256, U256};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
-use eas_offchain_v2::{
-    address_node_id, attest_struct_hash, eip712_digest, log_head, offchain_uid_v2, payload_v1,
+use eas_offchain::{
+    address_node_id, attest_struct_hash, eip712_digest, log_head, offchain_uid_v2, payload,
     LogEntry, OffchainAttestation, ENTRY_ATTEST, ENTRY_REVOKE,
 };
 use k256::ecdsa::SigningKey;
@@ -133,13 +133,13 @@ fn main() -> Result<()> {
         entries.push(LogEntry { kind: ENTRY_REVOKE, uid });
     }
 
-    let payload = payload_v1::PayloadV1 { owner, entries, attestations };
-    let bytes = payload_v1::encode(&payload)
+    let payload = payload::PayloadV1 { owner, entries, attestations };
+    let bytes = payload::encode(&payload)
         .map_err(|error| anyhow!("{}: payload encoding failed", error.code()))?;
     let node_id = address_node_id(owner);
     let head = log_head(&payload.entries);
-    let data_commitment = payload_v1::data_commitment(&bytes);
-    let message = payload_v1::AnchorMessage {
+    let data_commitment = payload::data_commitment(&bytes);
+    let message = payload::AnchorMessage {
         node_id,
         envelope_kind: 0,
         schema_uid: schema,
@@ -150,7 +150,7 @@ fn main() -> Result<()> {
     };
     let head_signature = sign_canonical(
         &signing_key,
-        &eip712_digest(head_domain, payload_v1::anchor_struct_hash(&message)),
+        &eip712_digest(head_domain, payload::anchor_struct_hash(&message)),
     )?;
 
     std::fs::write(&args.out, &bytes)?;
@@ -160,7 +160,7 @@ fn main() -> Result<()> {
     println!("head:           0x{}", hex::encode(head));
     println!("count:          {}", payload.entries.len());
     println!("dataCommitment: 0x{}", hex::encode(data_commitment));
-    println!("cid:             {}", payload_v1::cid(&bytes));
+    println!("cid:             {}", payload::cid(&bytes));
     println!("headSignature:   0x{}", hex::encode(head_signature));
     println!("wrote {} canonical bytes to {}", bytes.len(), args.out);
     Ok(())
@@ -176,6 +176,6 @@ mod tests {
         let signature = sign_canonical(&signing_key, &B256::from([7; 32])).unwrap();
         assert_eq!(signature.len(), 65);
         assert!(matches!(signature[64], 27 | 28));
-        payload_v1::canonical_signature(&signature).unwrap();
+        payload::canonical_signature(&signature).unwrap();
     }
 }

@@ -132,7 +132,18 @@ fn fixture_input() -> (GuestInput, B256, String) {
             block_timestamp: 1_000,
         }],
         witnesses: vec![AtprotoWitness { did: seed_did.clone(), car, plc_ops }],
-        strongref_targets: BTreeMap::new(),
+        strongref_targets: envelopes::atproto::carset::Car::parse(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tests/fixtures/atproto/hypercerts/fixtures/bob.car"
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+        .blocks
+        .into_iter()
+        .map(|(cid, bytes)| (cid.to_string(), bytes))
+        .collect(),
         // Journal-v3 bindings, deliberately non-zero. For THIS program the instance domain is
         // the only instance-unique thing in the whole journal (its params carry none), so a
         // vector that left it zero would lock in the very hole v3 exists to close (issue #9).
@@ -171,7 +182,7 @@ fn reconstruct_graph(input: &GuestInput) -> semantics::DerivedGraph {
             });
         }
     }
-    semantics::derive(&repos, &input.strongref_targets, &input.params.edge_params())
+    semantics::derive(&repos, &input.strongref_targets, &input.params.edge_params()).unwrap()
 }
 
 /// The fixture's canonical skip set (verify → derive), matching the steps `compute` folds into
@@ -210,6 +221,10 @@ fn follow(subject: &str, t: &str) -> Vec<u8> {
         ("subject", st(subject)),
         ("createdAt", st(t)),
     ]))
+}
+fn open_definition() -> (String, Vec<u8>) {
+    let bytes = enc(&m(vec![("$type", st("app.certified.badge.definition"))]));
+    (zk_core::cid::cid_v1_dagcbor(&zk_core::cid::sha256(&bytes)), bytes)
 }
 fn award(subject_did: &str, badge_cid: &str) -> Vec<u8> {
     enc(&m(vec![
@@ -264,9 +279,10 @@ fn activity(contributors: Vec<(&str, &str)>) -> Vec<u8> {
 fn edge_e1() -> serde_json::Value {
     let g = semantics::derive(
         &[repo(SA, 0, vec![("app.certified.graph.follow/1", follow(SB, "t1"))])],
-        &BTreeMap::new(),
+        &BTreeMap::from([open_definition()]),
         &edge_params(),
-    );
+    )
+    .unwrap();
     let w = g.outgoing[&did_node_id(SA)][&did_node_id(SB)];
     json!({
         "case": "E1 follow (satellite discount)",
@@ -282,7 +298,7 @@ fn edge_e2() -> serde_json::Value {
     let award_uri = format!("at://{SA}/app.certified.badge.award/aw");
     let g = semantics::derive(
         &[
-            repo(SA, 0, vec![("app.certified.badge.award/aw", award(SB, "bafydef"))]),
+            repo(SA, 0, vec![("app.certified.badge.award/aw", award(SB, &open_definition().0))]),
             repo(
                 SB,
                 1,
@@ -292,9 +308,10 @@ fn edge_e2() -> serde_json::Value {
                 )],
             ),
         ],
-        &BTreeMap::new(),
+        &BTreeMap::from([open_definition()]),
         &edge_params(),
-    );
+    )
+    .unwrap();
     let w = g.outgoing[&did_node_id(SA)][&did_node_id(SB)];
     json!({
         "case": "E2 badge (accepted 0.85, ackBoost, satellite)",
@@ -313,9 +330,10 @@ fn edge_e3() -> serde_json::Value {
             0,
             vec![("org.hypercerts.context.evaluation/e", evaluation(&uri, "0", "100", "87.5"))],
         )],
-        &BTreeMap::new(),
+        &BTreeMap::from([open_definition()]),
         &edge_params(),
-    );
+    )
+    .unwrap();
     let art = artifact_node_id(SB, "org.hypercerts.claim.activity", "x");
     let w = g.outgoing[&did_node_id(SA)][&art];
     json!({
@@ -331,9 +349,10 @@ fn edge_e3() -> serde_json::Value {
 fn edge_e4() -> serde_json::Value {
     let g = semantics::derive(
         &[repo(SA, 0, vec![("org.hypercerts.claim.activity/a", activity(vec![(SB, "1")]))])],
-        &BTreeMap::new(),
+        &BTreeMap::from([open_definition()]),
         &edge_params(),
-    );
+    )
+    .unwrap();
     let art = artifact_node_id(SA, "org.hypercerts.claim.activity", "a");
     let w = g.outgoing[&art][&did_node_id(SB)];
     json!({
@@ -367,7 +386,7 @@ fn main() {
     let artifact = artifact_node_id(art_did, art_coll, art_rkey);
 
     // The full fixture compute journal + the independently reconstructed skip preimage.
-    let r = compute(&input);
+    let r = compute(&input).unwrap();
     let j = &r.journal;
     let skips = reconstruct_skips(&input);
 

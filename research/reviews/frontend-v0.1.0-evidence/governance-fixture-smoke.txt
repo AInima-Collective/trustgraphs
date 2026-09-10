@@ -1,0 +1,13 @@
+Fixture adaptation: original smoke assumes disconnected Connect wallet; this build auto-connects a mock wallet. Only that expectation is changed; no transactions will be submitted.
+Connected review affordance verified; enabled=false; never clicked
+Validation, search/filter, duplicate/reorder/remove/undo assertions passed
+Reload persistence assertions passed
+Responsive overflow assertion passed at 390px
+Responsive overflow assertion passed at 320px
+Responsive overflow assertion passed at 768px
+Responsive overflow assertion passed at 1024px
+Responsive overflow assertion passed at 390px
+Responsive overflow assertion passed at 320px
+Responsive overflow assertion passed at 768px
+Responsive overflow assertion passed at 1024px
+governance browser smoke: routing, legacy draft links, validation, search, filters, duplicate/reorder/undo, autosave, signal votes, review, voting controls, and responsive layouts passed

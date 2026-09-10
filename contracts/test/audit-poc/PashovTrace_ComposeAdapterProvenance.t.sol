@@ -54,7 +54,7 @@ contract PashovTrace_ComposeAdapterProvenance is Test {
         returns (MerkleSnapshot snapshot, MockAccumulator acc)
     {
         acc = new MockAccumulator();
-        snapshot = new MerkleSnapshot(verifier, keccak256("source params"), acc, address(this), address(this));
+        snapshot = new MerkleSnapshot(verifier, keccak256("source params"), acc, address(this), address(this), "");
         snapshot.enableStateProvenance();
         acc.setState(keccak256(abi.encode("acc", root)), 7);
         vm.roll(block.number + 10);

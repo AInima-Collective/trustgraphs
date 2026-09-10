@@ -16,7 +16,6 @@ interface ModalProps {
   className?: string
   contentClassName?: string
   footer?: ReactNode
-  backgroundContent?: ReactNode
 }
 
 export function Modal({
@@ -27,7 +26,6 @@ export function Modal({
   className,
   contentClassName,
   footer,
-  backgroundContent,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -127,10 +125,11 @@ export function Modal({
       aria-hidden={!isOpen}
       inert={!isOpen}
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center duration-200 backdrop-blur-sm motion-reduce:animate-none motion-reduce:transition-none',
+        'fixed inset-0 z-50 flex items-center justify-center transition-[opacity,visibility] duration-200 backdrop-blur-sm motion-reduce:animate-none motion-reduce:transition-none',
+        // Persist the closed state after the fade and when animations are disabled.
         isOpen
-          ? 'animate-in fade-in-0'
-          : 'animate-out fade-out-0 pointer-events-none'
+          ? 'visible opacity-100 animate-in fade-in-0'
+          : 'invisible opacity-0 pointer-events-none'
       )}
     >
       {/* Backdrop */}
@@ -193,12 +192,6 @@ export function Modal({
           <div className="p-4 border-t border-border shrink-0">{footer}</div>
         )}
       </Card>
-
-      {backgroundContent && (
-        <div className="absolute inset-0 z-40 pointer-events-none">
-          {backgroundContent}
-        </div>
-      )}
     </div>
   )
 }

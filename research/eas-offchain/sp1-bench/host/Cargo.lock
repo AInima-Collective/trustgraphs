@@ -1414,7 +1414,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "eas-offchain-v2"
+name = "eas-offchain"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
@@ -6001,7 +6001,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-primitives",
  "anyhow",
- "eas-offchain-v2",
+ "eas-offchain",
  "hex",
  "k256",
  "serde",

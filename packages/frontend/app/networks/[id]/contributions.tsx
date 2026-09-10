@@ -13,7 +13,9 @@ import { Card } from '@/components/Card'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Slider } from '@/components/Slider'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { useAttestation } from '@/hooks/useAttestation'
+import { isSubnetworkFeatureAvailable } from '@/lib/config'
 import { actorKey, computeContributions } from '@/lib/contributions'
 import {
   ContributionProjection,
@@ -35,7 +37,6 @@ import {
   trustgraphsTabs,
 } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
-import { useNetworks } from '@/contexts/CatalogContext'
 import { cn } from '@/lib/utils'
 
 import {
@@ -442,7 +443,7 @@ const ClaimCard = ({
             <div className="flex flex-col gap-2 min-[360px]:flex-row">
               <Button
                 type="button"
-                variant="brand"
+                variant="default"
                 size="lg"
                 onClick={() => onRespond('accept')}
                 disabled={responseBusy}
@@ -928,7 +929,8 @@ export const ContributionsNetworkPage = ({
             trustNetwork
               ? trustgraphsTabs(
                   trustNetwork,
-                  siblingRounds.length > 0 ? siblingRounds : [network]
+                  siblingRounds.length > 0 ? siblingRounds : [network],
+                  isSubnetworkFeatureAvailable()
                 )
               : contributionsTabs(network)
           }
@@ -1025,7 +1027,7 @@ export const ContributionsNetworkPage = ({
             {phase === 'open' && (
               <Button
                 type="button"
-                variant="brand"
+                variant="default"
                 size="lg"
                 className="w-full sm:w-auto"
                 onClick={() => setSubmitOpen(true)}
@@ -1040,7 +1042,7 @@ export const ContributionsNetworkPage = ({
                     ? `/networks/${trustNetwork.id}/rewards`
                     : `/networks/${network.id}/claim`
                 }
-                variant="brand"
+                variant="default"
                 size="lg"
                 className="w-full sm:w-auto"
               >
@@ -1065,6 +1067,13 @@ export const ContributionsNetworkPage = ({
                   : 'Submission status is unavailable until the round service returns.'}
               </p>
             )}
+            <ButtonLink
+              href={`/networks/${network.id}/settings`}
+              variant="outline"
+              size="sm"
+            >
+              Manage round profile
+            </ButtonLink>
           </div>
 
           {round && claims.length > 0 && (
@@ -1211,7 +1220,7 @@ export const ContributionsNetworkPage = ({
             {unsavedDirtyUids.length > 0 && (
               <Button
                 size="lg"
-                variant="brand"
+                variant="default"
                 onClick={saveRatings}
                 disabled={isCreating}
                 className="shrink-0"

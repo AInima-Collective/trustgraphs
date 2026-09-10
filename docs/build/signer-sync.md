@@ -31,8 +31,18 @@ accounts; after initialization, enough of them must be current Safe owners.
 
 A direct governance vote is evidence that an account was recently active. It is not an approval of
 the proposed signer rotation, and a delegated vote does not count as the principal's direct
-activity. If the activity gate is not satisfied, the program preserves the current owner set and
-threshold.
+activity. If the activity gate is not satisfied, the native preview preserves the current owner
+set and threshold, but the guest refuses to produce a proof. Such a preview cannot initialize
+signer selection or consume a score checkpoint.
+
+Selection uses an immutable activity checkpoint. A later vote does not invalidate a prepared
+proof: votes after that checkpoint participate in a subsequent selection. The checkpoint must be
+at most 7,200 blocks old when submitted (or younger when the configured inactivity window is
+shorter), and accepted activity checkpoint IDs cannot move backwards. The operator refreshes
+old checkpoint references before buying a proof; this changes the time reference without claiming
+any new voter activity. The final signer set contains at least two accounts and requires at least
+two approvals. Because inactivity is measured at the checkpoint, an accepted witness may be up to
+`maxInactiveBlocks + min(maxInactiveBlocks, 7_200)` blocks old when the proof is submitted.
 
 ## Support boundary
 

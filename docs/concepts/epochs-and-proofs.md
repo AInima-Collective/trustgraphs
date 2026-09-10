@@ -29,7 +29,15 @@ Three properties follow:
 The verifier is deliberately not frozen by `trigger()`. Governance can rotate it before a proof
 is submitted, including for a checkpoint already in flight.
 
-The snapshot rejects a new checkpoint when the committed input state has not changed.
+The snapshot rejects a new checkpoint only when both input lanes, the parameter hash, and the
+configured verifier are unchanged since the previous checkpoint. Parameter changes and verifier
+replacements can therefore recompute a quiet network. The recorded verifier at trigger is a change
+marker, not an acceptance pin: an emergency replacement still applies to an in-flight checkpoint.
+
+The proving vault pays for an accepted statement once, independently of checkpoint number and
+recipient. Its identity includes the frozen inputs, parameters, accepted program, and output.
+Returning to a previously paid configuration cannot collect the same bounty again. SP1 verifier
+wrappers sharing the same program key share this payment identity.
 
 ## How input completeness is proven
 

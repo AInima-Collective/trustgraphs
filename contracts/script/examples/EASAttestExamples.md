@@ -101,7 +101,7 @@ Creates an attestation with ETH payment in wei.
 
 **Use Cases:**
 
-- Payment-enabled resolvers (e.g., PayableEASIndexerResolver)
+- Payment-enabled resolvers
 - Fee-based attestation systems
 - Incentivized attestation networks
 
@@ -179,10 +179,9 @@ The Taskfile automatically resolves most variables from deployment configuration
 
 Payment support enables:
 
-1. **PayableEASIndexerResolver**: Requires minimum payment for attestations
-2. **Economic incentives**: Align attestation behavior with economic value
-3. **Fee mechanisms**: Support fee-based attestation services
-4. **Resolver flexibility**: Work with various payment-enabled resolvers
+1. **Economic incentives**: Align attestation behavior with economic value
+2. **Fee mechanisms**: Support fee-based attestation services
+3. **Resolver flexibility**: Work with payment-enabled resolvers
 
 ### Payment Flow
 

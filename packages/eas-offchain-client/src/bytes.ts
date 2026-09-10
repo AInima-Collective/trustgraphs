@@ -28,6 +28,14 @@ export const concatBytes = (...values: Uint8Array[]): Uint8Array => {
   return out
 }
 
+// Browser APIs accept only ArrayBuffer-backed views, while a general
+// Uint8Array may be backed by SharedArrayBuffer. Copy at that boundary.
+export const toOwnedArrayBuffer = (value: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(value.byteLength)
+  copy.set(value)
+  return copy.buffer
+}
+
 export const uintBe = (value: bigint | number, width: number): Uint8Array => {
   let remaining = BigInt(value)
   if (remaining < 0n) return fail('E0_CANONICAL', 'negative unsigned integer')

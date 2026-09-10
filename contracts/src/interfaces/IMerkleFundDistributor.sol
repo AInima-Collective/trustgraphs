@@ -28,20 +28,12 @@ interface IMerkleFundDistributor {
         address feeRecipient;
         /// @notice The amount of the token retained as a fee.
         uint256 feeAmount;
-        /// @notice The timestamp after which claims close and sweeping opens (0 = no expiry; claims stay open forever and the distribution can never be swept).
+        /// @notice Configured deadline before paused-time extensions (0 = no expiry).
+        ///         Read `effectiveClaimDeadline` for the current deadline enforced by claims/sweeps.
         uint64 claimDeadline;
         /// @notice The amount of the token returned to the round funder by `sweep` (0 = not swept yet).
         uint256 sweptAmount;
     }
-
-    /// @notice Emitted when owner starts 2-step ownership transfer to `pendingOwner`.
-    /// @param pendingOwner The pending owner of the contract.
-    event OwnershipTransferStarted(address indexed pendingOwner);
-
-    /// @notice Emitted when the owner of the contract is set.
-    /// @param previousOwner The previous owner of the contract.
-    /// @param newOwner The new owner of the contract.
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     /// @notice Emitted when the fee recipient is set.
     /// @param previousFeeRecipient The previous fee recipient address.
@@ -109,8 +101,6 @@ interface IMerkleFundDistributor {
     /// @param amount The amount of unclaimed funds swept.
     event Swept(uint256 indexed distributionIndex, address indexed to, uint256 amount);
 
-    error NotOwner();
-    error NotPendingOwner();
     error InvalidAddress();
     error CannotDistribute();
     error InvalidNativeTokenTransfer();
@@ -136,4 +126,7 @@ interface IMerkleFundDistributor {
     error UnexpectedFeeRecipient(address expected, address actual);
     error UnexpectedMerkleTotalValue(uint256 expected, uint256 actual);
     error ClaimExceedsRoundBudget(uint256 claimAmount, uint256 remainingBudget);
+
+    /// @notice Claim deadline adjusted for pauses since funding, or zero for no expiry.
+    function effectiveClaimDeadline(uint256 distributionIndex) external view returns (uint256);
 }

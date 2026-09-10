@@ -85,7 +85,7 @@ ponder.on(
   'erc8004IdentityRegistry:OwnershipTransferred',
   async ({ event, context }) => {
     const registryId = registryIdFor(context.chain.id, event.log.address)
-    // M0 hazard sweep: the registry row is born from `Upgraded`. An ownership transfer whose
+    // Out-of-universe guard: the registry row is born from `Upgraded`. An ownership transfer whose
     // `Upgraded` predates the start block has no row, and the row is not reconstructible here
     // (`implementation` is notNull and not in this event) — log and skip the row update, but keep
     // the append-only receipt so the transfer is not lost.
@@ -269,7 +269,7 @@ ponder.on('erc8004IdentityRegistry:URIUpdated', async ({ event, context }) => {
     event.args.agentId
   )
   const eventPosition = position(event)
-  // M0 hazard sweep: upsert with first-observed defaults (the `Transfer` handler's precedent) so
+  // Out-of-universe guard: upsert with first-observed defaults (the `Transfer` handler's precedent) so
   // a URI update for an agent registered before the start block materializes the row instead of
   // wedging. Owner/wallet stay unknown until an event that carries them arrives.
   await context.db
@@ -351,7 +351,7 @@ ponder.on('erc8004IdentityRegistry:MetadataSet', async ({ event, context }) => {
         ...eventPosition,
       })
     }
-    // M0 hazard sweep: same first-observed upsert as `URIUpdated` above — a wallet claim for an
+    // Out-of-universe guard: same first-observed upsert as `URIUpdated` above — a wallet claim for an
     // agent registered before the start block materializes the row instead of wedging.
     await context.db
       .insert(erc8004Agent)

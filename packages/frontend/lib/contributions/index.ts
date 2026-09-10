@@ -2,12 +2,12 @@
 //! source of truth). The fourth parity leg (Rust ⟷ Solidity ⟷ SP1 guest ⟷ TS), locked by
 //! `golden.test.ts` against `tests/golden/contributions.json`.
 //!
-//! Interface contract: `research/operations/contributions/interfaces.md` (FROZEN). Stage-1 reputation is the
+//! Interface contract: `research/operations/contributions/interfaces.md` (frozen; changing it breaks golden vectors). Stage-1 reputation is the
 //! `../pagerank` port, imported — never forked. This module owns only the contribution record
 //! decoding, reconciliation, the stage-2 aggregation, and the program's params encoding.
 //!
 //! Dependency-clean by design: pure TS + viem hashing utils, no React/browser imports — the
-//! indexer (M3) imports the exact same logic the frontend recomputes with.
+//! indexer imports the exact same logic the frontend recomputes with.
 
 export * from './types'
 export {

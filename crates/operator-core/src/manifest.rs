@@ -124,8 +124,4 @@ impl Manifest {
         }
         Ok(())
     }
-
-    pub fn for_snapshot(&self, snapshot: Address) -> Option<&ManifestEntry> {
-        self.entries.iter().find(|e| e.snapshot == snapshot)
-    }
 }

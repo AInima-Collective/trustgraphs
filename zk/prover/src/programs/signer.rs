@@ -34,7 +34,6 @@ pub fn sample_signer_input() -> SignerInput {
     let g = sample_input();
     let scored = trustgraph_core::compute::compute(&g).scores;
     let current_signer = scored[0].0;
-    let one = g.params.precision_scale / g.params.precision_scale;
     let activity = vec![
         SignerActivity { account: scored[0].0, proposal_id: U256::from(1), block_number: 100 },
         SignerActivity { account: scored[1].0, proposal_id: U256::from(2), block_number: 101 },
@@ -57,7 +56,7 @@ pub fn sample_signer_input() -> SignerInput {
         activity_checkpoint: ActivityCheckpoint { acc: activity_acc, count: 2, block_number: 101 },
         activity_checkpoint_id: 1,
         current_signers: vec![current_signer],
-        current_threshold: one,
+        current_threshold: U256::from(1u8),
         was_initialized: false,
         instance_domain: Default::default(),
     }
@@ -78,7 +77,7 @@ pub enum Command {
     Vkey,
     /// Print keccak256 of the canonical selection params.
     Selectionparamshash { input: Option<String> },
-    /// Run the signer guest via the SP1 executor and assert it matches native (no proof).
+    /// Preview signer selection; execute eligible inputs in SP1 and check native parity (no proof).
     Execute { input: Option<String> },
     /// Generate a proof (core, or Groth16-wrapped), verify it locally, and write the on-chain proof
     /// blob to signer_proof.bin.
@@ -116,8 +115,15 @@ fn cmd_signer_execute(input: SignerInput) -> Result<()> {
     let native = compute_signers(&input);
     let native_pub = encode::signer_journal_encoded(&native.journal);
 
-    common::execute_and_check(load_signer_elf(), &input, &native_pub)?;
+    if native.activity_applied {
+        common::execute_and_check(load_signer_elf(), &input, &native_pub)?;
+    } else {
+        println!(
+            "guestExecution:      skipped; native preview has insufficient authenticated activity"
+        );
+    }
 
+    println!("activityApplied:     {}", native.activity_applied);
     println!(
         "signerJournalDigest: 0x{}",
         hex::encode(encode::signer_journal_digest(&native.journal))
@@ -135,6 +141,10 @@ fn cmd_signer_execute(input: SignerInput) -> Result<()> {
 }
 
 fn cmd_signer_prove(input: SignerInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
+    anyhow::ensure!(
+        compute_signers(&input).activity_applied,
+        "insufficient authenticated signer activity; no proof can be produced"
+    );
     let (public_values, seal) = common::prove_and_verify(load_signer_elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);

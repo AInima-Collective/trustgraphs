@@ -14,7 +14,7 @@ crate-type = ["rlib"]
 alloy-primitives = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 pagerank-core = { path = "../pagerank-core" }
-eas-offchain-v2 = { path = "../eas-offchain-v2" }
+eas-offchain = { path = "../eas-offchain" }
 zk-core = { path = "../zk-core" }
 
 [dev-dependencies]

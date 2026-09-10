@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
 
 /// @title DelayedRecoveryModule
 /// @notice A visible, cancellable break-glass route for a module-only governed Safe. The recovery
@@ -14,11 +14,13 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 ///      not hidden behind a 1-of-1 Safe signature.
 contract DelayedRecoveryModule {
     uint48 public constant MIN_DELAY = 14 days;
+    uint256 public constant EXECUTION_WINDOW = 14 days;
 
-    GnosisSafe public immutable safe;
+    Safe public immutable safe;
     uint48 public immutable delay;
     address public proposer;
     uint256 public nextNonce;
+    uint256 public proposerGeneration;
 
     mapping(bytes32 actionId => uint256 readyAt) public readyAt;
 
@@ -30,6 +32,7 @@ contract DelayedRecoveryModule {
     error UnknownAction(bytes32 actionId);
     error RecoveryDelayNotElapsed(bytes32 actionId, uint256 readyAt);
     error SafeExecutionFailed(bytes32 actionId);
+    error RecoveryExpired(bytes32 actionId, uint256 expiresAt);
 
     event RecoveryScheduled(
         bytes32 indexed actionId,
@@ -44,11 +47,12 @@ contract DelayedRecoveryModule {
     event RecoveryCancelled(bytes32 indexed actionId, address indexed canceller);
     event RecoveryExecuted(bytes32 indexed actionId, address indexed executor);
     event RecoveryProposerUpdated(address indexed previousProposer, address indexed newProposer);
+    event RecoveryActionsInvalidated(uint256 generation);
 
     constructor(address safe_, address proposer_, uint48 delay_) {
         if (safe_ == address(0) || proposer_ == address(0)) revert ZeroAddress();
         if (delay_ < MIN_DELAY) revert DelayTooShort(delay_, MIN_DELAY);
-        safe = GnosisSafe(payable(safe_));
+        safe = Safe(payable(safe_));
         proposer = proposer_;
         delay = delay_;
     }
@@ -77,6 +81,9 @@ contract DelayedRecoveryModule {
         uint256 executableAt = readyAt[actionId];
         if (executableAt == 0) revert UnknownAction(actionId);
         if (block.timestamp < executableAt) revert RecoveryDelayNotElapsed(actionId, executableAt);
+        if (block.timestamp > executableAt + EXECUTION_WINDOW) {
+            revert RecoveryExpired(actionId, executableAt + EXECUTION_WINDOW);
+        }
 
         delete readyAt[actionId];
         bool success = safe.execTransactionFromModule(target, value, data, operation);
@@ -93,12 +100,13 @@ contract DelayedRecoveryModule {
         emit RecoveryCancelled(actionId, msg.sender);
     }
 
-    /// @notice Rotate the recovery identity through the Safe's module-only authority graph.
+    /// @notice Rotate recovery identity and invalidate every action from the previous generation.
     function setProposer(address newProposer) external {
         if (msg.sender != address(safe)) revert OnlySafe(msg.sender);
         if (newProposer == address(0)) revert ZeroAddress();
         address previous = proposer;
         proposer = newProposer;
+        emit RecoveryActionsInvalidated(++proposerGeneration);
         emit RecoveryProposerUpdated(previous, newProposer);
     }
 
@@ -107,6 +115,10 @@ contract DelayedRecoveryModule {
         view
         returns (bytes32)
     {
-        return keccak256(abi.encode(block.chainid, address(this), nonce, target, value, keccak256(data), operation));
+        return keccak256(
+            abi.encode(
+                block.chainid, address(this), proposerGeneration, nonce, target, value, keccak256(data), operation
+            )
+        );
     }
 }

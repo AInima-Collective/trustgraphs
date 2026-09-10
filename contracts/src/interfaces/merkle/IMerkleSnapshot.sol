@@ -42,6 +42,12 @@ interface IMerkleSnapshot {
     ///         unprovable in any case (no real params tuple keccaks to zero).
     error ZeroParamsHash();
 
+    /// @notice Presentation metadata updates must name an immutable IPFS document.
+    error EmptyMetadataURI();
+    error MetadataURITooLong(uint256 length, uint256 maximum);
+    error InvalidMetadataURIScheme();
+    error MetadataURIUnchanged(bytes32 metadataURIHash);
+
     /// @notice Thrown when a proof targets a checkpoint whose `paramsHash` was never pinned —
     ///         i.e. a checkpoint that `trigger()` did not mint. With the accumulator bound to its
     ///         snapshot this is unreachable for new instances; it remains as the backstop that
@@ -81,6 +87,17 @@ interface IMerkleSnapshot {
 
     /// @notice Emitted when the operational authority updates the params hash.
     event ParamsHashUpdated(bytes32 indexed paramsHash);
+
+    /// @notice The network's presentation document changed. This does not affect proofs or roots.
+    /// @dev The emitting snapshot address identifies the instance. Revision zero is the URI passed
+    ///      to the constructor and remains recorded by the factory's creation event.
+    event MetadataURIUpdated(
+        uint64 indexed revision,
+        address indexed authority,
+        bytes32 indexed metadataURIHash,
+        bytes32 previousMetadataURIHash,
+        string metadataURI
+    );
 
     struct MerkleState {
         /// @notice The block number the merkle tree was set at

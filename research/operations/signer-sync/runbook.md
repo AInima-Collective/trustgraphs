@@ -39,6 +39,10 @@ SP1_PROVER=cpu cargo run --release -- signer execute signer_input.json   # guest
 #   ≡ task zk:execute PROGRAM=signer  (omit the input to use the built-in sample)
 ```
 
+`execute` prints `activityApplied`. When it is `false`, the command reports the native preview
+and explicitly skips guest execution; the proof-producing guest rejects that input. When it is
+`true`, the command also runs SP1 execution and checks its journal against the native result.
+
 ## Determine the deploy constants
 
 ```bash
@@ -102,7 +106,7 @@ cast send $SIGNER_SYNC_MODULE \
 ```
 
 `submitSignerProof` rebuilds the signer journal digest from the chain-pinned checkpoint + stored
-`paramsHash`/`selectionParamsHash`, the current activity-chain checkpoint, the Safe's live owner
+`paramsHash`/`selectionParamsHash`, an immutable activity-chain checkpoint, the Safe's live owner
 root and threshold, the submitted `signerSetRoot`/`targetThreshold`, and an
 `instanceDomain = keccak256(abi.encode(address(this), block.chainid))` it derives itself (audit
 M-3 — a proof made for one module cannot be replayed against a same-params sibling or a mirrored
@@ -112,7 +116,17 @@ pointers; `1 ≤ threshold ≤ ownerCount` preserved at every intermediate add/r
 
 The five-field selection/liveness rule is governance-pinned as `selectionParamsHash`. Governance
 changes it through `setSelectionParams(...)`, which revalidates the two-witness and threshold floors
-and derives the hash on-chain.
+and the 64-signer ceiling and derives the hash on-chain. An insufficient-activity preview cannot
+be proven: the guest rejects it and the host avoids the request. Both output owner count and
+threshold are at least two.
+
+Activity checkpoint IDs must not regress and the chosen checkpoint must be at most
+`min(maxInactiveBlocks, 7200)` blocks old at submission. New votes do not invalidate an in-flight
+proof. The operator refreshes references with less than half this window left before purchasing
+a proof, then rebuilds the input on its next tick. For manual proving, refresh immediately before
+export and submit within the acceptance window. Extremely short governance-configured inactivity
+windows may be shorter than the 300-block permissionless refresh cadence or proving latency and
+should not be used operationally.
 
 ## Rotating the signer vkey (guest change runbook)
 

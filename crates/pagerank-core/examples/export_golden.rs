@@ -90,8 +90,7 @@ fn main() {
         edge(0, 4, 5, 5, 104, 20),
         edge(1, 4, 5, 5, 105, 20),
     ];
-    let input =
-        GuestInput { edges: edges.clone(), params: params(), lane2: None, binding: binding() };
+    let input = GuestInput { edges: edges.clone(), params: params(), binding: binding() };
     let result = compute(&input);
     let j = &result.journal;
 

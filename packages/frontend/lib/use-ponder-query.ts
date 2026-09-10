@@ -33,7 +33,7 @@ import {
  * module the indexer had never been pointed at.
  *
  * A composition of `usePonderClient` + `getPonderQueryOptions` + `useQuery`, mirroring
- * @ponder/react 0.16.2's own hook so the live subscription still works: SQL is compiled from the
+ * @ponder/react 0.17.9's own hook so the live subscription still works: SQL is compiled from the
  * builder up front (which is why `nullable` rewrites the OPTIONS and never the query function),
  * and pushed updates land under the same key. `findMany` queries pass through unchanged — an
  * array is never `undefined`, in the types (see `Nulled`) as well as at run time.

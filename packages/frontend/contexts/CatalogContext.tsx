@@ -100,8 +100,3 @@ export const useCatalog = (): CatalogContextType => {
 
 /** The visible trust-graph networks. The runtime replacement for `VISIBLE_NETWORKS`. */
 export const useNetworks = (): Network[] => useCatalog().networks
-
-/** Resolve one network by slug, instanceId or snapshot address. */
-export const useNetworkFromCatalog = (
-  id: string | undefined
-): Network | undefined => useCatalog().find(id)

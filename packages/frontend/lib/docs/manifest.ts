@@ -57,6 +57,7 @@ export const DOCS_SECTIONS: DocSection[] = [
             slug: 'concepts/networks-and-programs',
             label: 'Networks and programs',
           },
+          { slug: 'concepts/sub-networks', label: 'Sub-networks' },
           { slug: 'concepts/epochs-and-proofs', label: 'Epochs and proofs' },
           { slug: 'concepts/algorithm', label: 'Vouch scoring algorithm' },
         ],
@@ -73,6 +74,7 @@ export const DOCS_SECTIONS: DocSection[] = [
         label: 'Get started',
         items: [
           { slug: 'build/create-a-network', label: 'Create a network' },
+          { slug: 'build/sub-networks', label: 'Create a sub-network' },
           { slug: 'build/integrate-scores', label: 'Integrate outputs' },
           { slug: 'build/setup', label: 'Set up the repository' },
           { slug: 'build/quickstart', label: 'Run locally' },
@@ -85,6 +87,7 @@ export const DOCS_SECTIONS: DocSection[] = [
           { slug: 'build/run-an-agent', label: 'Run an agent' },
           { slug: 'build/railway', label: 'Deploy the Sepolia testnet' },
           { slug: 'build/production', label: 'Deploy to Sepolia' },
+          { slug: 'build/governance-actions', label: 'Governance actions' },
           { slug: 'build/add-a-program', label: 'Add a program' },
         ],
       },

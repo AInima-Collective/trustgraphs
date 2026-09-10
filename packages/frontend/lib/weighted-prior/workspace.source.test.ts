@@ -24,14 +24,12 @@ assert.match(source, /paste an instance ID instead/)
 assert.match(source, /Settings →\s+Advanced →\s+Instance provenance/)
 assert.match(source, /CopyableText/)
 
-// A created network links to its detail and Settings surfaces. Legacy create?instance links are
-// redirected rather than reopening administration inside the create wizard.
+// A created network links to its detail and Settings surfaces.
 assert.match(source, /Your weighted network is created/)
 assert.match(source, /href=\{`\/networks\/\$\{created\.instanceId\}`\}/)
 assert.match(source, /View network/)
 assert.match(source, /Review starting shares/)
 assert.match(source, /openForUpdate/)
-assert.match(source, /params\.get\('instance'\)/)
 assert.match(source, /settings\?tab=scoring/)
 assert.match(source, /params\.get\('accounts'\)/)
 
@@ -43,15 +41,6 @@ assert.match(
   settings,
   /<WeightedPriorWorkspace rotationInstanceId=\{instanceId as Hex\}/
 )
-const createPage = readFileSync(
-  join(process.cwd(), 'app/create/weighted/page.tsx'),
-  'utf8'
-)
-assert.match(
-  createPage,
-  /redirect\(`\/networks\/\$\{legacyInstance\}\/settings\?tab=scoring`\)/
-)
-
 // ENS handling is stated in plain words (clarification 3): resolved in the browser at a
 // finalized mainnet block, receipt-only, re-checked before simulate and before sign.
 assert.match(source, /resolved in your browser at a finalized/)

@@ -101,16 +101,22 @@ const T_BADGE: u8 = 2;
 const T_EVAL: u8 = 3;
 const T_ATTRIB: u8 = 4;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SemanticsError {
+    MissingStrongRef(String),
+    InvalidStrongRef(String),
+}
+
 /// Derive the trust graph from all repos' authenticated records.
 ///
 /// `strongref_targets`: content-verified blocks for cross-repo strongRefs (badge
-/// definitions), keyed by CID string; absence of a definition = open-vocabulary default,
-/// never a rejection (§2).
+/// definitions), keyed by CID string. Every referenced definition is required: a missing or
+/// incorrectly addressed block aborts rather than changing issuer policy.
 pub fn derive(
     repos: &[RepoRecords],
     strongref_targets: &BTreeMap<String, Vec<u8>>,
     p: &EdgeParams,
-) -> DerivedGraph {
+) -> Result<DerivedGraph, SemanticsError> {
     let s = scale();
     let mut skips: Vec<SkipEntry> = Vec::new();
     let mut skip =
@@ -211,24 +217,24 @@ pub fn derive(
                 ));
             }
             Record::BadgeAward { badge, subject, created_at } => {
-                // allowedIssuers: enforced when the definition block is witnessed (§3.3);
-                // absent definition = open-vocabulary default.
-                //
-                // C-1: only honor a definition block that is content-addressed by the
-                // badge's own strongRef CID (author-signed). A prover-supplied block whose
-                // bytes do not hash to the CID is not the referenced definition — ignore it
-                // so a prover can neither forge a restriction to censor a legitimate award
-                // nor swap in permissive bytes. (Withholding a real definition to fall back
-                // to open-vocabulary is the separate data-availability gap C-1/E2.)
-                if let Some(def_bytes) = strongref_targets.get(&badge.cid) {
-                    if zk_core::cid::verify_dagcbor_cid(&badge.cid, def_bytes) {
-                        if let Some(allowed) = decode_allowed_issuers(def_bytes) {
-                            if !allowed.iter().any(|d| d == author) {
-                                skip(author_node, skip_reason::ALLOWED_ISSUERS_MISS);
-                                continue;
-                            }
-                        }
+                // Issuer policy is part of the signed reference, so a prover must supply its
+                // exact preimage even when the definition permits all issuers.
+                let def_bytes = strongref_targets
+                    .get(&badge.cid)
+                    .ok_or_else(|| SemanticsError::MissingStrongRef(badge.cid.clone()))?;
+                if !zk_core::cid::verify_dagcbor_cid(&badge.cid, def_bytes) {
+                    return Err(SemanticsError::InvalidStrongRef(badge.cid.clone()));
+                }
+                match decode_allowed_issuers(def_bytes) {
+                    Ok(Some(allowed)) if !allowed.iter().any(|did| did == author) => {
+                        skip(author_node, skip_reason::ALLOWED_ISSUERS_MISS);
+                        continue;
                     }
+                    Err(()) => {
+                        skip(author_node, skip_reason::MALFORMED_RECORD);
+                        continue;
+                    }
+                    _ => {}
                 }
                 let target = match subject {
                     BadgeSubject::Did(d) if d.starts_with("did:") => did_node_id(d),
@@ -413,25 +419,31 @@ pub fn derive(
     }
 
     skips.sort();
-    DerivedGraph { nodes: node_set.into_iter().collect(), outgoing, bindings, skips }
+    Ok(DerivedGraph { nodes: node_set.into_iter().collect(), outgoing, bindings, skips })
 }
 
-/// Decode `allowedIssuers` from a witnessed badge.definition block, if the field exists.
-fn decode_allowed_issuers(bytes: &[u8]) -> Option<Vec<String>> {
-    let v: ipld_core::ipld::Ipld = serde_ipld_dagcbor::from_slice(bytes).ok()?;
-    let ipld_core::ipld::Ipld::Map(m) = v else { return None };
-    let ipld_core::ipld::Ipld::List(l) = m.get("allowedIssuers")? else { return None };
-    let mut out = Vec::new();
-    for x in l {
-        match x {
-            ipld_core::ipld::Ipld::String(s) => out.push(s.clone()),
-            ipld_core::ipld::Ipld::Map(dm) => {
-                if let Some(ipld_core::ipld::Ipld::String(d)) = dm.get("did") {
-                    out.push(d.clone());
-                }
-            }
-            _ => {}
-        }
+/// Absence of the field on an authenticated definition is open-vocabulary; malformed bytes
+/// or a malformed field are deterministic record errors, never a substitute issuer policy.
+fn decode_allowed_issuers(bytes: &[u8]) -> Result<Option<Vec<String>>, ()> {
+    use ipld_core::ipld::Ipld;
+    let Ipld::Map(map) = serde_ipld_dagcbor::from_slice(bytes).map_err(|_| ())? else {
+        return Err(());
+    };
+    if map.get("$type") != Some(&Ipld::String("app.certified.badge.definition".into())) {
+        return Err(());
     }
-    Some(out)
+    let Some(value) = map.get("allowedIssuers") else { return Ok(None) };
+    let Ipld::List(list) = value else { return Err(()) };
+    let allowed = list
+        .iter()
+        .map(|value| match value {
+            Ipld::String(did) => Ok(did.clone()),
+            Ipld::Map(fields) => match fields.get("did") {
+                Some(Ipld::String(did)) => Ok(did.clone()),
+                _ => Err(()),
+            },
+            _ => Err(()),
+        })
+        .collect::<Result<Vec<_>, ()>>()?;
+    Ok(Some(allowed))
 }

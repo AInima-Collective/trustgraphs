@@ -10,7 +10,7 @@ import { cmpHex } from '../pagerank/words'
 
 /**
  * One rater's eligible valuation of one claim, after every filter, with the post-budget
- * discount. Exposed for the indexer's audit view (M3) — the guest and the display recompute
+ * discount. Exposed for the indexer's audit view — the guest and the display recompute
  * share this exact eligibility logic.
  */
 export interface EligibleValuation {

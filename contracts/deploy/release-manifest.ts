@@ -3,7 +3,14 @@ import path from 'path'
 
 import type { Hex } from 'viem'
 
-import { ChainTarget, DeploymentStage } from './types'
+import { DeploymentStage } from './types'
+
+type PublicReleaseChain = 'sepolia' | 'mainnet'
+type ReleaseManifestOptions = {
+  requireComplete?: boolean
+  /** Existing deployment tooling stays Sepolia-bound unless a reader explicitly opts in. */
+  expectedChain?: PublicReleaseChain
+}
 
 export type DeploymentRecord = {
   address: Hex | null
@@ -21,6 +28,16 @@ export const RELEASE_PROGRAMS = [
   ['nostrWorkspace', 'nostr-workspace'],
 ] as const
 
+export const CURRENT_SP1_VERSION = '6.6.0'
+/**
+ * `sp1_sdk::SP1_CIRCUIT_VERSION` shipped by the pinned sp1-sdk above. A guest manifest's `sp1`
+ * field records this, not the SDK version: it names the Groth16 circuit the verifier gateway
+ * routes proofs to (the selector in preflight check 9 derives from it). It has stayed at v6.1.0
+ * from sp1-sdk 6.1.0 through 6.6.0; an SDK upgrade that moves it is a verifier-route change.
+ */
+export const CURRENT_SP1_CIRCUIT_VERSION = 'v6.1.0'
+const SUPPORTED_SP1_VERSIONS = new Set(['6.3.1', CURRENT_SP1_VERSION])
+
 export type ReleaseProgramKey = (typeof RELEASE_PROGRAMS)[number][0]
 
 export type ReleaseProgramIdentity = {
@@ -34,7 +51,7 @@ export type ReleaseManifest = {
   version: 1
   status: 'planned' | 'deployed'
   stage: DeploymentStage
-  chain: ChainTarget
+  chain: PublicReleaseChain
   chainId: number
   deploymentCommit: string | null
   firstDeploymentBlock: number | null
@@ -51,13 +68,20 @@ export type ReleaseManifest = {
     instanceRegistry: DeploymentRecord
     provingVault: DeploymentRecord
     trustgraphsFactory: DeploymentRecord
+    /** Existing-EAS-schema sibling factory. Optional on manifests predating #117. */
+    importedTrustgraphsFactory?: DeploymentRecord
     /** Second factory generation with `EPOCH_FLOOR = 1` (testnet-fast epochs). Optional: absent
      *  on manifests predating it, and always recorded together with its governed wrapper. */
     trustgraphsFactoryFast?: DeploymentRecord
     signerVerifier: DeploymentRecord
     governedTrustgraphsFactory: DeploymentRecord
+    governedImportedTrustgraphsFactory?: DeploymentRecord
     governedTrustgraphsFactoryFast?: DeploymentRecord
     signerSyncModuleDeployer: DeploymentRecord
+    /** Optional on releases predating organizational sub-networks. */
+    parentAuthorityModuleDeployer?: DeploymentRecord
+    /** Optional on releases predating organizational sub-networks. */
+    subnetworkRegistry?: DeploymentRecord
     safeSingleton: DeploymentRecord
     safeProxyFactory: DeploymentRecord
     weightedVerifier: DeploymentRecord
@@ -185,7 +209,10 @@ const validateRecord = (
 
 export const validateReleaseManifest = (
   value: unknown,
-  { requireComplete = false }: { requireComplete?: boolean } = {}
+  {
+    requireComplete = false,
+    expectedChain = 'sepolia',
+  }: ReleaseManifestOptions = {}
 ): ReleaseManifest => {
   assertObject(value, 'manifest')
   assertNoSecrets(value)
@@ -214,9 +241,10 @@ export const validateReleaseManifest = (
   if (value.stage !== 'production') {
     throw new Error('public release manifest stage must be production')
   }
-  if (value.chain !== 'sepolia' || value.chainId !== 11155111) {
+  const expectedChainId = expectedChain === 'mainnet' ? 1 : 11155111
+  if (value.chain !== expectedChain || value.chainId !== expectedChainId) {
     throw new Error(
-      'Sepolia manifest must bind chain=sepolia and chainId=11155111'
+      `${expectedChain === 'sepolia' ? 'Sepolia' : 'Ethereum mainnet'} manifest must bind chain=${expectedChain} and chainId=${expectedChainId}`
     )
   }
   if (value.status !== 'planned' && value.status !== 'deployed') {
@@ -280,11 +308,15 @@ export const validateReleaseManifest = (
       'instanceRegistry',
       'provingVault',
       'trustgraphsFactory',
+      'importedTrustgraphsFactory',
       'trustgraphsFactoryFast',
       'signerVerifier',
       'governedTrustgraphsFactory',
+      'governedImportedTrustgraphsFactory',
       'governedTrustgraphsFactoryFast',
       'signerSyncModuleDeployer',
+      'parentAuthorityModuleDeployer',
+      'subnetworkRegistry',
       'safeSingleton',
       'safeProxyFactory',
       'weightedVerifier',
@@ -373,6 +405,48 @@ export const validateReleaseManifest = (
   if (governedAddress !== null && signerVerifier.address === null) {
     throw new Error(
       'manifest signerVerifier is required when governedTrustgraphsFactory is deployed'
+    )
+  }
+  const parentAuthorityDeployer =
+    manifestContracts.parentAuthorityModuleDeployer
+  const subnetworkRegistry = manifestContracts.subnetworkRegistry
+  for (const [record, key] of [
+    [parentAuthorityDeployer, 'parentAuthorityModuleDeployer'],
+    [subnetworkRegistry, 'subnetworkRegistry'],
+  ] as const) {
+    if (record === undefined) continue
+    assertObject(record, `manifest.contracts.${key}`)
+    validateRecord(record, `manifest.contracts.${key}`, record.address !== null)
+  }
+  if (
+    ((parentAuthorityDeployer as DeploymentRecord | undefined)?.address !=
+      null) !==
+    ((subnetworkRegistry as DeploymentRecord | undefined)?.address != null)
+  ) {
+    throw new Error(
+      'manifest parentAuthorityModuleDeployer and subnetworkRegistry must be recorded together'
+    )
+  }
+
+  const importedFactory = manifestContracts.importedTrustgraphsFactory
+  const governedImportedFactory =
+    manifestContracts.governedImportedTrustgraphsFactory
+  for (const [record, key] of [
+    [importedFactory, 'importedTrustgraphsFactory'],
+    [governedImportedFactory, 'governedImportedTrustgraphsFactory'],
+  ] as const) {
+    if (record === undefined) continue
+    assertObject(record, `manifest.contracts.${key}`)
+    validateRecord(record, `manifest.contracts.${key}`, record.address !== null)
+  }
+  const importedPresent = (importedFactory as DeploymentRecord | undefined)
+    ?.address
+  const governedImportedPresent = (
+    governedImportedFactory as DeploymentRecord | undefined
+  )?.address
+  if ((importedPresent != null) !== (governedImportedPresent != null)) {
+    throw new Error(
+      'manifest importedTrustgraphsFactory and governedImportedTrustgraphsFactory must be recorded together'
     )
   }
 
@@ -481,6 +555,7 @@ export const validateReleaseManifest = (
     RELEASE_PROGRAMS.map(([key]) => key),
     'manifest.programs'
   )
+  let manifestSp1Version: string | null = null
   for (const [key, label] of RELEASE_PROGRAMS) {
     const program = value.programs[key]
     assertObject(program, `manifest.programs.${key}`)
@@ -489,11 +564,23 @@ export const validateReleaseManifest = (
       ['sp1Version', 'elfSha256', 'vkey'],
       `manifest.programs.${key}`
     )
-    if (program.sp1Version !== '6.3.1') {
+    if (
+      typeof program.sp1Version !== 'string' ||
+      !SUPPORTED_SP1_VERSIONS.has(program.sp1Version)
+    ) {
       throw new Error(
-        `manifest ${label} SP1 version must match the pinned 6.3.1 toolchain`
+        `manifest ${label} SP1 version must be a supported release toolchain (${[
+          ...SUPPORTED_SP1_VERSIONS,
+        ].join(', ')})`
       )
     }
+    if (
+      manifestSp1Version !== null &&
+      program.sp1Version !== manifestSp1Version
+    ) {
+      throw new Error('manifest programs must use one SP1 toolchain version')
+    }
+    manifestSp1Version = program.sp1Version
     if (
       program.elfSha256 !== null &&
       (typeof program.elfSha256 !== 'string' ||
@@ -579,7 +666,7 @@ export const validateReleaseManifest = (
 
 export const loadReleaseManifest = (
   file: string,
-  options: { requireComplete?: boolean } = {}
+  options: ReleaseManifestOptions = {}
 ): ReleaseManifest =>
   validateReleaseManifest(JSON.parse(fs.readFileSync(file, 'utf8')), options)
 
@@ -677,6 +764,11 @@ export const releaseManifestToDeploymentSummary = (
             manifest.contracts.governedTrustgraphsFactory.address,
           signer_sync_deployer:
             manifest.contracts.signerSyncModuleDeployer.address,
+          parent_authority_deployer:
+            manifest.contracts.parentAuthorityModuleDeployer?.address ??
+            undefined,
+          subnetwork_registry:
+            manifest.contracts.subnetworkRegistry?.address ?? undefined,
         }
       : undefined
   const factoryFast = manifest.contracts.trustgraphsFactoryFast?.address
@@ -687,6 +779,18 @@ export const releaseManifestToDeploymentSummary = (
     ? {
         governed_factory:
           manifest.contracts.governedTrustgraphsFactoryFast.address,
+      }
+    : undefined
+  const importedFactory = manifest.contracts.importedTrustgraphsFactory?.address
+    ? {
+        imported_factory: manifest.contracts.importedTrustgraphsFactory.address,
+      }
+    : undefined
+  const governedImportedFactory = manifest.contracts
+    .governedImportedTrustgraphsFactory?.address
+    ? {
+        governed_imported_factory:
+          manifest.contracts.governedImportedTrustgraphsFactory.address,
       }
     : undefined
   const signerVerifier = manifest.contracts.signerVerifier.address
@@ -784,6 +888,8 @@ export const releaseManifestToDeploymentSummary = (
     },
     provingVault: manifest.contracts.provingVault.address,
     governedFactory,
+    importedFactory,
+    governedImportedFactory,
     factoryFast,
     governedFactoryFast,
     signerVerifier,

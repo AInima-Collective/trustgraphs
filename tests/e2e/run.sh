@@ -44,7 +44,7 @@ done
 # `succinct` toolchain it can't find, minutes in. `task zk:build` up front makes this run fast.
 command -v cargo-prove >/dev/null 2>&1 || {
   echo "FATAL: 'cargo-prove' not found in PATH — the SP1 guests cannot be built."
-  echo "  curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1"
+  echo "  curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.6.0"
   echo "  export PATH=\"\$HOME/.sp1/bin:\$PATH\""
   exit 1
 }

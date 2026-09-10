@@ -47,16 +47,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
+import { SubnetworkSettingsCard } from '@/components/SubnetworkSettingsCard'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import { useSubnetworkParent } from '@/hooks/useSubnetworks'
 import type { InstanceRow } from '@/lib/catalog'
 import {
-  CONTRIBUTIONS_FACTORY,
   CONTRACT_CONFIG,
+  CONTRIBUTIONS_FACTORY,
   GOVERNED_WEIGHTED_FACTORY,
   PROVING_VAULT,
   WEIGHTED_FACTORY,
+  isSubnetworkFeatureAvailable,
 } from '@/lib/config'
 import {
   anchorRegistryAbi,
@@ -89,9 +92,10 @@ import {
 } from '@/lib/settings-contracts'
 import { txToast } from '@/lib/tx'
 import { cn, realAddress } from '@/lib/utils'
-import { getTargetChainConfig } from '@/lib/wagmi'
+import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 import { ponderQueries } from '@/queries/ponder'
 
+import { NetworkProfileSettings } from './profile'
 import { ScoringAccessCard, ScoringSettings } from './scoring'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
 import { WeightedPriorWorkspace } from '../../../create/weighted/workspace'
@@ -105,7 +109,6 @@ const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
 const SAFE_GUARD_STORAGE_SLOT =
   0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8n
 const SAFE_SENTINEL = '0x0000000000000000000000000000000000000001' as Hex
-const ZERO_HASH = `0x${'0'.repeat(64)}` as Hex
 const strictWorkCountAbi = [
   {
     type: 'function',
@@ -632,7 +635,7 @@ const TopUpProofBalance = ({
   onSuccess: () => void
 }) => {
   const { address, isConnected } = useAccount()
-  const publicClient = usePublicClient()
+  const publicClient = usePublicClient({ chainId: getTargetChainId() })
   const [asset, setAsset] = useState<'eth' | 'usdc'>(
     usdcAddress ? 'usdc' : 'eth'
   )
@@ -645,12 +648,14 @@ const TopUpProofBalance = ({
       asset === 'usdc' && usdcAddress && address
         ? [
             {
+              chainId: getTargetChainId(),
               address: usdcAddress,
               abi: erc20Abi,
               functionName: 'balanceOf',
               args: [address],
             },
             {
+              chainId: getTargetChainId(),
               address: usdcAddress,
               abi: erc20Abi,
               functionName: 'allowance',
@@ -862,6 +867,9 @@ export const SettingsPage = ({
   // Rounds live in the indexer's runtime round catalog, keyed to this network by the factory's
   // parentInstanceId link; the newest active one fronts the card and every round lists below.
   const { rounds: allRounds } = useContributionsRounds(network.instanceId)
+  const subnetworksAvailable = isSubnetworkFeatureAvailable()
+  const { data: parentRelationship, isLoading: parentRelationshipLoading } =
+    useSubnetworkParent(subnetworksAvailable ? network.instanceId : undefined)
   const weighted = network.program === 'trust-graph-weighted'
   const contributionRounds = sortRoundsNewestActiveFirst(
     contributionsRoundsFor(network, allRounds)
@@ -886,6 +894,7 @@ export const SettingsPage = ({
     : TRUSTGRAPH_PROGRAM
 
   const { data: recordedAuthority } = useReadContract({
+    chainId: getTargetChainId(),
     address: governedFactoryAddress as Hex,
     abi: governedTrustgraphsFactoryAbi,
     functionName: 'authorityOf',
@@ -924,49 +933,58 @@ export const SettingsPage = ({
     contracts: (hasRecordedAuthority
       ? [
           {
+            chainId: getTargetChainId(),
             address: authorityGuard,
             abi: safeExecutionGuardReadAbi,
             functionName: 'safe',
           },
           {
+            chainId: getTargetChainId(),
             address: authorityGuard,
             abi: safeExecutionGuardReadAbi,
             functionName: 'isSealed',
           },
           {
+            chainId: getTargetChainId(),
             address: authorityRecovery,
             abi: delayedRecoveryModuleReadAbi,
             functionName: 'safe',
           },
           {
+            chainId: getTargetChainId(),
             address: authorityRecovery,
             abi: delayedRecoveryModuleReadAbi,
             functionName: 'proposer',
           },
           {
+            chainId: getTargetChainId(),
             address: authorityRecovery,
             abi: delayedRecoveryModuleReadAbi,
             functionName: 'delay',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySafe,
             abi: gnosisSafeAuthorityReadAbi,
             functionName: 'isModuleEnabled',
             args: [authorityGovernance],
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySafe,
             abi: gnosisSafeAuthorityReadAbi,
             functionName: 'isModuleEnabled',
             args: [authorityRecovery],
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySafe,
             abi: gnosisSafeAuthorityReadAbi,
             functionName: 'getStorageAt',
             args: [SAFE_GUARD_STORAGE_SLOT, 1n],
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySafe,
             abi: gnosisSafeAuthorityReadAbi,
             functionName: 'getModulesPaginated',
@@ -975,6 +993,7 @@ export const SettingsPage = ({
           ...(authoritySignerSync
             ? [
                 {
+                  chainId: getTargetChainId(),
                   address: authoritySafe,
                   abi: gnosisSafeAuthorityReadAbi,
                   functionName: 'isModuleEnabled' as const,
@@ -1040,50 +1059,58 @@ export const SettingsPage = ({
     (!network.contracts.safe?.proxy ||
       sameHex(authoritySafe, network.contracts.safe.proxy))
 
-  const { data: signerSyncReads } = useReadContracts({
+  const {
+    data: signerSyncReads,
+    isLoading: signerSyncLoading,
+    isError: signerSyncError,
+    refetch: refetchSignerSyncReads,
+  } = useReadContracts({
     contracts: authoritySignerSync
       ? [
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'paused',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'hasAppliedCheckpoint',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'lastAppliedCheckpoint',
           },
           {
-            address: authoritySignerSync,
-            abi: signerSyncZkModuleAbi,
-            functionName: 'paramsHash',
-          },
-          {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'selectionParamsHash',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'zkVerifier',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'scoreSnapshot',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'accumulator',
           },
           {
+            chainId: getTargetChainId(),
             address: authoritySignerSync,
             abi: signerSyncZkModuleAbi,
             functionName: 'owner',
@@ -1095,14 +1122,14 @@ export const SettingsPage = ({
   const signerPaused = asBoolean(readResult(signerSyncReads, 0))
   const signerHasApplied = asBoolean(readResult(signerSyncReads, 1))
   const signerLastApplied = asBigInt(readResult(signerSyncReads, 2))
-  const signerParamsHash = asString(readResult(signerSyncReads, 3))
-  const signerSelectionHash = asString(readResult(signerSyncReads, 4))
-  const signerVerifier = asString(readResult(signerSyncReads, 5))
-  const signerScoreSnapshot = asString(readResult(signerSyncReads, 6))
-  const signerAccumulator = asString(readResult(signerSyncReads, 7))
-  const signerOwner = asString(readResult(signerSyncReads, 8))
+  const signerSelectionHash = asString(readResult(signerSyncReads, 3))
+  const signerVerifier = asString(readResult(signerSyncReads, 4))
+  const signerScoreSnapshot = asString(readResult(signerSyncReads, 5))
+  const signerAccumulator = asString(readResult(signerSyncReads, 6))
+  const signerOwner = asString(readResult(signerSyncReads, 7))
 
   const { data: factoryVault } = useReadContract({
+    chainId: getTargetChainId(),
     address: factoryAddress as Hex,
     abi: trustgraphsFactoryAbi,
     functionName: 'VAULT',
@@ -1112,59 +1139,75 @@ export const SettingsPage = ({
     realAddress(PROVING_VAULT) ||
     realAddress(factoryVault as string | undefined)
 
-  const { data: snapshotReads } = useReadContracts({
+  const {
+    data: snapshotReads,
+    isLoading: snapshotLoading,
+    isError: snapshotError,
+    refetch: refetchSnapshotReads,
+  } = useReadContracts({
     contracts: [
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'paramsHash',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'zkVerifier',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'accumulator',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'anchorRegistry',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'epochLength',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'lastTriggerBlock',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'lastAppliedCheckpoint',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'hasAppliedCheckpoint',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'getHooks',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'getStateCount',
       },
       {
+        chainId: getTargetChainId(),
         address: snapshotAddress,
         abi: merkleSnapshotAbi,
         functionName: 'getLatestState',
@@ -1185,39 +1228,51 @@ export const SettingsPage = ({
   const stateCount = asBigInt(readResult(snapshotReads, 9))
   const latestState = readResult(snapshotReads, 10)
 
-  const { data: resolverReads } = useReadContracts({
+  const {
+    data: resolverReads,
+    isLoading: resolverLoading,
+    isError: resolverError,
+    refetch: refetchResolverReads,
+  } = useReadContracts({
     contracts: [
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'acc',
       },
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'leafCount',
       },
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'checkpointCount',
       },
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'snapshot',
       },
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'boundSchema',
       },
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'version',
       },
       {
+        chainId: getTargetChainId(),
         address: resolverAddress,
         abi: easIndexerResolverAbi,
         functionName: 'binder',
@@ -1226,7 +1281,7 @@ export const SettingsPage = ({
     query: { refetchInterval: 30_000 },
   })
   const liveAcc = asString(readResult(resolverReads, 0))
-  const leafCount = asBigInt(readResult(resolverReads, 1)) ?? 0n
+  const leafCount = asBigInt(readResult(resolverReads, 1))
   const checkpointCount = asBigInt(readResult(resolverReads, 2))
   const latestCheckpointId =
     checkpointCount !== undefined && checkpointCount > 0n
@@ -1237,20 +1292,28 @@ export const SettingsPage = ({
   const resolverVersion = asString(readResult(resolverReads, 5))
   const resolverBinder = asString(readResult(resolverReads, 6))
 
-  const { data: anchorReads } = useReadContracts({
+  const {
+    data: anchorReads,
+    isLoading: anchorLoading,
+    isError: anchorError,
+    refetch: refetchAnchorReads,
+  } = useReadContracts({
     contracts: anchorRegistry
       ? [
           {
+            chainId: getTargetChainId(),
             address: anchorRegistry,
             abi: anchorRegistryAbi,
             functionName: 'anchorAcc',
           },
           {
+            chainId: getTargetChainId(),
             address: anchorRegistry,
             abi: anchorRegistryAbi,
             functionName: 'anchorCount',
           },
           {
+            chainId: getTargetChainId(),
             address: anchorRegistry,
             abi: anchorRegistryAbi,
             functionName: 'maxTotalInputs',
@@ -1260,9 +1323,14 @@ export const SettingsPage = ({
     query: { enabled: !!anchorRegistry, refetchInterval: 30_000 },
   })
   const anchorAcc = asString(readResult(anchorReads, 0))
-  const anchorCount = asBigInt(readResult(anchorReads, 1)) ?? 0n
+  const anchorCount = anchorRegistry
+    ? asBigInt(readResult(anchorReads, 1))
+    : readResult(snapshotReads, 3) !== undefined
+      ? 0n
+      : undefined
   const anchorCapacity = asBigInt(readResult(anchorReads, 2))
   const { data: strictAnchorWorkCount } = useReadContract({
+    chainId: getTargetChainId(),
     address: anchorRegistry,
     abi: strictWorkCountAbi,
     functionName: 'workCount',
@@ -1278,87 +1346,107 @@ export const SettingsPage = ({
   const {
     data: vaultReads,
     isLoading: vaultLoading,
+    isError: vaultError,
     refetch: refetchVaultReads,
   } = useReadContracts({
     contracts:
-      vaultAddress && instanceId
+      vaultAddress &&
+      instanceId &&
+      leafCount !== undefined &&
+      anchorCount !== undefined &&
+      checkpointCount !== undefined
         ? [
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'accountOf',
               args: [instanceId as Hex],
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'policyOf',
               args: [instanceId as Hex],
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'pendingWithdrawalOf',
               args: [instanceId as Hex],
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'quote',
               args: [instanceId as Hex, latestCheckpointId],
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'bandOf',
               args: [scoreProgram, leafCount, anchorCount],
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'REGISTRY',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'USDC',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'ETH_USD_FEED',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'FEED_MAX_STALENESS',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'MIN_ETH_USD',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'MAX_ETH_USD',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'MAX_PRICED_INPUTS',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'maxGasUnitsPerClaim',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'nominalGasUnits',
             },
             {
+              chainId: getTargetChainId(),
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'withdrawalNotice',
@@ -1366,7 +1454,12 @@ export const SettingsPage = ({
           ]
         : [],
     query: {
-      enabled: !!vaultAddress && !!instanceId,
+      enabled:
+        !!vaultAddress &&
+        !!instanceId &&
+        leafCount !== undefined &&
+        anchorCount !== undefined &&
+        checkpointCount !== undefined,
       refetchInterval: 30_000,
     },
   })
@@ -1388,6 +1481,7 @@ export const SettingsPage = ({
   const withdrawalNotice = asBigInt(readResult(vaultReads, 14))
 
   const { data: feeRead } = useReadContract({
+    chainId: getTargetChainId(),
     address: vaultAddress as Hex,
     abi: provingVaultReadAbi,
     functionName: 'feePerRootUsd',
@@ -1401,11 +1495,13 @@ export const SettingsPage = ({
       ...(feedAddress
         ? [
             {
+              chainId: getTargetChainId(),
               address: feedAddress,
               abi: priceFeedReadAbi,
               functionName: 'decimals' as const,
             },
             {
+              chainId: getTargetChainId(),
               address: feedAddress,
               abi: priceFeedReadAbi,
               functionName: 'latestRoundData' as const,
@@ -1415,11 +1511,13 @@ export const SettingsPage = ({
       ...(usdcAddress
         ? [
             {
+              chainId: getTargetChainId(),
               address: usdcAddress,
               abi: erc20MetadataReadAbi,
               functionName: 'symbol' as const,
             },
             {
+              chainId: getTargetChainId(),
               address: usdcAddress,
               abi: erc20MetadataReadAbi,
               functionName: 'decimals' as const,
@@ -1485,9 +1583,11 @@ export const SettingsPage = ({
     ponderQueries.provingTank(instanceId)
   )
   const tank = tankData?.funded ? tankData : null
-  const { data: operatorStatus, isLoading: operatorLoading } = useQuery(
-    operatorStatusQuery(instanceId)
-  )
+  const {
+    data: operatorStatus,
+    isLoading: operatorLoading,
+    refetch: refetchOperatorStatus,
+  } = useQuery(operatorStatusQuery(instanceId))
   const signerOperatorInstanceId =
     network.safeZodiacSignerSync.operatorInstanceId ?? ''
   const { data: signerOperatorStatus } = useQuery(
@@ -1535,45 +1635,58 @@ export const SettingsPage = ({
       ? (balanceUsd * BigInt(tank.burn.windowSeconds)) / burnSpentUsd
       : undefined
 
-  const { data: distributorReads } = useReadContracts({
+  const {
+    data: distributorReads,
+    isLoading: distributorLoading,
+    isError: distributorError,
+    refetch: refetchDistributorReads,
+  } = useReadContracts({
     contracts: distributorAddress
       ? [
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'owner',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'pendingOwner',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'feeRecipient',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'feePercentage',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'allowlistEnabled',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'paused',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'merkleSnapshot',
           },
           {
+            chainId: getTargetChainId(),
             address: distributorAddress,
             abi: merkleFundDistributorAbi,
             functionName: 'getAllowlistLength',
@@ -1587,41 +1700,49 @@ export const SettingsPage = ({
     contracts: governanceAddress
       ? [
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'owner',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'avatar',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'target',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'merkleSnapshotContract',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'votingDelay',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'votingPeriod',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'quorum',
           },
           {
+            chainId: getTargetChainId(),
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'executionDelay',
@@ -1635,12 +1756,14 @@ export const SettingsPage = ({
     contracts: connectedAddress
       ? [
           {
+            chainId: getTargetChainId(),
             address: snapshotAddress,
             abi: merkleSnapshotAbi,
             functionName: 'hasRole',
             args: [CONSTITUTIONAL_ROLE, connectedAddress],
           },
           {
+            chainId: getTargetChainId(),
             address: snapshotAddress,
             abi: merkleSnapshotAbi,
             functionName: 'hasRole',
@@ -1669,7 +1792,9 @@ export const SettingsPage = ({
       ? policyLastPaidBlock + policyMinInterval
       : undefined
   const inputCount =
-    anchorWorkCount === undefined ? undefined : leafCount + anchorWorkCount
+    anchorWorkCount === undefined || leafCount === undefined
+      ? undefined
+      : leafCount + anchorWorkCount
   const inputCapacity = anchorCapacity ?? maxPricedInputs
   const distributorPaused = asBoolean(readResult(distributorReads, 5))
   const fundingRestricted = asBoolean(readResult(distributorReads, 4))
@@ -1677,6 +1802,7 @@ export const SettingsPage = ({
   const signerCheckpointStale =
     authoritySignerSync &&
     hasAppliedCheckpoint === true &&
+    signerHasApplied !== undefined &&
     (!signerHasApplied ||
       signerLastApplied === undefined ||
       lastAppliedCheckpoint === undefined ||
@@ -1694,30 +1820,79 @@ export const SettingsPage = ({
     })
     const fingerprint = keccak256(data)
     saveGovernancePrefill({
+      version: 2,
       networkId: network.id,
       fingerprint,
-      parentHash: ZERO_HASH,
-      proposedHash: ZERO_HASH,
       title: `${nextPaused ? 'Pause' : 'Resume'} score-selected Safe signer updates`,
       description: nextPaused
         ? 'Pause new signer-sync proofs while retaining the last recorded Safe owner set.'
         : 'Resume application of ZK-proven signer sets for new score checkpoints.',
       actions: [
         {
-          target: authoritySignerSync,
-          value: '0',
-          data,
-          operation: 0,
-          description: `${nextPaused ? 'Pause' : 'Resume'} signer synchronization`,
-          contractName: 'SignerSyncZkModule',
-          functionSignature: 'setPaused(bool)',
+          actionKey: 'set-signer-sync-paused',
+          values: { paused: nextPaused },
         },
       ],
       createdAt: Date.now(),
     })
     router.push(
-      `/networks/${network.id}/governance?new=1&actionDraft=${fingerprint}`
+      `/networks/${network.id}/governance/new?actionDraft=${fingerprint}`
     )
+  }
+  const distributorStatus = !distributorAddress
+    ? 'Not configured'
+    : distributorLoading
+      ? 'Checking…'
+      : distributorError || distributorPaused === undefined
+        ? 'Unavailable'
+        : distributorPaused
+          ? 'Paused'
+          : 'Active'
+  const healthReads = [
+    { data: snapshotReads, loading: snapshotLoading, error: snapshotError },
+    { data: resolverReads, loading: resolverLoading, error: resolverError },
+    ...(anchorRegistry
+      ? [{ data: anchorReads, loading: anchorLoading, error: anchorError }]
+      : []),
+    ...(vaultAddress && instanceId
+      ? [{ data: vaultReads, loading: vaultLoading, error: vaultError }]
+      : []),
+    ...(distributorAddress
+      ? [
+          {
+            data: distributorReads,
+            loading: distributorLoading,
+            error: distributorError,
+          },
+        ]
+      : []),
+    ...(authoritySignerSync
+      ? [
+          {
+            data: signerSyncReads,
+            loading: signerSyncLoading,
+            error: signerSyncError,
+          },
+        ]
+      : []),
+  ]
+  const healthLoading =
+    healthReads.some((read) => read.loading) || operatorLoading
+  const healthUnavailable =
+    healthReads.some(
+      (read) =>
+        read.error ||
+        !read.data?.length ||
+        read.data.some((result) => result.status !== 'success')
+    ) || !operatorStatus?.available
+  const retryHealth = () => {
+    void refetchSnapshotReads()
+    void refetchResolverReads()
+    if (anchorRegistry) void refetchAnchorReads()
+    if (vaultAddress && instanceId) void refetchVaultReads()
+    if (distributorAddress) void refetchDistributorReads()
+    if (authoritySignerSync) void refetchSignerSyncReads()
+    void refetchOperatorStatus()
   }
   const attentionItems = [
     operatorStatus?.available && watched && !heartbeatFresh
@@ -1784,7 +1959,15 @@ export const SettingsPage = ({
                   title="LATEST SCORES"
                   tooltip="When the latest proven score table was applied on-chain."
                   value={
-                    rootTimestamp ? timestamp(rootTimestamp) : 'Not proven yet'
+                    rootTimestamp
+                      ? timestamp(rootTimestamp)
+                      : snapshotLoading
+                        ? 'Checking…'
+                        : snapshotError || hasAppliedCheckpoint === undefined
+                          ? 'Unavailable'
+                          : hasAppliedCheckpoint
+                            ? 'Timestamp unavailable'
+                            : 'Not proven yet'
                   }
                 />
                 <SettingsMetric
@@ -1806,16 +1989,29 @@ export const SettingsPage = ({
                 <SettingsMetric
                   title="REWARDS"
                   tooltip="Whether this network has a reward distributor and whether it is active."
-                  value={
-                    !distributorAddress
-                      ? 'Not configured'
-                      : distributorPaused
-                        ? 'Paused'
-                        : 'Active'
-                  }
+                  value={distributorStatus}
                 />
               </div>
 
+              {(healthLoading || healthUnavailable) && (
+                <Card type="outline" size="md">
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {healthLoading
+                      ? 'Checking network status…'
+                      : 'Some network status is unavailable. Try again to confirm the current state.'}
+                  </p>
+                  {!healthLoading && (
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      variant="outline"
+                      onClick={retryHealth}
+                    >
+                      Retry status checks
+                    </Button>
+                  )}
+                </Card>
+              )}
               {attentionItems.length > 0 ? (
                 <Card type="outline" size="md" className="border-warn">
                   <h3 className="text-sm font-medium">Needs attention</h3>
@@ -1831,7 +2027,7 @@ export const SettingsPage = ({
                     ))}
                   </ul>
                 </Card>
-              ) : (
+              ) : !healthLoading && !healthUnavailable ? (
                 <Card type="outline" size="md">
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2
@@ -1841,7 +2037,7 @@ export const SettingsPage = ({
                     No operational issues are visible right now.
                   </p>
                 </Card>
-              )}
+              ) : null}
 
               <div className="space-y-3">
                 <SectionHeading>Quick actions</SectionHeading>
@@ -1873,6 +2069,22 @@ export const SettingsPage = ({
                   deployment and network type support it.
                 </p>
               </div>
+            </section>
+          )}
+
+          {activeTab === 'profile' && (
+            <section className="space-y-5" aria-labelledby="network-profile">
+              <div>
+                <SectionHeading n="01">
+                  <span id="network-profile">Network profile</span>
+                </SectionHeading>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  Update the public identity people see across Trustgraphs.
+                  Governed networks route this constitutional action through
+                  their governance Safe.
+                </p>
+              </div>
+              <NetworkProfileSettings network={network} instance={instance} />
             </section>
           )}
 
@@ -2142,9 +2354,9 @@ export const SettingsPage = ({
                   size="md"
                   className="text-sm text-muted-foreground"
                 >
-                  This legacy network has no factory instance ID, so it cannot
-                  have an instance-keyed proving tank. Contract settings remain
-                  visible below.
+                  This network has no factory instance ID, so it cannot have an
+                  instance-keyed proving tank. Contract settings remain visible
+                  below.
                 </Card>
               ) : !vaultAddress ? (
                 <Card
@@ -2846,18 +3058,14 @@ export const SettingsPage = ({
                   title="Member rewards"
                   description="Pools allocated to members using a fixed proven trust-score snapshot."
                 >
-                  <SettingRow label="Status">
-                    {!distributorAddress
-                      ? 'Not configured'
-                      : distributorPaused
-                        ? 'Paused'
-                        : 'Active'}
-                  </SettingRow>
+                  <SettingRow label="Status">{distributorStatus}</SettingRow>
                   <SettingRow label="Who can fund">
                     {distributorAddress
-                      ? fundingRestricted
-                        ? 'Allowlisted accounts'
-                        : 'Anyone'
+                      ? fundingRestricted === undefined || distributorError
+                        ? 'Unavailable'
+                        : fundingRestricted
+                          ? 'Allowlisted accounts'
+                          : 'Anyone'
                       : '—'}
                   </SettingRow>
                   <SettingRow label="Distribution fee">
@@ -2956,6 +3164,67 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                {subnetworksAvailable && governanceAddress && instanceId && (
+                  <SubnetworkSettingsCard
+                    networkId={network.id}
+                    instanceId={instanceId}
+                  />
+                )}
+
+                {subnetworksAvailable && (
+                  <SettingsCard
+                    title="Parent network"
+                    description="The organizational link and independently observed authority it holds over this network."
+                  >
+                    <SettingRow label="Relationship">
+                      {parentRelationshipLoading
+                        ? 'Checking the registry…'
+                        : parentRelationship?.status === 'active'
+                          ? 'Active'
+                          : parentRelationship?.status === 'pending'
+                            ? 'Awaiting parent acceptance'
+                            : 'Independent'}
+                    </SettingRow>
+                    {parentRelationship?.parent && (
+                      <SettingRow label="Parent">
+                        <Link
+                          href={`/networks/${parentRelationship.parent.id}`}
+                          className="underline underline-offset-4"
+                        >
+                          {parentRelationship.parent.name}
+                        </Link>
+                      </SettingRow>
+                    )}
+                    {parentRelationship?.status === 'active' && (
+                      <>
+                        <SettingRow label="Power tier">
+                          <span className="capitalize">
+                            {parentRelationship.power.tier}
+                          </span>
+                        </SettingRow>
+                        <SettingRow label="Power verified">
+                          <StatusPill
+                            tone={
+                              parentRelationship.power.verified
+                                ? 'good'
+                                : 'warn'
+                            }
+                          >
+                            {parentRelationship.power.verified
+                              ? 'Verified from live contracts'
+                              : 'Link active; parent power not found'}
+                          </StatusPill>
+                        </SettingRow>
+                        <SettingRow label="Instruments">
+                          {parentRelationship.power.instruments.length
+                            ? parentRelationship.power.instruments.join(', ')
+                            : 'None observed'}
+                        </SettingRow>
+                      </>
+                    )}
+                  </SettingsCard>
+                )}
+
                 <SettingsCard
                   title="Governed authority boundary"
                   description="Live Safe, guard, and module reads—not a decentralization label."
@@ -2963,7 +3232,7 @@ export const SettingsPage = ({
                   <SettingRow label="Graduation state">
                     {!hasRecordedAuthority ? (
                       <StatusPill tone="muted">
-                        Legacy / not recorded by this governed factory
+                        Not recorded by this governed factory
                       </StatusPill>
                     ) : !authorityReadsComplete ? (
                       <StatusPill tone="muted">
@@ -3088,11 +3357,17 @@ export const SettingsPage = ({
                   <SettingRow label="Signer sync enabled">
                     {!authoritySignerSync
                       ? 'Not installed'
-                      : signerModuleEnabled === false
-                        ? 'Disabled in Safe'
-                        : signerPaused
-                          ? 'Paused deliberately'
-                          : 'Active'}
+                      : signerSyncLoading
+                        ? 'Checking…'
+                        : signerSyncError ||
+                            signerModuleEnabled === undefined ||
+                            signerPaused === undefined
+                          ? 'Unavailable'
+                          : signerModuleEnabled === false
+                            ? 'Disabled in Safe'
+                            : signerPaused
+                              ? 'Paused deliberately'
+                              : 'Active'}
                   </SettingRow>
                   {network.offchainLane && (
                     <SettingRow label="Hybrid compatibility">
@@ -3115,11 +3390,13 @@ export const SettingsPage = ({
                   </SettingRow>
                   <SettingRow label="Paused">{yesNo(signerPaused)}</SettingRow>
                   <SettingRow label="Checkpoint status">
-                    {!signerHasApplied
-                      ? 'No signer proof applied yet'
-                      : signerCheckpointStale
-                        ? `Stale at ${comma(signerLastApplied)}; scores are at ${comma(lastAppliedCheckpoint)}`
-                        : `Current at checkpoint ${comma(signerLastApplied)}`}
+                    {signerHasApplied === undefined || signerSyncError
+                      ? 'Unavailable'
+                      : !signerHasApplied
+                        ? 'No signer proof applied yet'
+                        : signerCheckpointStale
+                          ? `Stale at ${comma(signerLastApplied)}; scores are at ${comma(lastAppliedCheckpoint)}`
+                          : `Current at checkpoint ${comma(signerLastApplied)}`}
                   </SettingRow>
                   <SettingRow label="Signer verifier">
                     <ContractAddress value={signerVerifier} />
@@ -3134,9 +3411,6 @@ export const SettingsPage = ({
                         network.safeZodiacSignerSync.selectionParamsHash
                       }
                     />
-                  </SettingRow>
-                  <SettingRow label="Module score-params reference">
-                    <Hash value={signerParamsHash} />
                   </SettingRow>
                   <SettingRow label="Score snapshot">
                     <ContractAddress value={signerScoreSnapshot} />
@@ -3235,7 +3509,7 @@ export const SettingsPage = ({
                       '—'
                     )}
                   </SettingRow>
-                  <SettingRow label="Initial administrator">
+                  <SettingRow label="Current administrator">
                     {network.admin ? (
                       <Address address={network.admin} displayMode="auto" />
                     ) : (

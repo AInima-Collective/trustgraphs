@@ -1,0 +1,259 @@
+{
+  "inputs": [
+    {
+      "id": "network-name",
+      "type": null,
+      "font": "12px",
+      "coarse": true
+    },
+    {
+      "id": "network-image",
+      "type": null,
+      "font": "12px",
+      "coarse": true
+    },
+    {
+      "id": "network-application",
+      "type": null,
+      "font": "12px",
+      "coarse": true
+    }
+  ],
+  "invalid": {
+    "scrollY": 833,
+    "active": {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "Continue"
+    },
+    "nameRect": {
+      "x": 8,
+      "y": -422.234375,
+      "width": 304,
+      "height": 36,
+      "top": -422.234375,
+      "right": 312,
+      "bottom": -386.234375,
+      "left": 8
+    },
+    "invalid": null,
+    "describedBy": null,
+    "errors": [
+      "Your network needs a name."
+    ]
+  },
+  "saving": {
+    "viewport": 378,
+    "clientWidth": 320,
+    "scrollWidth": 378,
+    "buttons": [
+      {
+        "text": "Back",
+        "rect": {
+          "x": 8,
+          "y": 690.109375,
+          "width": 89.28125,
+          "height": 36,
+          "top": 690.109375,
+          "right": 97.28125,
+          "bottom": 726.109375,
+          "left": 8
+        }
+      },
+      {
+        "text": "Saving your description...",
+        "rect": {
+          "x": 105.28125,
+          "y": 690.109375,
+          "width": 272.328125,
+          "height": 36,
+          "top": 690.109375,
+          "right": 377.609375,
+          "bottom": 726.109375,
+          "left": 105.28125
+        }
+      }
+    ]
+  },
+  "next": {
+    "scrollY": 539,
+    "active": {
+      "tag": "BODY",
+      "id": "",
+      "text": "[omitted: entire document text; focus was on BODY]"
+    },
+    "heading": [
+      {
+        "text": "Who does your community already trust?",
+        "rect": {
+          "x": 8,
+          "y": -272.671875,
+          "width": 304,
+          "height": 24.875,
+          "top": -272.671875,
+          "right": 312,
+          "bottom": -247.796875,
+          "left": 8
+        }
+      }
+    ]
+  },
+  "scoring320": {
+    "viewport": 324,
+    "clientWidth": 320,
+    "scrollWidth": 324,
+    "ranges": [
+      {
+        "label": "How much scores lean on vouches",
+        "rect": {
+          "x": 96,
+          "y": 169.234375,
+          "width": 160,
+          "height": 16,
+          "top": 169.234375,
+          "right": 256,
+          "bottom": 185.234375,
+          "left": 96
+        },
+        "labelRect": {
+          "x": 8,
+          "y": 155.25,
+          "width": 72,
+          "height": 44,
+          "top": 155.25,
+          "right": 80,
+          "bottom": 199.25,
+          "left": 8
+        }
+      },
+      {
+        "label": "Head start for your starting accounts",
+        "rect": {
+          "x": 107.5625,
+          "y": 561.78125,
+          "width": 160,
+          "height": 16,
+          "top": 561.78125,
+          "right": 267.5625,
+          "bottom": 577.78125,
+          "left": 107.5625
+        },
+        "labelRect": {
+          "x": 25,
+          "y": 542.296875,
+          "width": 66.5625,
+          "height": 55,
+          "top": 542.296875,
+          "right": 91.5625,
+          "bottom": 597.296875,
+          "left": 25
+        }
+      },
+      {
+        "label": "Weight kept at each step away from a starting account",
+        "rect": {
+          "x": 107.5625,
+          "y": 746.5625,
+          "width": 160,
+          "height": 16,
+          "top": 746.5625,
+          "right": 267.5625,
+          "bottom": 762.5625,
+          "left": 107.5625
+        },
+        "labelRect": {
+          "x": 25,
+          "y": 710.578125,
+          "width": 66.5625,
+          "height": 88,
+          "top": 710.578125,
+          "right": 91.5625,
+          "bottom": 798.578125,
+          "left": 25
+        }
+      }
+    ]
+  },
+  "scoringLandscape": {
+    "viewport": 844,
+    "scrollWidth": 844
+  },
+  "simulateTrigger": {
+    "x": 445.984375,
+    "y": 859.640625,
+    "width": 114.5625,
+    "height": 32
+  },
+  "simulatePopup": [
+    {
+      "label": null,
+      "rect": {
+        "x": 270.546875,
+        "y": 214.640625,
+        "width": 290,
+        "height": 175.359375,
+        "top": 214.640625,
+        "right": 560.546875,
+        "bottom": 390,
+        "left": 270.546875
+      },
+      "clientHeight": 173,
+      "scrollHeight": 261,
+      "overflowY": "hidden",
+      "inputs": [
+        {
+          "value": "0.85",
+          "rect": {
+            "x": 419.546875,
+            "y": 272.640625,
+            "width": 128,
+            "height": 36,
+            "top": 272.640625,
+            "right": 547.546875,
+            "bottom": 308.640625,
+            "left": 419.546875
+          }
+        },
+        {
+          "value": "1",
+          "rect": {
+            "x": 419.546875,
+            "y": 324.640625,
+            "width": 128,
+            "height": 36,
+            "top": 324.640625,
+            "right": 547.546875,
+            "bottom": 360.640625,
+            "left": 419.546875
+          }
+        },
+        {
+          "value": "0.8",
+          "rect": {
+            "x": 419.546875,
+            "y": 378.640625,
+            "width": 128,
+            "height": 36,
+            "top": 378.640625,
+            "right": 547.546875,
+            "bottom": 414.640625,
+            "left": 419.546875
+          }
+        },
+        {
+          "value": "100",
+          "rect": {
+            "x": 419.546875,
+            "y": 432.640625,
+            "width": 128,
+            "height": 36,
+            "top": 432.640625,
+            "right": 547.546875,
+            "bottom": 468.640625,
+            "left": 419.546875
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -15,7 +15,6 @@ export const ENDORSEMENT_KINDS = [
   'agreement',
   'warning',
 ] as const
-export type EndorsementKind = (typeof ENDORSEMENT_KINDS)[number]
 export const ENDORSEMENT_STATUSES = [
   'unknown',
   'active',
@@ -33,10 +32,6 @@ export type EndorsementStatus = (typeof ENDORSEMENT_STATUSES)[number]
 export const LINEAGE_DOMAIN = keccak256(
   stringToHex('trustgraphs.graph-lineage.v1')
 )
-export const CONFIGURATION_DOMAIN = keccak256(
-  stringToHex('trustgraphs.graph-configuration.v1')
-)
-export const EPOCH_DOMAIN = keccak256(stringToHex('trustgraphs.graph-epoch.v1'))
 export const ENDORSEMENT_DOMAIN = keccak256(
   stringToHex('trustgraphs.graph-endorsement.v1')
 )
@@ -53,84 +48,6 @@ export const graphLineageId = (
       instanceRegistry,
       instanceId,
     ])
-  )
-
-export type ConfigurationIdentity = {
-  lineageId: Hex
-  version: bigint
-  programId: Hex
-  snapshot: Address
-  verifier: Address
-  registryOrAccumulator: Address
-  paramsHash: Hex
-  controller: Address
-  authority: Address
-  familyId: Hex
-  methodId: Hex
-  scopeHash: Hex
-  identityDomain: Hex
-  sourceLineagePolicyHash: Hex
-}
-
-export const graphConfigurationId = (config: ConfigurationIdentity) =>
-  keccak256(
-    encodeAbiParameters(
-      parseAbiParameters(
-        'bytes32,bytes32,uint64,bytes32,address,address,address,bytes32,address,address,bytes32,bytes32,bytes32,bytes32,bytes32'
-      ),
-      [
-        CONFIGURATION_DOMAIN,
-        config.lineageId,
-        config.version,
-        config.programId,
-        config.snapshot,
-        config.verifier,
-        config.registryOrAccumulator,
-        config.paramsHash,
-        config.controller,
-        config.authority,
-        config.familyId,
-        config.methodId,
-        config.scopeHash,
-        config.identityDomain,
-        config.sourceLineagePolicyHash,
-      ]
-    )
-  )
-
-export type EpochIdentity = {
-  lineageId: Hex
-  configurationId: Hex
-  checkpointId: bigint
-  freezeBlock: bigint
-  root: Hex
-  blobSha256: Hex
-  cidDigest: Hex
-  totalValue: bigint
-  acceptedAtBlock: bigint
-  programVKey: Hex
-}
-
-export const graphEpochId = (epoch: EpochIdentity) =>
-  keccak256(
-    encodeAbiParameters(
-      parseAbiParameters(
-        'bytes32,bytes32,bytes32,uint256,uint256,bytes32,bytes32,bytes32,uint256,uint256,bytes32'
-      ),
-      [
-        EPOCH_DOMAIN,
-        epoch.lineageId,
-        epoch.configurationId,
-        epoch.checkpointId,
-        epoch.freezeBlock,
-        epoch.root,
-        epoch.blobSha256,
-        epoch.cidDigest,
-        epoch.totalValue,
-        epoch.acceptedAtBlock,
-        epoch.programVKey,
-      ]
-    )
   )
 
 export const graphEndorsementId = (

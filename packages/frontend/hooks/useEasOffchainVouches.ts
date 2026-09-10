@@ -17,15 +17,14 @@ import {
   signEasV2Attestation,
   validateSignedBundle,
 } from '@trustgraphs/eas-offchain-client'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Address, type Hex, getAddress } from 'viem'
-import {
-  useAccount,
-  useChainId,
-  usePublicClient,
-  useSignTypedData,
-} from 'wagmi'
+import { useAccount, useConfig, usePublicClient } from 'wagmi'
 
+import {
+  assertApplicationChain,
+  signApplicationTypedData,
+} from '@/lib/application-transaction'
 import {
   type StrictLaneConfig,
   canonicalStrictNode,
@@ -36,7 +35,9 @@ import {
   readStrictNode,
 } from '@/lib/eas-offchain'
 import { parseErrorMessage } from '@/lib/error'
+import { type ReviewOperation, createReviewSession } from '@/lib/review-session'
 import type { Network } from '@/lib/types'
+import { getTargetChainConfig } from '@/lib/wagmi'
 
 export type OffchainAttestReview = {
   kind: 'attest'
@@ -91,6 +92,8 @@ export type OffchainSubmissionAudit = {
 }
 
 type PendingHead = {
+  reviewOperation: ReviewOperation
+  owner: Address
   review: OffchainHeadReview
   operation: DraftOperation
   payload: PayloadV1
@@ -143,14 +146,20 @@ const actionableRelayError = (failure: RelayFailure): string => {
 }
 
 export const useEasOffchainVouches = (network?: Network) => {
-  const { address, isConnected } = useAccount()
-  const chainId = useChainId()
-  const publicClient = usePublicClient()
-  const { signTypedDataAsync } = useSignTypedData()
+  const { address, isConnected, chainId: walletChainId } = useAccount()
+  const config = useConfig()
+  const targetChain = getTargetChainConfig()
+  const chainId = targetChain.id
+  const publicClient = usePublicClient({ chainId })
   const registry = network?.offchainLane?.registry
   const schemaUid = network?.schemas.find(
     (schema) => schema.key === 'vouching'
   )?.uid
+
+  const session = useRef(createReviewSession()).current
+  const attestOperation = useRef<ReviewOperation | null>(null)
+  const context = `${network?.id}:${registry}:${schemaUid}:${address}:${walletChainId}:${isConnected}`
+  session.setContext(context)
 
   const [attestReview, setAttestReview] = useState<OffchainAttestReview | null>(
     null
@@ -178,16 +187,21 @@ export const useEasOffchainVouches = (network?: Network) => {
       address
         ? {
             address,
-            signTypedData: (args) => signTypedDataAsync(args as never),
+            signTypedData: (args) =>
+              signApplicationTypedData(config, targetChain, {
+                ...args,
+                account: address,
+              }),
           }
         : undefined,
-    [address, signTypedDataAsync]
+    [address, config, targetChain]
   )
 
   const ensureLane = useCallback(async () => {
     if (!isConnected || !address || !wallet || !publicClient) {
       throw new Error('Connect an EOA wallet before editing this strict log.')
     }
+    await assertApplicationChain(config, targetChain, address)
     if (!registry || !schemaUid || !network?.offchainLane) {
       throw new Error(
         'This network does not have a strict off-chain vouch lane.'
@@ -234,6 +248,8 @@ export const useEasOffchainVouches = (network?: Network) => {
   }, [
     address,
     chainId,
+    config,
+    targetChain,
     isConnected,
     network,
     publicClient,
@@ -243,6 +259,7 @@ export const useEasOffchainVouches = (network?: Network) => {
   ])
 
   const refreshTimeline = useCallback(async () => {
+    const operation = session.capture()
     if (!registry || !schemaUid || !address) {
       setTimeline([])
       return []
@@ -253,6 +270,7 @@ export const useEasOffchainVouches = (network?: Network) => {
         owner: getAddress(address),
         schemaUid,
       })
+      operation.assertActive()
       if (!canonical.payload || !canonical.node) {
         setTimeline([])
         return []
@@ -266,6 +284,7 @@ export const useEasOffchainVouches = (network?: Network) => {
               ? 1
               : 0
         )
+      operation.assertActive()
       const bodies = entryBodyMap(canonical.payload)
       const active = new Set<string>()
       const rows = canonical.payload.entries.map((entry, sequence) => {
@@ -296,34 +315,48 @@ export const useEasOffchainVouches = (network?: Network) => {
       setTimeline(rows)
       return rows
     } catch (timelineError) {
+      if (!operation.active()) return []
       setError(parseErrorMessage(timelineError))
       return []
     }
-  }, [address, registry, schemaUid])
+  }, [address, registry, schemaUid, session])
 
   const reset = useCallback(() => {
+    session.invalidate()
+    attestOperation.current = null
     setAttestReview(null)
     setPendingHead(null)
     setBundle(null)
     setAudit(null)
     setError(null)
     setPhase('idle')
-  }, [])
+  }, [session])
+
+  useEffect(() => {
+    reset()
+    setTimeline([])
+    return () => session.invalidate()
+  }, [context, reset, session])
 
   const prepareAttest = useCallback(
     async (input: { recipient: Address; data: Hex }) => {
+      session.invalidate()
+      const operation = session.capture()
       setError(null)
       setAudit(null)
       setBundle(null)
       setPhase('loading-canonical')
       try {
         const { lane, owner } = await ensureLane()
+        operation.assertActive()
         await canonicalStrictNode({
           registry: lane.registry,
           owner,
           schemaUid: lane.schemaUid,
         })
+        operation.assertActive()
         const latestBlock = await publicClient!.getBlock({ blockTag: 'latest' })
+        operation.assertActive()
         const review: OffchainAttestReview = {
           kind: 'attest',
           version: 2,
@@ -343,29 +376,40 @@ export const useEasOffchainVouches = (network?: Network) => {
           data: input.data,
           salt: randomAttestationSalt(),
         }
+        attestOperation.current = operation
         setAttestReview(review)
         setPendingHead(null)
         setPhase('review-attestation')
       } catch (prepareError) {
+        if (!operation.active()) return
         setError(parseErrorMessage(prepareError))
         setPhase('idle')
         throw prepareError
       }
     },
-    [ensureLane, publicClient]
+    [ensureLane, publicClient, session]
   )
 
   const prepareHead = useCallback(
-    async (operation: DraftOperation, operationKind: 'attest' | 'revoke') => {
+    async (
+      operation: DraftOperation,
+      operationKind: 'attest' | 'revoke',
+      reviewOperation: ReviewOperation
+    ) => {
+      reviewOperation.assertActive()
       const { lane, owner } = await ensureLane()
+      reviewOperation.assertActive()
       const canonical = await canonicalStrictNode({
         registry: lane.registry,
         owner,
         schemaUid: lane.schemaUid,
       })
+      reviewOperation.assertActive()
       const payload = applyOperations(canonical.payload, owner, [operation])
       const next = buildNextMessage(payload, lane.schemaUid, canonical.live)
       setPendingHead({
+        reviewOperation,
+        owner,
         operation,
         payload,
         live: canonical.live,
@@ -384,11 +428,26 @@ export const useEasOffchainVouches = (network?: Network) => {
   )
 
   const signAttestation = useCallback(async () => {
-    if (!attestReview) return
+    if (!attestReview || !attestOperation.current) return
+    const operation = attestOperation.current
+    operation.assertActive()
     setError(null)
     setPhase('signing-attestation')
     try {
-      const { wallet } = await ensureLane()
+      const { wallet, lane, owner } = await ensureLane()
+      operation.assertActive()
+      if (
+        getAddress(attestReview.owner) !== owner ||
+        getAddress(attestReview.registry) !== getAddress(lane.registry) ||
+        attestReview.schema.toLowerCase() !== lane.schemaUid.toLowerCase() ||
+        attestReview.chainId !== BigInt(lane.chainId) ||
+        getAddress(attestReview.eas) !== getAddress(lane.eas) ||
+        attestReview.easVersion !== lane.easVersion
+      ) {
+        throw new Error(
+          'The prepared attestation belongs to a different wallet or network. Prepare it again.'
+        )
+      }
       const attestation = await signEasV2Attestation(
         {
           schema: attestReview.schema,
@@ -404,34 +463,44 @@ export const useEasOffchainVouches = (network?: Network) => {
         },
         wallet
       )
-      await prepareHead({ kind: 'attest', attestation }, 'attest')
+      operation.assertActive()
+      await prepareHead({ kind: 'attest', attestation }, 'attest', operation)
     } catch (signError) {
+      if (!operation.active()) return
       setError(parseErrorMessage(signError))
       setPhase('review-attestation')
       throw signError
     }
-  }, [attestReview, ensureLane, prepareHead])
+  }, [attestReview, ensureLane, prepareHead, session])
 
   const prepareRevoke = useCallback(
     async (uid: Hex) => {
+      session.invalidate()
+      const operation = session.capture()
       setError(null)
       setAudit(null)
       setBundle(null)
       setPhase('loading-canonical')
       try {
-        await prepareHead({ kind: 'revoke', uid }, 'revoke')
+        await prepareHead({ kind: 'revoke', uid }, 'revoke', operation)
       } catch (prepareError) {
+        if (!operation.active()) return
         setError(parseErrorMessage(prepareError))
         setPhase('idle')
         throw prepareError
       }
     },
-    [prepareHead]
+    [prepareHead, session]
   )
 
   const refreshAfterConflict = useCallback(
-    async (operation: DraftOperation, operationKind: 'attest' | 'revoke') => {
-      await prepareHead(operation, operationKind)
+    async (
+      operation: DraftOperation,
+      operationKind: 'attest' | 'revoke',
+      reviewOperation: ReviewOperation
+    ) => {
+      await prepareHead(operation, operationKind, reviewOperation)
+      reviewOperation.assertActive()
       setError(
         'Another append won the same-count race. The app reloaded the exact canonical CID and reapplied your signed operation. Review and sign the refreshed head; do not reuse the old head signature.'
       )
@@ -440,13 +509,15 @@ export const useEasOffchainVouches = (network?: Network) => {
   )
 
   const waitForFinalizedVerification = useCallback(
-    async (signed: SignedAnchorBundle) => {
+    async (signed: SignedAnchorBundle, operation: ReviewOperation) => {
       const expectedCount = BigInt(signed.message.count)
       for (let attempt = 0; attempt < 30; attempt += 1) {
+        operation.assertActive()
         const node = await readStrictNode(
           getAddress(signed.registry),
           getAddress(signed.owner)
         )
+        operation.assertActive()
         if (
           node?.verified &&
           BigInt(node.count) === expectedCount &&
@@ -455,7 +526,9 @@ export const useEasOffchainVouches = (network?: Network) => {
             signed.dataCommitment.toLowerCase()
         ) {
           await fetchExactOffchainPayload(signed.dataCommitment)
+          operation.assertActive()
           await validateSignedBundle(signed)
+          operation.assertActive()
           return node
         }
         await sleep(2_000)
@@ -466,9 +539,14 @@ export const useEasOffchainVouches = (network?: Network) => {
   )
 
   const verifyFinalizedBundle = useCallback(
-    async (signed: SignedAnchorBundle): Promise<boolean> => {
+    async (
+      signed: SignedAnchorBundle,
+      operation: ReviewOperation
+    ): Promise<boolean> => {
+      operation.assertActive()
       setPhase('anchored-awaiting-finality')
-      const finalized = await waitForFinalizedVerification(signed)
+      const finalized = await waitForFinalizedVerification(signed, operation)
+      operation.assertActive()
       if (!finalized) {
         setPhase('anchored-unverified')
         setError(
@@ -497,24 +575,45 @@ export const useEasOffchainVouches = (network?: Network) => {
   const retryFinalizedVerification = useCallback(async () => {
     if (!bundle) return
     setError(null)
-    await verifyFinalizedBundle(bundle)
-  }, [bundle, verifyFinalizedBundle])
+    const operation = session.capture()
+    try {
+      await verifyFinalizedBundle(bundle, operation)
+    } catch (error) {
+      if (operation.active()) throw error
+    }
+  }, [bundle, session, verifyFinalizedBundle])
 
   const signHeadAndSubmit = useCallback(async () => {
     if (!pendingHead) return
+    const operation = pendingHead.reviewOperation
+    operation.assertActive()
     setError(null)
     setPhase('signing-head')
     try {
-      const { owner, wallet } = await ensureLane()
+      const { owner, wallet, lane } = await ensureLane()
+      operation.assertActive()
+      if (
+        owner !== getAddress(pendingHead.owner) ||
+        getAddress(lane.registry) !== getAddress(pendingHead.lane.registry) ||
+        lane.schemaUid.toLowerCase() !==
+          pendingHead.lane.schemaUid.toLowerCase() ||
+        BigInt(lane.chainId) !== BigInt(pendingHead.lane.chainId)
+      ) {
+        throw new Error(
+          'The prepared head belongs to a different wallet or network. Prepare it again.'
+        )
+      }
       const canonical = await canonicalStrictNode({
         registry: pendingHead.lane.registry,
         owner,
         schemaUid: pendingHead.lane.schemaUid,
       })
+      operation.assertActive()
       if (!sameLive(canonical.live, pendingHead.live)) {
         await refreshAfterConflict(
           pendingHead.operation,
-          pendingHead.review.operation
+          pendingHead.review.operation,
+          operation
         )
         return
       }
@@ -543,7 +642,9 @@ export const useEasOffchainVouches = (network?: Network) => {
         registry: getAddress(pendingHead.lane.registry),
         wallet,
       })
+      operation.assertActive()
       await validateSignedBundle(signed)
+      operation.assertActive()
       setBundle(signed)
       setPhase('relay-storage')
 
@@ -556,6 +657,7 @@ export const useEasOffchainVouches = (network?: Network) => {
       let accepted = false
       let lastFailure: RelayFailure | undefined
       for (const relay of relays) {
+        operation.assertActive()
         let response: Response
         try {
           response = await fetch(`${relay}/v1/anchors`, {
@@ -564,6 +666,7 @@ export const useEasOffchainVouches = (network?: Network) => {
             body: JSON.stringify(signed),
           })
         } catch (relayNetworkError) {
+          operation.assertActive()
           lastFailure = {
             message: parseErrorMessage(relayNetworkError),
             retryable: true,
@@ -571,16 +674,19 @@ export const useEasOffchainVouches = (network?: Network) => {
           }
           continue
         }
+        operation.assertActive()
         if (response.ok) {
           accepted = true
           break
         }
         const failure = await relayFailure(response)
+        operation.assertActive()
         lastFailure = failure
         if (response.status === 409 || failure.action === 'reload') {
           await refreshAfterConflict(
             pendingHead.operation,
-            pendingHead.review.operation
+            pendingHead.review.operation,
+            operation
           )
           return
         }
@@ -591,8 +697,9 @@ export const useEasOffchainVouches = (network?: Network) => {
       }
 
       setPendingHead(null)
-      await verifyFinalizedBundle(signed)
+      await verifyFinalizedBundle(signed, operation)
     } catch (submitError) {
+      if (!operation.active()) return
       setError(parseErrorMessage(submitError))
       if (bundle || pendingHead) setPhase('review-head')
       else setPhase('idle')
@@ -602,6 +709,7 @@ export const useEasOffchainVouches = (network?: Network) => {
     bundle,
     ensureLane,
     pendingHead,
+    session,
     refreshAfterConflict,
     verifyFinalizedBundle,
   ])

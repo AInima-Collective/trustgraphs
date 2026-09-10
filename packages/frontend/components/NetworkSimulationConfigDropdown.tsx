@@ -24,6 +24,7 @@ export const NetworkSimulationConfigDropdown = ({
 
   return (
     <Popup
+      popupLabel="Simulate scores"
       position="left"
       popupClassName="!p-0"
       popupPadding={0}
@@ -35,7 +36,7 @@ export const NetworkSimulationConfigDropdown = ({
               open
                 ? 'outline'
                 : simulationConfig.enabled
-                  ? 'brand'
+                  ? 'default'
                   : 'secondary'
             }
             onClick={onClick}
@@ -49,6 +50,9 @@ export const NetworkSimulationConfigDropdown = ({
       }}
     >
       <Button
+        role="switch"
+        aria-label="Simulate scores"
+        aria-checked={simulationConfig.enabled}
         variant="ghost"
         className="!justify-between !rounded-none !px-3 !pt-2.5 !pb-2 !gap-4"
         size={null}
@@ -60,17 +64,7 @@ export const NetworkSimulationConfigDropdown = ({
         }
       >
         <span>{simulationConfig.enabled ? 'Enabled' : 'Disabled'}</span>
-        <Switch
-          onClick={(e) => {
-            e.stopPropagation()
-            setSimulationConfig((config) => ({
-              ...config,
-              enabled: !config.enabled,
-            }))
-          }}
-          size="md"
-          enabled={simulationConfig.enabled}
-        />
+        <Switch decorative size="md" enabled={simulationConfig.enabled} />
       </Button>
 
       {envelope0Verification && (
@@ -94,6 +88,7 @@ export const NetworkSimulationConfigDropdown = ({
           <InfoTooltip title="The proportion (0 to 1) of each attestation that carries over to the recipient—it's an artifact of the PageRank algorithm that minimizes the impact of cycles (e.g. spam rings) and speeds up convergence. Closer to 1 means less damping, closer to 0 means more damping." />
         </div>
         <Input
+          aria-label="Damping factor"
           value={simulationConfig.dampingFactor}
           onChange={(e) =>
             setSimulationConfig((config) => ({
@@ -115,6 +110,7 @@ export const NetworkSimulationConfigDropdown = ({
           <InfoTooltip title="The proportion (0 to 1) of initial weight distributed to trusted seeds. Any remainder is divided only among accounts reachable by a directed path from a trusted seed; disconnected accounts always receive zero." />
         </div>
         <Input
+          aria-label="Trust share"
           value={simulationConfig.trustShare}
           onChange={(e) =>
             setSimulationConfig((config) => ({
@@ -136,6 +132,7 @@ export const NetworkSimulationConfigDropdown = ({
           <InfoTooltip title="The factor (0 to 1) applied to an attester's weight (and thus their attestations) for each degree removed they are from a trusted seed. Closer to 1 means slower decay, closer to 0 means faster decay. For example: a trust decay of 0.8 means that an attester 3 degrees away from a trusted seed receives only 51.2% (0.8^3) of the weight that trusted seeds receive." />
         </div>
         <Input
+          aria-label="Trust decay"
           value={simulationConfig.trustDecay}
           onChange={(e) =>
             setSimulationConfig((config) => ({
@@ -157,6 +154,7 @@ export const NetworkSimulationConfigDropdown = ({
           <InfoTooltip title="The maximum number of iterations (≥ 1) the PageRank algorithm will run before stopping, if it fails to converge before then. Higher values mean more accurate results but slower computation—lower values mean the opposite. This should be increased for larger networks." />
         </div>
         <Input
+          aria-label="Maximum iterations"
           value={simulationConfig.maxIterations}
           onChange={(e) =>
             setSimulationConfig((config) => ({

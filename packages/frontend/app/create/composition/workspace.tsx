@@ -7,10 +7,12 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import {
   type Address,
   type Hex,
+  encodeFunctionData,
   formatEther,
   getAddress,
   isAddress,
@@ -28,13 +30,16 @@ import {
   useSwitchChain,
 } from 'wagmi'
 
+import { AlphaNotice } from '@/components/AlphaNotice'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
+import { DraftNotice } from '@/components/DraftNotice'
 import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
+import { useBrowserDraft } from '@/hooks/useBrowserDraft'
 import {
   CompositionApiUnavailableError,
   type CompositionCandidate,
@@ -68,8 +73,8 @@ import {
   type CompositionPreview,
   type CompositionSource,
   DEFAULT_COMPOSITION_SCOPE,
+  MAX_COMPOSITION_BOUNDS,
   MAX_SOURCE_AGE_BLOCKS,
-  V1_COMPOSITION_BOUNDS,
   compositionSimplex,
   computeCompositionPreview,
   exactEqualWeights,
@@ -87,6 +92,7 @@ import {
   TRUST_COMPOSE_CONFIG,
 } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
+import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
@@ -98,6 +104,7 @@ import {
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 
+import { type CompositionDraft, parseCompositionDraft } from '../advanced-draft'
 import {
   type NetworkMetadata,
   describeBlocks,
@@ -120,27 +127,42 @@ type Mode = 'create' | 'rotate'
  * mixing generations would read the floor from one factory and create through a wrapper that
  * enforces another. Rotation stays instance-scoped, so existing compositions are untouched.
  */
-const fastFactory = (FAST_TRUST_COMPOSE_CONFIG?.factory || '') as Address
-const fastGovernedFactory = (FAST_TRUST_COMPOSE_CONFIG?.governedFactory ||
+const factoryPair = (
+  pair: { factory?: string; governedFactory?: string } | undefined
+): { factory: Address; governedFactory: Address } | null => {
+  const factory = (pair?.factory || '') as Address
+  const governedFactory = (pair?.governedFactory || '') as Address
+  return isAddress(factory, { strict: false }) &&
+    isAddress(governedFactory, { strict: false })
+    ? { factory, governedFactory }
+    : null
+}
+// New compositions prefer the fast (EPOCH_FLOOR = 1) pair, whole pairs only: mixing pairs would
+// read the floor from one factory and create through a wrapper that enforces another.
+const selectedPair =
+  factoryPair(FAST_TRUST_COMPOSE_CONFIG) ?? factoryPair(TRUST_COMPOSE_CONFIG)
+const factory = (selectedPair?.factory ??
+  TRUST_COMPOSE_CONFIG?.factory ??
   '') as Address
-const useFastGeneration =
-  isAddress(fastFactory, { strict: false }) &&
-  isAddress(fastGovernedFactory, { strict: false })
-const factory = (
-  useFastGeneration ? fastFactory : TRUST_COMPOSE_CONFIG?.factory || ''
-) as Address
 const factoryAvailable = isAddress(factory, { strict: false })
-const governedFactory = (
-  useFastGeneration
-    ? fastGovernedFactory
-    : TRUST_COMPOSE_CONFIG?.governedFactory || ''
-) as Address
+const governedFactory = (selectedPair?.governedFactory ?? '') as Address
 const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
   return `0x${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+const cachePreview = (instanceId: Hex, preview: CompositionPreview) => {
+  try {
+    localStorage.setItem(
+      `trustgraphs:composition-preview:${instanceId.toLowerCase()}`,
+      JSON.stringify(anchorCompositionPreview(preview))
+    )
+  } catch {
+    // A confirmed transaction and any remaining setup must survive unavailable browser storage.
+  }
 }
 
 const rebalance = (sources: CompositionSource[]) => {
@@ -153,13 +175,23 @@ const rebalance = (sources: CompositionSource[]) => {
   }))
 }
 
-export const CompositionWorkspace = ({
-  settingsInstanceId,
-  embedded = false,
-}: {
+type CompositionWorkspaceProps = {
   settingsInstanceId?: Hex
   embedded?: boolean
-} = {}) => {
+}
+
+export const CompositionWorkspace = (props: CompositionWorkspaceProps = {}) => (
+  <CompositionWorkspaceForm
+    key={`${getTargetChainId()}:${props.settingsInstanceId ?? 'new'}`}
+    {...props}
+  />
+)
+
+const CompositionWorkspaceForm = ({
+  settingsInstanceId,
+  embedded = false,
+}: CompositionWorkspaceProps) => {
+  const router = useRouter()
   const { address, isConnected } = useAccount()
   const targetChainId = getTargetChainId()
   const chainId = useChainId()
@@ -185,7 +217,7 @@ export const CompositionWorkspace = ({
   } | null>(null)
   const [outputPool, setOutputPool] = useState('1000000000000000000000000')
   const [epochLength, setEpochLength] = useState('0')
-  const [salt] = useState<Hex>(randomWord)
+  const [salt, setSalt] = useState<Hex>(randomWord)
   // The fund and governance are structural creation-time features: they can only
   // be chosen here, so both are explicit switches rather than hidden defaults.
   const [withFund, setWithFund] = useState(false)
@@ -217,19 +249,26 @@ export const CompositionWorkspace = ({
     safe?: Hex
   } | null>(null)
 
+  const [draftCompleted, setDraftCompleted] = useState(false)
+  const [restoringSources, setRestoringSources] =
+    useState<CompositionDraft | null>(null)
+
   const { data: sourceAdapterFactory } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'SOURCE_ADAPTER_FACTORY',
     query: { enabled: factoryAvailable },
   })
   const { data: vault } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'VAULT',
     query: { enabled: factoryAvailable },
   })
   const { data: epochFloor } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'EPOCH_FLOOR',
@@ -239,6 +278,7 @@ export const CompositionWorkspace = ({
   // copy in the governance section: under governance a rotation waits through voting, execution,
   // AND this.
   const { data: policyActivationDelay } = useReadContract({
+    chainId: targetChainId,
     address: factoryAvailable ? factory : zeroAddress,
     abi: trustComposeFactoryAbi,
     functionName: 'POLICY_ACTIVATION_DELAY',
@@ -256,6 +296,7 @@ export const CompositionWorkspace = ({
     isLoading: instanceVaultAccountLoading,
     refetch: refetchInstanceVaultAccount,
   } = useReadContract({
+    chainId: targetChainId,
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
     functionName: 'accountOf',
@@ -267,6 +308,7 @@ export const CompositionWorkspace = ({
     isLoading: instanceVaultPolicyLoading,
     refetch: refetchInstanceVaultPolicy,
   } = useReadContract({
+    chainId: targetChainId,
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
     functionName: 'policyOf',
@@ -274,6 +316,7 @@ export const CompositionWorkspace = ({
     query: { enabled: vaultAvailable && !!settingsInstanceId },
   })
   const { data: conservativeFee } = useReadContract({
+    chainId: targetChainId,
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
     functionName: 'feePerRootUsd',
@@ -318,6 +361,7 @@ export const CompositionWorkspace = ({
   )
 
   const invalidate = (reason?: string) => {
+    setDraftCompleted(false)
     setPreview(null)
     setPreviewConfig(null)
     setPreviewError(reason ?? null)
@@ -416,7 +460,76 @@ export const CompositionWorkspace = ({
     invalidate(reason)
   }
 
+  const loadVerifiedSource = async (
+    candidate: CompositionCandidate,
+    retainedSources: CompositionSource[],
+    familyId?: Hex
+  ) => {
+    if (!publicClient) throw new Error('Target-chain RPC is unavailable.')
+    requireCompatibleCandidate(
+      candidate,
+      retainedSources.map((source) => ({
+        ...candidate,
+        instanceId: source.instanceId,
+        chainId: source.chainId.toString(),
+        snapshot: source.snapshot,
+        programId: source.programId,
+      }))
+    )
+    const provenanceEnabled = await publicClient.readContract({
+      address: candidate.snapshot,
+      abi: compositionSourceSnapshotAbi,
+      functionName: 'provenanceEnabled',
+    })
+    const count = await publicClient.readContract({
+      address: candidate.snapshot,
+      abi: compositionSourceSnapshotAbi,
+      functionName: 'getStateCount',
+    })
+    if (count === 0n)
+      throw new Error(`${candidate.name} has no accepted output yet.`)
+    const stateIndex = count - 1n
+    const [state, provenance] = await Promise.all([
+      publicClient.readContract({
+        address: candidate.snapshot,
+        abi: compositionSourceSnapshotAbi,
+        functionName: 'getStateAtIndex',
+        args: [stateIndex],
+      }),
+      publicClient.readContract({
+        address: candidate.snapshot,
+        abi: compositionSourceSnapshotAbi,
+        functionName: 'getStateProvenance',
+        args: [stateIndex],
+      }),
+    ])
+    const loaded = await fetchCompositionSource({
+      familyId,
+      api: APIS.ponder,
+      candidate,
+      chain: {
+        provenanceEnabled,
+        stateIndex,
+        checkpointId: provenance.checkpointId,
+        acceptedAtBlock: provenance.acceptedAtBlock,
+        freezeBlock: state.blockNumber,
+        outputRoot: state.root,
+        blobSha256: state.ipfsHash,
+        cid: state.ipfsHashCid,
+        totalValue: state.totalValue,
+        verifier: provenance.verifier,
+        paramsHash: provenance.paramsHash,
+      },
+    })
+    loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
+    return loaded
+  }
+
   const toggleCandidate = async (candidate: CompositionCandidate) => {
+    if (restoringSources)
+      return setProblem(
+        'Finish restoring saved sources or discard the saved selection first.'
+      )
     const existing = sources.find(
       (source) => source.instanceId === candidate.instanceId
     )
@@ -430,75 +543,14 @@ export const CompositionWorkspace = ({
       return
     }
     if (!publicClient) return setProblem('Target-chain RPC is unavailable.')
-    const switchingProgram =
-      sources.length > 0 &&
-      candidate.chainId === sources[0]!.chainId.toString() &&
-      candidate.programId.toLowerCase() !== sources[0]!.programId.toLowerCase()
-    const retainedSources = switchingProgram ? [] : sources
+    // Standard and weighted TrustGraph sources blend in one composition, so a
+    // cross-type pick keeps the current selection.
+    const retainedSources = sources
     setLoadingSource(candidate.instanceId)
     setProblem(null)
     try {
-      requireCompatibleCandidate(
-        candidate,
-        retainedSources.map((source) => ({
-          ...candidate,
-          instanceId: source.instanceId,
-          chainId: source.chainId.toString(),
-          snapshot: source.snapshot,
-          programId: source.programId,
-        }))
-      )
-      const provenanceEnabled = await publicClient.readContract({
-        address: candidate.snapshot,
-        abi: compositionSourceSnapshotAbi,
-        functionName: 'provenanceEnabled',
-      })
-      const count = await publicClient.readContract({
-        address: candidate.snapshot,
-        abi: compositionSourceSnapshotAbi,
-        functionName: 'getStateCount',
-      })
-      if (count === 0n)
-        throw new Error(`${candidate.name} has no accepted output yet.`)
-      const stateIndex = count - 1n
-      const [state, provenance] = await Promise.all([
-        publicClient.readContract({
-          address: candidate.snapshot,
-          abi: compositionSourceSnapshotAbi,
-          functionName: 'getStateAtIndex',
-          args: [stateIndex],
-        }),
-        publicClient.readContract({
-          address: candidate.snapshot,
-          abi: compositionSourceSnapshotAbi,
-          functionName: 'getStateProvenance',
-          args: [stateIndex],
-        }),
-      ])
-      const loaded = await fetchCompositionSource({
-        api: APIS.ponder,
-        candidate,
-        chain: {
-          provenanceEnabled,
-          stateIndex,
-          checkpointId: provenance.checkpointId,
-          acceptedAtBlock: provenance.acceptedAtBlock,
-          freezeBlock: state.blockNumber,
-          outputRoot: state.root,
-          blobSha256: state.ipfsHash,
-          cid: state.ipfsHashCid,
-          totalValue: state.totalValue,
-          verifier: provenance.verifier,
-          paramsHash: provenance.paramsHash,
-        },
-      })
-      loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
-      setSelected(
-        rebalance([...retainedSources, loaded]),
-        switchingProgram
-          ? `Switched to ${candidate.programName} sources. Add at least one more graph of this score type.`
-          : undefined
-      )
+      const loaded = await loadVerifiedSource(candidate, retainedSources)
+      setSelected(rebalance([...retainedSources, loaded]))
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -522,6 +574,111 @@ export const CompositionWorkspace = ({
     )
   }
 
+  const restoreSources = async (saved: CompositionDraft) => {
+    setRestoringSources(saved)
+    setBusy(true)
+    setProblem(null)
+    try {
+      // Resolve choices against fresh catalog and target-chain state. No cached proof or adapter
+      // is accepted from browser storage, and the exact preview must be rebuilt afterwards.
+      const catalogResult = await fetchCompositionCandidates(APIS.ponder)
+      setCatalog(catalogResult.candidates)
+      setCatalogWarnings(catalogResult.warnings)
+      setApiUnavailable(false)
+      const restored: CompositionSource[] = []
+      for (const choice of saved.sources) {
+        const candidate = catalogResult.candidates.find(
+          (item) =>
+            item.instanceId.toLowerCase() === choice.instanceId.toLowerCase()
+        )
+        if (!candidate)
+          throw new Error(
+            `Saved source ${short(choice.instanceId)} is unavailable. Retry when indexing recovers, or discard the saved selection.`
+          )
+        const source = await loadVerifiedSource(
+          candidate,
+          restored,
+          choice.familyId as Hex
+        )
+        restored.push({
+          ...source,
+          weight: BigInt(choice.weight),
+          maxAgeBlocks: BigInt(choice.maxAgeBlocks),
+        })
+      }
+      setSelected(
+        restored,
+        'Saved choices restored with current source data. Rebuild the preview and simulate before signing.'
+      )
+      setRestoringSources(null)
+    } catch (error) {
+      setProblem(
+        `Saved inputs are restored, but the source selection needs checking: ${parseErrorMessage(error)}`
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const draft = useBrowserDraft({
+    storageKey: `trustgraphs:creation:composition:${targetChainId}:${settingsInstanceId ?? 'new'}:${mode}`,
+    value: {
+      salt,
+      name,
+      profile,
+      outputPool,
+      epochLength,
+      withFund,
+      fundToken,
+      fundTokenAddress,
+      withGovernance,
+      prepayEth,
+      maxPerRootUsd,
+      sources:
+        restoringSources?.sources ??
+        sources.map((source) => ({
+          instanceId: source.instanceId,
+          weight: source.weight.toString(),
+          familyId: source.familyId,
+          maxAgeBlocks: source.maxAgeBlocks.toString(),
+        })),
+    },
+    parse: parseCompositionDraft,
+    meaningful:
+      !!name.trim() ||
+      hasNetworkProfile(profile) ||
+      sources.length > 0 ||
+      !!restoringSources ||
+      withFund ||
+      withGovernance ||
+      !!prepayEth ||
+      outputPool !== '1000000000000000000000000' ||
+      epochLength !== '0' ||
+      fundToken !== 'eth' ||
+      !!fundTokenAddress ||
+      maxPerRootUsd !== DEFAULT_MAX_PER_ROOT_USD,
+    completed: draftCompleted,
+    onRestore: (saved) => {
+      invalidate()
+      setPinnedMetadata(null)
+      setSources([])
+      setTransactionProblem(null)
+      setBillingProblem(null)
+      setName(saved.name)
+      setProfile(saved.profile)
+      setSalt(saved.salt as Hex)
+      setOutputPool(saved.outputPool)
+      setEpochLength(saved.epochLength)
+      setWithFund(saved.withFund)
+      setFundToken(saved.fundToken)
+      setFundTokenAddress(saved.fundTokenAddress)
+      setWithGovernance(saved.withGovernance)
+      setPrepayEth(saved.prepayEth)
+      setMaxPerRootUsd(saved.maxPerRootUsd)
+      if (saved.sources.length) void restoreSources(saved)
+    },
+  })
+
   const buildPreview = async () => {
     setProblem(null)
     setPreviewError(null)
@@ -533,10 +690,8 @@ export const CompositionWorkspace = ({
         chainId: BigInt(targetChainId),
         captureBlock,
         scopeHash: DEFAULT_COMPOSITION_SCOPE,
-        admittedProgramId:
-          sources[0]?.programId ?? (`0x${'00'.repeat(32)}` as Hex),
         outputPool: BigInt(outputPool),
-        bounds: V1_COMPOSITION_BOUNDS,
+        bounds: MAX_COMPOSITION_BOUNDS,
         sources: structuredClone(sources),
       }
       const exact = computeCompositionPreview(next)
@@ -965,7 +1120,7 @@ export const CompositionWorkspace = ({
           throw new Error('Cancel or activate the pending policy first.')
         const adapters = compositionSourceAdapters(previewConfig.sources)
         await publicClient.simulateContract({
-          account: address,
+          account: instance?.governance?.safe ?? address,
           address: active.controller,
           abi: trustComposeParamsControllerAbi,
           functionName: 'proposePolicy',
@@ -1011,7 +1166,7 @@ export const CompositionWorkspace = ({
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
               } as any)
-            : {
+            : ({
                 address: factory,
                 abi: trustComposeFactoryAbi,
                 functionName: 'createInstance',
@@ -1019,7 +1174,7 @@ export const CompositionWorkspace = ({
                   compositionCreateArgs(createFields, previewConfig, preview),
                 ],
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
-              },
+              } as any),
           successMessage: withGovernance
             ? 'Composition created; its Safe holds it from the first block.'
             : 'Composition created.',
@@ -1038,6 +1193,7 @@ export const CompositionWorkspace = ({
           logs: receipt.logs,
         })
         const created = createdEvent?.args.instanceId
+        setDraftCompleted(true)
         setSuccess({
           message: created
             ? prepayWei > 0n && !withGovernance
@@ -1048,10 +1204,7 @@ export const CompositionWorkspace = ({
           safe: governedEvent?.args.safe,
         })
         if (created) {
-          localStorage.setItem(
-            `trustgraphs:composition-preview:${created.toLowerCase()}`,
-            JSON.stringify(anchorCompositionPreview(preview))
-          )
+          cachePreview(created, preview)
         }
         if (prepayWei > 0n && !withGovernance) {
           if (!created || !initialPolicy) {
@@ -1075,6 +1228,32 @@ export const CompositionWorkspace = ({
       } else {
         if (!active) throw new Error('Load an active composition policy first.')
         const adapters = compositionSourceAdapters(previewConfig.sources)
+        if (instance?.governance) {
+          const fingerprint = keccak256(payload)
+          saveGovernancePrefill({
+            version: 2,
+            networkId: instance.id,
+            fingerprint,
+            title: 'Change composition source policy',
+            description:
+              'Replace the composition’s source weights and authenticated adapters with the reviewed policy. If governance executes this proposal, the controller’s separate activation delay must still elapse before activation.',
+            actions: [
+              {
+                actionKey: 'propose-composition-policy',
+                values: {
+                  manifest: preview.policyManifest,
+                  adapters,
+                  metadataDigest: compositionMetadataDigest(preview, adapters),
+                },
+              },
+            ],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${instance.id}/governance/new?actionDraft=${fingerprint}`
+          )
+          return
+        }
         await txToast({
           tx: {
             address: active.controller,
@@ -1089,15 +1268,13 @@ export const CompositionWorkspace = ({
           successMessage:
             'Composition policy proposed; the timelock is running.',
         })
+        setDraftCompleted(true)
         setSuccess({
           message:
             'Pending policy proposed. Reload to inspect its receipt and ready time.',
         })
         if (instance) {
-          localStorage.setItem(
-            `trustgraphs:composition-preview:${instance.id.toLowerCase()}`,
-            JSON.stringify(anchorCompositionPreview(preview))
-          )
+          cachePreview(instance.id, preview)
         }
         await loadRotation()
       }
@@ -1139,6 +1316,26 @@ export const CompositionWorkspace = ({
           successMessage: `Composition policy ${pending.version} activated.`,
         })
       } else {
+        if (instance?.governance) {
+          const data = encodeFunctionData({
+            abi: trustComposeParamsControllerAbi,
+            functionName: 'cancelPolicy',
+          })
+          const fingerprint = keccak256(data)
+          saveGovernancePrefill({
+            version: 2,
+            networkId: instance.id,
+            fingerprint,
+            title: `Cancel composition policy ${pending.version}`,
+            description: `Cancel the currently pending composition policy version ${pending.version}.`,
+            actions: [{ actionKey: 'cancel-composition-policy', values: {} }],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${instance.id}/governance/new?actionDraft=${fingerprint}`
+          )
+          return
+        }
         await txToast({
           tx: {
             address: pending.controller,
@@ -1166,6 +1363,36 @@ export const CompositionWorkspace = ({
       const cap = parseVaultUsd(maxPerRootUsd)
       if (!cap) throw new Error('Set a nonzero maximum per refresh.')
       const interval = BigInt(instance.epochLength)
+      if (instance.governance) {
+        const data = encodeFunctionData({
+          abi: compositionVaultAbi,
+          functionName: 'setPolicy',
+          args: [settingsInstanceId, interval, cap],
+        })
+        const fingerprint = keccak256(data)
+        saveGovernancePrefill({
+          version: 2,
+          networkId: instance.id,
+          fingerprint,
+          title: 'Enable paid composition refreshes',
+          description:
+            'Set the proving-vault cadence and maximum payout for this governed composition.',
+          actions: [
+            {
+              actionKey: 'set-vault-policy',
+              values: {
+                minPaidIntervalBlocks: interval.toString(),
+                maxPerRootUsd: cap.toString(),
+              },
+            },
+          ],
+          createdAt: Date.now(),
+        })
+        router.push(
+          `/networks/${instance.id}/governance/new?actionDraft=${fingerprint}`
+        )
+        return
+      }
       await configurePaidRefreshes(settingsInstanceId, {
         minPaidIntervalBlocks: interval,
         maxPerRootUsd: cap,
@@ -1208,6 +1435,43 @@ export const CompositionWorkspace = ({
           </p>
         </header>
       )}
+      {!embedded && mode === 'create' && <AlphaNotice />}
+      <DraftNotice
+        pending={!!draft.pending}
+        status={draft.status}
+        onRestore={draft.restore}
+        onDiscard={draft.discard}
+      />
+      {restoringSources && (
+        <Card type="outline" size="md" className="space-y-3">
+          <p role="status" className="text-sm">
+            {busy
+              ? 'Checking saved sources against current proven scores…'
+              : 'Saved source choices are retained. Recheck them to continue, or choose sources again.'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void restoreSources(restoringSources)}
+            >
+              Retry saved sources
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setRestoringSources(null)
+                setProblem(null)
+              }}
+            >
+              Discard saved selection
+            </Button>
+          </div>
+        </Card>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={loadCatalog}>
           <RefreshCw className="mr-2 h-4 w-4" /> Refresh sources
@@ -1224,7 +1488,7 @@ export const CompositionWorkspace = ({
         </Card>
       )}
       {catalogWarnings.map((warning) => (
-        <p key={warning} className="text-sm text-amber-700">
+        <p key={warning} className="text-sm text-warning">
           {warning}
         </p>
       ))}
@@ -1344,7 +1608,7 @@ export const CompositionWorkspace = ({
                 per refresh.
               </p>
             ) : instanceVaultEth > 0n ? (
-              <p className="text-amber-700">
+              <p className="text-warning">
                 This composition is funded, but paid refreshes are disabled. The
                 operator cannot spend the deposited ETH until you enable a
                 per-refresh limit below.
@@ -1419,9 +1683,9 @@ export const CompositionWorkspace = ({
             1. Compatible same-chain sources
           </h2>
           <p className="text-sm text-muted-foreground">
-            Choose 2–8 graphs from the same chain and score type. Standard and
-            weighted-score graphs are both supported; V1 keeps their source
-            types in separate compositions.
+            Choose 2–8 graphs from the same chain. Standard and weighted-score
+            graphs blend in one composition; each source keeps its own program
+            and provenance.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -1432,10 +1696,6 @@ export const CompositionWorkspace = ({
             const differentChain =
               sources.length > 0 &&
               candidate.chainId !== sources[0]!.chainId.toString()
-            const differentProgram =
-              sources.length > 0 &&
-              candidate.programId.toLowerCase() !==
-                sources[0]!.programId.toLowerCase()
             const sourceEligibility =
               eligibility[candidate.snapshot.toLowerCase()]
             const ineligible =
@@ -1463,9 +1723,7 @@ export const CompositionWorkspace = ({
                     disabled={
                       !!loadingSource ||
                       (!selected &&
-                        (differentChain ||
-                          ineligible ||
-                          (!differentProgram && sources.length >= 8)))
+                        (differentChain || ineligible || sources.length >= 8))
                     }
                     onClick={() => toggleCandidate(candidate)}
                   >
@@ -1473,8 +1731,6 @@ export const CompositionWorkspace = ({
                       <LoaderCircle className="h-4 w-4 animate-spin" />
                     ) : selected ? (
                       'Remove'
-                    ) : differentProgram ? (
-                      'Use this score type'
                     ) : (
                       'Add'
                     )}
@@ -1486,14 +1742,6 @@ export const CompositionWorkspace = ({
                 {!selected && sourceEligibility?.detail && (
                   <p className="text-xs text-muted-foreground">
                     {sourceEligibility.detail}
-                  </p>
-                )}
-                {!selected && differentProgram && !differentChain && (
-                  <p className="text-xs text-muted-foreground">
-                    This graph is compatible, but it uses{' '}
-                    {candidate.programName} scores. Selecting it starts a
-                    composition of that score type and clears the current source
-                    selection.
                   </p>
                 )}
               </Card>
@@ -1673,6 +1921,7 @@ export const CompositionWorkspace = ({
                 <Switch
                   size="md"
                   enabled={withFund}
+                  aria-label="Add a shared fund"
                   readOnly={!governedAvailable}
                   onClick={() => {
                     if (!governedAvailable) return
@@ -1771,6 +2020,7 @@ export const CompositionWorkspace = ({
                 <Switch
                   size="md"
                   enabled={withGovernance}
+                  aria-label="Create with governance"
                   readOnly={!governedAvailable || (withFund && withGovernance)}
                   onClick={() => {
                     if (!governedAvailable || (withFund && withGovernance))

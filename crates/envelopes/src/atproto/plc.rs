@@ -25,7 +25,7 @@ pub const RECOVERY_WINDOW_SECS: u64 = 72 * 3600;
 /// metadata (creation time, nullification).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlcOpWitness {
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub op_bytes: Vec<u8>,
     /// Directory-attested creation time (unix seconds).
     pub created_at: u64,
@@ -341,19 +341,4 @@ pub fn verify_chain(did: &str, ops: &[PlcOpWitness]) -> Result<VerifiedIdentity,
         .and_then(|r| r.ok());
 
     Ok(VerifiedIdentity { atproto_key, provisional_prev_key, tip_created_at: ops[tip].created_at })
-}
-
-/// Minimal `serde` helper so byte fields round-trip as `0x`-hex in fixtures.
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        let s = s.strip_prefix("0x").unwrap_or(&s);
-        alloy_primitives::hex::decode(s).map_err(serde::de::Error::custom)
-    }
 }

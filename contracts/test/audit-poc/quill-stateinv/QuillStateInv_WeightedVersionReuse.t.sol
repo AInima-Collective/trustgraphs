@@ -58,7 +58,8 @@ contract QuillStateInv_WeightedVersionReuse is Test {
             paramsHash,
             IAttestationAccumulator(address(accumulator)),
             address(this),
-            address(this)
+            address(this),
+            ""
         );
 
         controller = new WeightedPriorParamsController(

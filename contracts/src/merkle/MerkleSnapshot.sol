@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
@@ -14,17 +15,32 @@ import {IAnchorWorkRegistry} from "interfaces/registry/IAnchorWorkRegistry.sol";
 /// @title MerkleSnapshot
 /// @notice Merkle-root snapshotter for trustgraphs. The `{account => score}` root is produced by a
 ///         permissionless zero-knowledge proof of correct fixed-point Trust-Aware PageRank
-///         (`submitProof`) instead of a WAVS operator quorum. A proof binds:
+///         (`submitProof`). A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint, and
 ///           (b) the governance-pinned `paramsHash`,
 ///         then writes through the same historical-state path every consumer already reads.
 /// @dev Two-tier authority (AccessControl + timelocks): CONSTITUTIONAL_ROLE owns the truth-defining
-///      knobs (`zkVerifier`, `accumulator`); OPERATIONAL_ROLE owns `paramsHash`. See ZK_ARCHITECTURE.md.
-contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessControl {
+///      knobs (`zkVerifier`, `accumulator`); OPERATIONAL_ROLE owns `paramsHash`.
+///
+///      An instance ingests up to two input lanes, frozen together by `trigger()`: lane 1 is the
+///      on-chain EAS attestation accumulator, and lane 2 is an optional anchored off-chain
+///      envelope log (`anchorRegistry`). See research/ZK_ARCHITECTURE.md and
+///      research/OFFCHAIN_ATTESTATIONS_ZK.md.
+contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessControl, ReentrancyGuard {
     /// @notice Owns `zkVerifier` and `accumulator` — changes what "correct PageRank" means.
     bytes32 public constant CONSTITUTIONAL_ROLE = keccak256("CONSTITUTIONAL_ROLE");
     /// @notice Owns `paramsHash` — governance-cadence parameter changes.
     bytes32 public constant OPERATIONAL_ROLE = keccak256("OPERATIONAL_ROLE");
+
+    /// @notice Maximum encoded length of the presentation document URI.
+    uint256 public constant MAX_METADATA_URI_BYTES = 512;
+
+    /// @notice Current presentation-only IPFS document for this instance.
+    /// @dev Neither this value nor its revision/hash enters a proof journal, checkpoint, root, or
+    ///      params commitment. Revision zero is initialized by the factory at construction.
+    string public metadataURI;
+    bytes32 public metadataURIHash;
+    uint64 public metadataRevision;
 
     /// @notice Number of live constitutional authorities. Never allowed to reach zero.
     uint256 public constitutionalHolderCount;
@@ -36,7 +52,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice The chained-hash accumulator over the attestation log (source of checkpoints).
     IAttestationAccumulator public accumulator;
 
-    /// @notice Lane-2 anchor log (OFFCHAIN doc §4). Zero address = lane-1-only instance: trigger
+    /// @notice Lane-2 anchor log. Zero address = lane-1-only instance: trigger
     ///         checkpoints the empty lane as the zero accumulator and the guest asserts the empty
     ///         fold (empty-lane-as-zero — one journal shape for every instance).
     IAnchorRegistry public anchorRegistry;
@@ -51,13 +67,13 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(uint256 checkpointId => AnchorCheckpoint) public anchorCheckpoints;
 
     /// @notice Checkpointed lane-2 work units used for operator admission and vault pricing.
-    /// @dev This is additive: `anchorCheckpoints` and journal v3 remain unchanged. Registries that
+    /// @dev `anchorCheckpoints` and the journal are unchanged by this record. Registries that
     ///      do not expose `IAnchorWorkRegistry.workCount()` checkpoint their raw anchor count.
     mapping(uint256 checkpointId => uint64 workCount) public checkpointWorkCount;
 
     /// @notice Contract-fixed epoch schedule in blocks; 0 = unscheduled (lane-1-only default).
     ///         A nonzero schedule is anchored when configured; callers consume its boundaries but
-    ///         cannot move the phase by triggering late (OFFCHAIN doc §4.1).
+    ///         cannot move the phase by triggering late (research/OFFCHAIN_ATTESTATIONS_ZK.md §4.1).
     uint64 public epochLength;
 
     /// @notice Origin of the current nonzero epoch schedule. Zero while unscheduled.
@@ -84,6 +100,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     ///         bug (§5.5), and pinning would let proofs under a known-broken verifier keep landing.
     mapping(uint256 checkpointId => bytes32 paramsHash) public checkpointParamsHash;
 
+    /// @notice Verifier configured when a checkpoint froze, used only to detect configuration changes.
+    /// @dev This is NOT an acceptance pin: proofs always use the live verifier, including emergency
+    ///      replacements. Replacing the verifier permits recomputation even when both lanes are quiet.
+    mapping(uint256 checkpointId => address verifier) public checkpointVerifier;
+
     /// @notice Next checkpoint id this snapshot requires its accumulator to return.
     /// @dev Prevents a malformed/re-pointed accumulator from reusing or skipping ids and thereby
     ///      overwriting checkpoint-bound parameter or anchor commitments.
@@ -109,11 +130,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(uint256 stateIndex => MerkleState state) public states;
 
     /// @notice Proof/configuration provenance parallel to `states`.
-    /// @dev Added without changing `MerkleState`, preserving every existing consumer ABI.
+    /// @dev Kept beside `MerkleState` so consumers of the plain state tuple never decode it.
     mapping(uint256 stateIndex => StateProvenance provenance) private _stateProvenance;
 
-    /// @notice Append-only accepted checkpoint history for provenance consumers. The legacy
-    ///         block-indexed state view may replace a slot when two freezes share one block; this
+    /// @notice Append-only accepted checkpoint history for provenance consumers. The
+    ///         block-indexed `states` view may replace a slot when two freezes share one block; this
     ///         parallel record never does.
     mapping(uint256 checkpointId => MerkleState state) private _acceptedCheckpointStates;
     mapping(uint256 checkpointId => StateProvenance provenance) private _acceptedCheckpointProvenance;
@@ -139,8 +160,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(IMerkleSnapshotHook hook => uint256 hookIndex) public hookIndex;
     /// @notice One past the last live hook. Starts at 1 since 0 is the membership sentinel.
     uint64 public nextHookIndex = 1;
-    /// @notice The number of hooks.
-    uint64 public hookCount;
 
     /// @notice Per-hook gas budget for `onMerkleUpdate`. Ample for a legitimate consumer's state
     ///         writes while bounding a griefing hook; a hook that exceeds it is skipped, not fatal.
@@ -151,12 +170,15 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @param _accumulator The attestation accumulator that produces checkpoints.
     /// @param constitutionalAdmin Authority (e.g. long-timelock) over the truth-defining knobs.
     /// @param operationalAdmin Authority (e.g. short-timelock) over `paramsHash`.
+    /// @param initialMetadataURI Initial presentation document, or empty when this low-level
+    ///        snapshot is intentionally created without a public profile.
     constructor(
         IZkVerifier _zkVerifier,
         bytes32 _paramsHash,
         IAttestationAccumulator _accumulator,
         address constitutionalAdmin,
-        address operationalAdmin
+        address operationalAdmin,
+        string memory initialMetadataURI
     ) {
         if (
             address(_zkVerifier) == address(0) || address(_accumulator) == address(0)
@@ -168,6 +190,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         zkVerifier = _zkVerifier;
         paramsHash = _paramsHash;
         accumulator = _accumulator;
+        metadataURIHash = _validateMetadataURI(initialMetadataURI, true);
+        metadataURI = initialMetadataURI;
 
         // Constitutional role administers both roles (an operational compromise cannot escalate).
         _setRoleAdmin(CONSTITUTIONAL_ROLE, CONSTITUTIONAL_ROLE);
@@ -179,6 +203,35 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /*///////////////////////////////////////////////////////////////
                         GOVERNANCE (two-tier)
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Replace the presentation-only IPFS document. Constitutional governance only.
+    function setMetadataURI(string calldata nextMetadataURI) external onlyRole(CONSTITUTIONAL_ROLE) {
+        bytes32 nextHash = _validateMetadataURI(nextMetadataURI, false);
+        bytes32 previousHash = metadataURIHash;
+        if (nextHash == previousHash) revert MetadataURIUnchanged(nextHash);
+
+        uint64 nextRevision = metadataRevision + 1;
+        metadataRevision = nextRevision;
+        metadataURIHash = nextHash;
+        metadataURI = nextMetadataURI;
+
+        emit MetadataURIUpdated(nextRevision, msg.sender, nextHash, previousHash, nextMetadataURI);
+    }
+
+    function _validateMetadataURI(string memory candidate, bool allowEmpty) internal pure returns (bytes32 digest) {
+        bytes memory encoded = bytes(candidate);
+        uint256 length = encoded.length;
+        if (length == 0) {
+            if (!allowEmpty) revert EmptyMetadataURI();
+            return keccak256(encoded);
+        }
+        if (length > MAX_METADATA_URI_BYTES) revert MetadataURITooLong(length, MAX_METADATA_URI_BYTES);
+        if (
+            length < 7 || encoded[0] != "i" || encoded[1] != "p" || encoded[2] != "f" || encoded[3] != "s"
+                || encoded[4] != ":" || encoded[5] != "/" || encoded[6] != "/"
+        ) revert InvalidMetadataURIScheme();
+        digest = keccak256(encoded);
+    }
 
     /// @notice Begin an explicit two-step handoff of the caller's constitutional authority.
     /// @dev Direct multi-holder grants remain available, but the last holder can only move through
@@ -258,11 +311,10 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Update the accumulator before this snapshot has frozen any checkpoints.
     /// @dev Post-checkpoint rotation is deliberately forbidden in v1. It could otherwise reuse
     ///      checkpoint ids and introduce lower freeze blocks, corrupting pinned commitments and
-    ///      binary-search history. Recover by deploying a new snapshot and migrating the vault
-    ///      binding; a future generation-aware migration can replace this fail-closed rule.
+    ///      binary-search history. Recovery is a fresh snapshot with a fresh vault binding.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
-        if (_accumulator == accumulator) {
+        if (address(_accumulator) == address(accumulator)) {
             emit AccumulatorUpdated(address(_accumulator));
             return;
         }
@@ -297,7 +349,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Set (or clear) the lane-2 anchor registry (constitutional — it changes which
     ///         inputs "the graph" means, exactly like the accumulator knob).
     function setAnchorRegistry(IAnchorRegistry _anchorRegistry) external onlyRole(CONSTITUTIONAL_ROLE) {
-        if (_anchorRegistry == anchorRegistry) {
+        if (address(_anchorRegistry) == address(anchorRegistry)) {
             emit AnchorRegistryUpdated(address(_anchorRegistry));
             return;
         }
@@ -351,7 +403,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     ///         schedule is set, only at or past a fixed boundary. A late trigger consumes the
     ///         boundary for its current epoch rather than moving every future boundary.
     /// @return checkpointId The id of the new checkpoint (provers watch InputsCheckpointed).
-    function trigger() external returns (uint256 checkpointId) {
+    function trigger() external nonReentrant returns (uint256 checkpointId) {
         if (epochLength > 0 && block.number < uint256(lastTriggerBlock) + epochLength) {
             revert EpochNotElapsed(lastTriggerBlock, epochLength);
         }
@@ -362,7 +414,10 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             consumedBoundary = uint64(uint256(epochOriginBlock) + elapsedEpochs * epochLength);
         }
 
-        // Refuse to freeze a checkpoint identical to the last one, across BOTH lanes.
+        // Refuse an unchanged input/configuration checkpoint. New parameters or a replacement
+        // verifier are legitimate reasons to recompute a quiet graph. Vault payment identity is
+        // separately derived from the accepted statement, so rotating back to an already-proven
+        // configuration cannot pay twice for the same work.
         //
         // Lane accumulators deliberately do not make this decision: a strict lane-2 append must
         // checkpoint even when lane 1 is byte-identical, `TrustAccumulatorMirror` must let a
@@ -376,9 +431,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         //
         // Checking here rather than in each accumulator is what makes it total: `trigger()` is the
         // only minter (the accumulators are bound to their snapshot), and it is the only place that
-        // sees both lanes. "Nothing this instance reads has moved" is exactly the right condition,
-        // and it is also why the mirror's missing guard was correct — lane 1 alone was never the
-        // question.
+        // sees both lanes. "Nothing this instance reads has moved" is exactly the right condition:
+        // lane 1 alone was never the question.
         if (hasCheckpoints()) {
             IAttestationAccumulator.Checkpoint memory prev =
                 accumulator.getCheckpoint(accumulator.checkpointCount() - 1);
@@ -387,6 +441,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             if (
                 accumulator.acc() == prev.acc && accumulator.leafCount() == prev.leafCount
                     && liveAnchorAcc == prevAnchor.anchorAcc && liveAnchorCount == prevAnchor.anchorCount
+                    && paramsHash == checkpointParamsHash[nextCheckpointId - 1]
+                    && address(zkVerifier) == checkpointVerifier[nextCheckpointId - 1]
             ) {
                 revert IAttestationAccumulator.NoNewInputs();
             }
@@ -403,9 +459,10 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
 
         // Pin the params this checkpoint must be proven under, at the block its inputs froze.
         checkpointParamsHash[checkpointId] = paramsHash;
+        checkpointVerifier[checkpointId] = address(zkVerifier);
         emit CheckpointParamsPinned(checkpointId, paramsHash);
 
-        // Checkpoint BOTH lanes at the same boundary (OFFCHAIN doc §4). No registry ⇒ the empty
+        // Checkpoint BOTH lanes at the same boundary. No registry ⇒ the empty
         // lane is the zero accumulator, which is exactly what the lane-1-only guest commits.
         {
             (bytes32 a, uint64 n) = _liveAnchors();
@@ -442,7 +499,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         bytes32 skippedDigest,
         address recipient,
         bytes calldata proof
-    ) external {
+    ) external nonReentrant {
         // Monotonic: an older (or equal) checkpoint cannot clobber a newer applied one.
         if (hasAppliedCheckpoint && checkpointId <= lastAppliedCheckpoint) {
             revert StaleCheckpoint(checkpointId, lastAppliedCheckpoint);
@@ -456,8 +513,9 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         bytes32 pinnedParamsHash = checkpointParamsHash[checkpointId];
         if (pinnedParamsHash == bytes32(0)) revert UnpinnedCheckpoint(checkpointId);
 
-        // The journal is the ENTIRE ABI between contract and guest (journal v3 — two-lane plus the
-        // two v3 bindings, field order FROZEN, golden-locked four ways). Bind all of it — including
+        // The journal is the ENTIRE ABI between contract and guest (both lanes plus the
+        // recipient and instance-domain bindings, field order FROZEN, golden-locked four ways).
+        // Bind all of it — including
         // the CID *string* consumers fetch by, whose 32-byte digest alone is otherwise unproven.
         // Checkpointed storage pins both lanes; skippedDigest is the guest's own
         // audited-discretion output. The last two words are what the SUBMITTER cannot forge:
@@ -476,8 +534,8 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
                 keccak256(bytes(ipfsHashCid)), // ...and the CID string that points at that blob
                 totalValue, // summed points
                 skippedDigest, // rule-Φ audit commitment
-                recipient, // v3: who the bounty is owed to
-                instanceDomain() // v3: which instance, derived not accepted
+                recipient, // who the bounty is owed to
+                instanceDomain() // which instance, derived not accepted
             )
         );
 
@@ -524,6 +582,10 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
 
         emit MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue);
         emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender, recipient);
+
+        // Consumers observe the complete accepted state, including its immutable provenance.
+        // Reentrancy protection prevents a callback from interleaving another checkpoint lifecycle.
+        _notifyHooks(stateIndex);
     }
 
     /// @notice Whether this instance has ever frozen a checkpoint.
@@ -537,7 +599,7 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         return (anchorRegistry.anchorAcc(), anchorRegistry.anchorCount());
     }
 
-    /// The optional work-aware lane-2 size, safely falling back to raw anchors for legacy lanes.
+    /// The optional work-aware lane-2 size, falling back to raw anchors when the registry has no `workCount()`.
     function _liveAnchorWork(uint64 anchorCount_) internal view returns (uint64) {
         if (address(anchorRegistry) == address(0)) return 0;
         (bool ok, bytes memory returned) =
@@ -551,12 +613,12 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         return anchorCount_;
     }
 
-    /// @notice This instance's journal-v3 domain separator: `keccak256(abi.encode(address(this),
+    /// @notice This instance's journal domain separator: `keccak256(abi.encode(address(this),
     ///         block.chainid))`. Provers read it to fill the journal field; `submitProof` rebuilds
     ///         it rather than trusting an argument.
-    /// @dev Universal separation. Trust-graph's params-v2 `accumulator`/`chainId` fields are now
+    /// @dev Universal separation. The trust-graph params' `accumulator`/`chainId` fields are
     ///      belt-and-braces (kept: golden-locked and harmless); hypercerts, whose params carry no
-    ///      instance-unique field at all, gets separation here for the first time (issue #9).
+    ///      instance-unique field at all, gets separation here for the first time.
     function instanceDomain() public view returns (bytes32) {
         return keccak256(abi.encode(address(this), block.chainid));
     }
@@ -598,16 +660,15 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             ipfsHashCid: ipfsHashCid,
             totalValue: totalValue
         });
+    }
 
+    function _notifyHooks(uint256 stateIndex) private {
         // Call the hooks. A hook is a consumer-installed side effect (governance, signer-sync, ...);
         // it must never be able to block the core job of landing a proven root. We isolate each call
         // in try/catch with a fixed gas stipend so a reverting or gas-guzzling hook is skipped (and
         // surfaced via HookFailed) rather than reverting the whole submitProof for every consumer.
         for (uint256 i = 1; i < nextHookIndex; i++) {
             IMerkleSnapshotHook hook = hooks[i];
-            if (address(hook) == address(0)) {
-                continue;
-            }
             try hook.onMerkleUpdate{gas: HOOK_GAS_STIPEND}(states[stateIndex]) {}
             catch {
                 emit HookFailed(i, address(hook));
@@ -647,49 +708,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Verify a merkle proof for a given account with the latest state
     function verifyProof(address account, uint256 value, bytes32[] calldata proof) public view returns (bool) {
         return _verifyProof(getLatestState().root, account, value, proof);
-    }
-
-    /// @notice Verify a merkle proof for the sender with the latest state
-    function verifyMyProof(uint256 value, bytes32[] calldata proof) public view returns (bool) {
-        return verifyProof(msg.sender, value, proof);
-    }
-
-    /// @notice Verify a merkle proof against the state at a specific block number
-    function verifyProofAtBlock(address account, uint256 value, bytes32[] calldata proof, uint256 blockNumber)
-        public
-        view
-        returns (bool)
-    {
-        MerkleState memory state = getStateAtBlock(blockNumber);
-        return _verifyProof(state.root, account, value, proof);
-    }
-
-    /// @notice Verify a merkle proof for the sender against the state at a specific block number
-    function verifyMyProofAtBlock(uint256 value, bytes32[] calldata proof, uint256 blockNumber)
-        public
-        view
-        returns (bool)
-    {
-        return verifyProofAtBlock(msg.sender, value, proof, blockNumber);
-    }
-
-    /// @notice Verify a merkle proof against the state at a specific index
-    function verifyProofAtStateIndex(address account, uint256 value, bytes32[] calldata proof, uint256 stateIndex)
-        public
-        view
-        returns (bool)
-    {
-        MerkleState memory state = getStateAtIndex(stateIndex);
-        return _verifyProof(state.root, account, value, proof);
-    }
-
-    /// @notice Verify a merkle proof for the sender against the state at a specific index
-    function verifyMyProofAtStateIndex(uint256 value, bytes32[] calldata proof, uint256 stateIndex)
-        public
-        view
-        returns (bool)
-    {
-        return verifyProofAtStateIndex(msg.sender, value, proof, stateIndex);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -781,36 +799,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         return stateBlocks.length;
     }
 
-    /// @notice Get paginated block numbers that have states
-    function getStateBlocks(uint256 offset, uint256 limit) public view returns (uint256[] memory result_) {
-        uint256 length = stateBlocks.length;
-        if (offset >= length || limit == 0) return new uint256[](0);
-        uint256 count = length - offset;
-        if (limit < count) count = limit;
-        uint256 end = offset + count;
-
-        uint256[] memory result = new uint256[](count);
-        for (uint256 i = offset; i < end; i++) {
-            result[i - offset] = stateBlocks[i];
-        }
-        return result;
-    }
-
-    /// @notice Get paginated states
-    function getStates(uint256 offset, uint256 limit) public view returns (MerkleState[] memory result_) {
-        uint256 length = stateBlocks.length;
-        if (offset >= length || limit == 0) return new MerkleState[](0);
-        uint256 count = length - offset;
-        if (limit < count) count = limit;
-        uint256 end = offset + count;
-
-        MerkleState[] memory result = new MerkleState[](count);
-        for (uint256 i = offset; i < end; i++) {
-            result[i - offset] = states[i];
-        }
-        return result;
-    }
-
     /*///////////////////////////////////////////////////////////////
                                 HOOKS
     //////////////////////////////////////////////////////////////*/
@@ -825,7 +813,6 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         hooks[nextHookIndex] = hook;
         hookIndex[hook] = nextHookIndex;
         nextHookIndex++;
-        hookCount++;
     }
 
     /// @notice Remove a hook
@@ -848,12 +835,16 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
         delete hooks[lastIndex];
         delete hookIndex[hook];
         nextHookIndex = uint64(lastIndex);
-        hookCount--;
+    }
+
+    /// @notice The number of live hooks. The set is dense, so the count is derivable.
+    function hookCount() external view returns (uint256) {
+        return nextHookIndex - 1;
     }
 
     /// @notice List all hooks
     function getHooks() external view returns (IMerkleSnapshotHook[] memory) {
-        IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](hookCount);
+        IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](nextHookIndex - 1);
         for (uint256 i = 1; i < nextHookIndex; i++) {
             result[i - 1] = hooks[i];
         }

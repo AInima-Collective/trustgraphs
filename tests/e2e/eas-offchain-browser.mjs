@@ -5,11 +5,18 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+const requireFromFrontend = createRequire(
+  new URL('../../packages/frontend/package.json', import.meta.url)
+)
 const loadPlaywright = () => {
   try {
     return require('playwright')
   } catch {
-    return require('/usr/lib/node_modules/playwright')
+    try {
+      return requireFromFrontend('playwright')
+    } catch {
+      return require('/usr/lib/node_modules/playwright')
+    }
   }
 }
 const { chromium } = loadPlaywright()
@@ -226,16 +233,30 @@ const connect = async (page) => {
 
 const openVouch = async (page) => {
   await page
-    .getByRole('button', { name: /^Make attestation$/i })
+    .getByRole('button', { name: /^Vouch for someone$/i })
     .first()
     .click()
-  const dialog = page.getByRole('dialog', { name: 'Make attestation' })
+  const dialog = page.getByRole('dialog', { name: 'Vouch for someone' })
   await dialog.waitFor()
   return dialog
 }
 
 const fillRecipient = async (dialog) => {
-  await dialog.getByLabel('RECIPIENT').fill(recipient)
+  await dialog.getByLabel('RECIPIENT', { exact: true }).fill(recipient)
+}
+
+const endorseIfRequired = async (dialog) => {
+  const criteria = dialog.getByRole('checkbox', {
+    name: 'Confirm the recipient meets the network criteria',
+  })
+  if (await criteria.count()) await criteria.check()
+}
+
+const openAudit = async (page) => {
+  await page
+    .getByText('Vouch records and verification details', { exact: true })
+    .click()
+  return page.getByRole('region', { name: 'Current vouch provenance' })
 }
 
 const mineUntil = async (work) => {
@@ -254,7 +275,7 @@ const verifyIndependentRoot = async (page) => {
   const popup = page
     .locator('[role="dialog"]:visible')
     .filter({ hasText: 'Strict-lane verification' })
-  await popup.getByRole('button', { name: /Disabled/ }).click()
+  await popup.getByRole('switch', { name: 'Simulate scores' }).click()
   await popup
     .getByText('Strict-lane verification: verified', { exact: true })
     .waitFor({ timeout: 90_000 })
@@ -317,7 +338,7 @@ const createHybridNetwork = async (page) => {
     waitUntil: 'domcontentloaded',
     timeout: 90_000,
   })
-  await page.getByRole('button', { name: 'Start a standard network' }).click()
+  await page.getByRole('link', { name: 'Start a standard network' }).click()
   await connect(page)
 
   await page.getByLabel('Name').fill(networkName)
@@ -442,7 +463,18 @@ const main = async () => {
       waitUntil: 'domcontentloaded',
       timeout: 90_000,
     })
-    await page.getByText(networkName, { exact: true }).first().waitFor()
+    const detailReady = await page
+      // The disconnected trigger now offers wallet connection directly.
+      .getByText('Connect to vouch', { exact: true })
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!detailReady) {
+      throw new Error(
+        `network detail did not become interactive; visible page: ${(await page.locator('body').innerText()).slice(0, 8_000)}`
+      )
+    }
     if (phase !== 'render-final') await connect(page)
 
     if (phase === 'onchain-create') {
@@ -455,8 +487,8 @@ const main = async () => {
           'Add any additional context about your vouching decision...'
         )
         .fill('browser-created on-chain predecessor')
-      await dialog.getByRole('checkbox').click()
-      await dialog.getByRole('button', { name: 'Make Attestation' }).click()
+      await endorseIfRequired(dialog)
+      await dialog.getByRole('button', { name: 'Review vouch' }).click()
       const closed = await mineUntil(() =>
         dialog
           .waitFor({ state: 'hidden', timeout: 90_000 })
@@ -495,18 +527,14 @@ const main = async () => {
           'Add any additional context about your vouching decision...'
         )
         .fill('browser-created gasless vouch')
-      await dialog.getByRole('checkbox').click()
-      await dialog.getByRole('button', { name: 'Make Attestation' }).click()
+      await endorseIfRequired(dialog)
+      await dialog.getByRole('button', { name: 'Review vouch' }).click()
       await dialog.getByText('Review the exact EAS v2 typed message').waitFor()
-      await dialog
-        .getByRole('button', { name: 'Sign this EAS v2 vouch' })
-        .click()
+      await dialog.getByRole('button', { name: 'Sign vouch' }).click()
       await dialog
         .getByText('Review the exact append-head typed message')
         .waitFor()
-      await dialog
-        .getByRole('button', { name: 'Sign append head and relay' })
-        .click()
+      await dialog.getByRole('button', { name: 'Sign and record' }).click()
       await waitForVerified(dialog)
       const bundle = await downloadBundle(page, dialog)
       assert.equal(bundle.message.count, expectedCount ?? '3')
@@ -514,9 +542,7 @@ const main = async () => {
     } else if (phase === 'render-revoke') {
       assert.ok(expectedCid, 'render-revoke requires expected CID')
       await verifyIndependentRoot(page)
-      const audit = page.getByRole('region', {
-        name: 'Current vouch provenance',
-      })
+      const audit = await openAudit(page)
       await audit.getByText('Off-chain EAS', { exact: true }).waitFor()
       await audit.getByText(`CID ${expectedCid}`, { exact: true }).waitFor()
       await audit
@@ -531,21 +557,17 @@ const main = async () => {
       await dialog.getByRole('button', { name: 'Revoke off-chain' }).click()
       await dialog
         .getByText('Review the exact append-head typed message')
-        .waitFor()
+        .click()
       await dialog.getByText('operation').waitFor()
       await dialog.getByText('revoke', { exact: true }).waitFor()
-      await dialog
-        .getByRole('button', { name: 'Sign append head and relay' })
-        .click()
+      await dialog.getByRole('button', { name: 'Sign and record' }).click()
       await waitForVerified(dialog)
       const bundle = await downloadBundle(page, dialog)
       assert.equal(bundle.message.count, expectedCount ?? '4')
       await dialog.getByText(/Current result: no vouch for this pair/).waitFor()
       await assertWalletOnly(page, 1)
     } else {
-      const audit = page.getByRole('region', {
-        name: 'Current vouch provenance',
-      })
+      const audit = await openAudit(page)
       await audit
         .getByText(
           /No current vouches\. A revoke tombstone never reveals an older vouch/

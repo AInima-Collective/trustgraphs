@@ -9,17 +9,12 @@ import {
     SchemaRegistry
 } from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {IEAS, EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
-import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 import {SchemaRegistrar} from "../src/eas/SchemaRegistrar.sol";
-
-import {EASIndexerResolver} from "../src/eas/resolvers/EASIndexerResolver.sol";
-import {PayableEASIndexerResolver} from "../src/eas/resolvers/PayableEASIndexerResolver.sol";
-import {AttesterEASIndexerResolver} from "../src/eas/resolvers/AttesterEASIndexerResolver.sol";
 
 import {Common} from "./Common.s.sol";
 
 /// @title DeployEAS
-/// @notice Deployment script for EAS contracts (SchemaRegistry, EAS, SchemaRegistrar, resolvers)
+/// @notice Deployment script for EAS contracts (SchemaRegistry, EAS, SchemaRegistrar)
 contract DeployEAS is Common {
     using stdJson for string;
 
@@ -86,35 +81,4 @@ contract DeployEAS is Common {
     function _requireCode(address target) internal view {
         if (target.code.length == 0) revert ExternalContractHasNoCode(target);
     }
-
-    //   /// @notice Create a new schema
-    //   function createSchema(
-    //     SchemaRegistrar schemaRegistrar,
-    //     string memory schemasJson,
-    //     address resolverAddr,
-    //     string memory key,
-    //     string memory description,
-    //     string memory schema,
-    //     bool revocable
-    //   ) public returns (bytes32) {
-    //     string memory newSchemaJson = string.concat(key, '_json');
-
-    //     bytes32 uid = schemaRegistrar.register(
-    //       schema,
-    //       ISchemaResolver(resolverAddr),
-    //       revocable
-    //     );
-    //     console.log(key, 'schema ID:', vm.toString(uid));
-
-    //     newSchemaJson.serialize('description', description);
-    //     newSchemaJson.serialize('schema', schema);
-    //     newSchemaJson.serialize('resolver', vm.toString(resolverAddr));
-    //     vm.serializeBool(newSchemaJson, 'revocable', revocable);
-    //     newSchemaJson = newSchemaJson.serialize('uid', vm.toString(uid));
-
-    //     // Add the new schema to the schemas JSON
-    //     schemasJson.serialize(key, newSchemaJson);
-
-    //     return uid;
-    //   }
 }

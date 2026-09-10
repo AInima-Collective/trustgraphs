@@ -18,7 +18,7 @@ program index in [`networks-and-programs.md`](../../../docs/concepts/networks-an
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `crates/zk-core`                                                                | Shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal). Single source of truth for the primitives; re-exported by every core crate. |
 | `crates/pagerank-core`                                                          | Canonical fixed-point PageRank + selection + the trust-graph Params/Journal encodings. Re-exports `zk-core`. No floats.                                    |
-| `zk/trustgraph-program-v2`                                                        | SP1 guest crate for this program (root). The multi-bin `zk/program` crate holds the signer, hypercerts, contributions, and conformance guests.             |
+| `zk/trust-graph-program`                                                        | SP1 guest crate for this program (root). The multi-bin `zk/program` crate holds the signer, hypercerts, contributions, and conformance guests.             |
 | `zk/prover`                                                                       | Host CLI `trustgraph-prover`. Clap program groups: `trust-graph {vkey\|paramshash\|execute\|prove}` (and `signer …`).                                      |
 | `crates/input-exporter`                                                         | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`.                                             |
 | `contracts/src/eas/AttestationAccumulator.sol`                                    | Chained-hash accumulator (mixed into `EASIndexerResolver`).                                                                                                |
@@ -30,11 +30,11 @@ program index in [`networks-and-programs.md`](../../../docs/concepts/networks-an
 
 ```bash
 # SP1 (installs cargo-prove + the `succinct` rust toolchain)
-curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.6.0
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
-Pin the version. The SP1 _SDK_ is pinned to `=6.3.1` in `zk/prover/Cargo.toml`, and the vkey depends
+Pin the version. The SP1 _SDK_ is pinned to `=6.6.0` in `zk/prover/Cargo.toml`, and the vkey depends
 on the exact toolchain build — read the reproducibility caveat in [`networks-and-programs.md`](../../../docs/concepts/networks-and-programs.md)
 before deriving any value you intend to deploy against. Full install walkthrough, including the
 other toolchains: [`../setup.md`](../../../docs/build/setup.md).
@@ -288,7 +288,7 @@ export SP1_PROVER=cpu                                    # local: needs ~16-32 G
 ```
 
 The gateway routes a proof to the version-specific verifier by the 4-byte selector prefixed on the
-proof, so it must be a gateway that has the verifier for the SDK version this repo pins (v6.3.1).
+proof, so it must be a gateway that has the verifier for the SDK version this repo pins (v6.6.0).
 
 ### Two programs, two verifiers
 

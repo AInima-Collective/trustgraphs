@@ -25,7 +25,7 @@ import {Common} from "script/Common.s.sol";
 ///         `SP1JournalVerifier` (one per chain + program vkey), the
 ///         `ContributionsParamsControllerDeployer`, the `ContributionsFactory` itself, and the
 ///         `REGISTRAR_ROLE` grant that lets it register rounds into the chain's
-///         `InstanceRegistry`. Replaces the per-instance `DeployContributionsInstance` script:
+///         `InstanceRegistry`:
 ///         rounds are created ON-CHAIN through `createInstance` by the parent network's authority,
 ///         with no params file, no per-instance verifier, and no TestUSDC scaffolding.
 ///
@@ -117,12 +117,8 @@ contract DeployContributionsFactory is Common {
         require(snapshotDeployer != address(0), "DeployContributionsFactory: snapshotDeployer is zero");
         require(distributorDeployer != address(0), "DeployContributionsFactory: distributorDeployer is zero");
         require(epochFloor > 0, "DeployContributionsFactory: epochFloor is zero");
-        // Same dev-default guard as DeployFactory: the floor bounds hosted proving cost and is
-        // immutable, so a one-block dev default must never reach a real chain.
-        require(
-            block.chainid == 31337 || epochFloor >= 7200,
-            "DeployContributionsFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
-        );
+        // Same fail-closed floor as `DeployFactory`; see `Common`.
+        _requireDeliberateEpochFloor(epochFloor, "DeployContributionsFactory");
 
         require(gateway != address(0), "DeployContributionsFactory: gateway is zero");
 

@@ -17,10 +17,10 @@ import {Common} from "script/Common.s.sol";
 /// audited Succinct deployment (per-chain). Its address is taken as an INPUT so we point at the
 /// already-deployed canonical gateway rather than hardcoding it. The `programVKey` (guest image id)
 /// is likewise an input — it is the constitutional "what is correct PageRank" knob and is immutable
-/// in the adapter (see `SP1JournalVerifier` / DECISIONS D8).
+/// in the adapter (see `SP1JournalVerifier`).
 ///
 /// The deployed adapter address is written to `.docker/zk_verifier_deploy.json` so the TypeScript
-/// deploy orchestration can thread it into `DeployNetwork` as `MerkleSnapshot.zkVerifier`.
+/// deploy orchestration can thread it into the network deploy as `MerkleSnapshot.zkVerifier`.
 contract DeployZkVerifier is Common {
     using stdJson for string;
 

@@ -5,9 +5,6 @@ const nextConfig = {
   // Lets a second server (a dev server next to a running `next start`, say) build into its own
   // directory instead of trampling the first one's `.next`. Inert unless the env var is set.
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: true,
     // Screenshot builds use a disposable config because Next writes the
@@ -27,8 +24,8 @@ const nextConfig = {
   },
   devIndicators: false,
   webpack: (config) => {
-    // Suppress all expression-based dependency warnings
-    // - @whatwg-node/fetch causes "Critical dependency: the request of a dependency is an expression" when generating components server-side
+    // @trustgraphs/eas-offchain-client remains CommonJS while its pinned EAS SDK has a broken
+    // native-ESM entry. Keep Webpack for Next 16 until that package boundary can move safely.
     config.module.exprContextCritical = false
     return config
   },

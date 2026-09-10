@@ -31,6 +31,17 @@ fn hash_pair(a: B256, b: B256) -> B256 {
 /// sort leaves ascending; place them at the tail of a `2n-1` array in reverse order; each internal
 /// node `i` = `hashPair(tree[2i+1], tree[2i+2])`. Root = `tree[0]`. Empty ⇒ `bytes32(0)`;
 /// single leaf ⇒ that leaf.
+/// The unified output leaf for nodeId-keyed programs:
+/// `keccak256(bytes.concat(keccak256(abi.encode(bytes32 nodeId, uint256 value))))` —
+/// the nodeId twin of [`output_leaf`] (OFFCHAIN §5).
+pub fn node_output_leaf(node_id: B256, value: U256) -> B256 {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(node_id.as_slice());
+    buf[32..].copy_from_slice(&crate::words::word_u256(value));
+    let inner = keccak256(buf);
+    keccak256(inner.as_slice())
+}
+
 pub fn merkle_root(mut leaves: Vec<B256>) -> B256 {
     if leaves.is_empty() {
         return B256::ZERO;

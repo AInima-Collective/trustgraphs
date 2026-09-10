@@ -77,6 +77,7 @@ export const ExportButton = ({
 
   return (
     <Popup
+      popupLabel="Export scores"
       position="same"
       popupClassName="!p-0"
       popupPadding={0}

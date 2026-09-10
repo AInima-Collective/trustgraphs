@@ -114,7 +114,8 @@ contract OmegaPassB_ProvingVaultStatement is Test {
             keccak256("compose-params"),
             IAttestationAccumulator(address(acc)),
             admin,
-            admin
+            admin,
+            ""
         );
         acc.bind(address(snap));
         snap.enableStateProvenance();

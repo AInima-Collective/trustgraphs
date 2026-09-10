@@ -20,7 +20,7 @@ pnpm --dir packages/frontend fixture:eas-offchain:check
 `manifest.json` contains the official SDK responses, independently reproduced EAS UIDs and typed
 digests, typed head authorizations, prefix heads, SHA-256 commitments, raw CIDv1 values, and the
 expected protocol error for each negative payload. Rust consumes the corpus from
-`crates/eas-offchain-v2/src/payload_v1.rs`; Solidity independently checks it from
+`crates/eas-offchain/src/payload.rs`; Solidity independently checks it from
 `contracts/test/unit/golden/EasOffchainPayloadGolden.t.sol`.
 
 The private key in `manifest.json` is an intentionally public deterministic fixture key. Never use

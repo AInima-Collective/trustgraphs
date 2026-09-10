@@ -9,7 +9,7 @@
 //! filters (see `eligibility.ts`), then the carve-out combine, integer distribution over the
 //! pool, output merkle root, canonical blob/CID, and the reused journal v2.
 //!
-//! No React/browser imports — pure TS + viem hashing; the indexer (M3) imports this module.
+//! No React/browser imports — pure TS + viem hashing; the indexer imports this module.
 
 import { type Hex, keccak256, stringToBytes } from 'viem'
 
@@ -146,7 +146,7 @@ export const computeContributions = (
   const cidDigest = keccak256(stringToBytes(cid))
 
   // Journal v3 reused unmodified: slot A = trust, slot B = contributions;
-  // skippedDigest = 0 in v1 (skips are derivable from committed inputs — INTERFACES.md §4);
+  // skippedDigest = 0 in v1 (skips are derivable from committed inputs — research/operations/contributions/interfaces.md §4);
   // the two v3 words pass straight through from the input.
   const journal: Journal = {
     acc,

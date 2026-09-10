@@ -1,0 +1,179 @@
+{
+  "$schema": "../../schema.json",
+  "version": 1,
+  "status": "deployed",
+  "stage": "production",
+  "chain": "sepolia",
+  "chainId": 11155111,
+  "deploymentCommit": "6d3e272eef46ee9e06ab7caedb03fa733594c4ce",
+  "firstDeploymentBlock": 11670854,
+  "external": {
+    "eas": "0xC2679fBD37d54388Ce493F1DB75320D236e1815e",
+    "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
+    "sp1Gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+    "ethUsdFeed": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+    "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+  },
+  "contracts": {
+    "schemaRegistrar": {
+      "address": "0x70d897D936370735008d40250d4cd9bDe6D62B4a",
+      "block": 11670854,
+      "txHash": "0xe140c88854096eb116e019ebff6af15ad6227b839c612f16997dcdf353d79f90"
+    },
+    "rootVerifier": {
+      "address": "0xBf553f5737dbfE9bB5ea2E881E3329638f6A16A3",
+      "block": 11670855,
+      "txHash": "0xabab6916a0f49b682311b521c7d37a030e79cfb07f1140e33ff01a55b0da7785"
+    },
+    "instanceRegistry": {
+      "address": "0x731F64E9A03282CA36Ed3d679a7662468B3c37c7",
+      "block": 11670856,
+      "txHash": "0x91aa86239b5261a3c50e0dd87038dca8d62ab9c4570c7e990cd4483f3314fa10"
+    },
+    "provingVault": {
+      "address": "0x4Bb3E2F62aE3457B18030C0f748f42B0BB169f5E",
+      "block": 11670864,
+      "txHash": "0x48e989d00391f2bb6d1f7ef165f434ec25c4aa5409646fba74d307efd753965a"
+    },
+    "trustgraphsFactory": {
+      "address": "0x7E913FcA17dEdbE1f7610b51464AC3524970e813",
+      "block": 11670870,
+      "txHash": "0xcfbdc2fd45dfd9d8c3ac4d8ef6effe3141ce7705a21bcfc495c727f7c14fd016"
+    },
+    "importedTrustgraphsFactory": {
+      "address": "0x73BD357729F4B846245DFAe7d2B88f08bCfF7322",
+      "block": 11670877,
+      "txHash": "0xbe12c00ba4011e1f16ab6c38178a3f5cf00bb86eba3b1d1a3fa42ece0beefec9"
+    },
+    "signerVerifier": {
+      "address": "0x5Bbb202e81AFC6FfbB64F97aFeFa30d092383F6D",
+      "block": 11670878,
+      "txHash": "0x3760085165bdb70e10bdc3fa0d223b09610aa4eeeebf8c21c332b8fa429b776c"
+    },
+    "governedTrustgraphsFactory": {
+      "address": "0x69F0966Ef4D5d604E049Cc5A0237e4d1Ce002a57",
+      "block": 11670885,
+      "txHash": "0x46d03f9464632754516966023181a2963bffb2928964dedff25b8dec693dce4e"
+    },
+    "governedImportedTrustgraphsFactory": {
+      "address": "0x4F6FFD8fBeB666Ba7cF1405d04f1238087402168",
+      "block": 11670887,
+      "txHash": "0x29d0e71d68ce91d1dd14de2edeeadeb845d5a79e5ccfc3e46d99fdeec881b5fc"
+    },
+    "signerSyncModuleDeployer": {
+      "address": "0x071DC91731A184bF0F58d5f91998573E82061b70",
+      "block": 11670881,
+      "txHash": "0x9e6a6275a29233dc434cc447530c5299158000e932cb833b4c5c28fbeac0de0f"
+    },
+    "parentAuthorityModuleDeployer": {
+      "address": "0xf1eEE62011718bf6938657aCf52289D0AE81f938",
+      "block": 11670882,
+      "txHash": "0x9a58bdf95f1a12db6786d70286ddb458e7edb388a53c2cc91a829ec3689f8001"
+    },
+    "subnetworkRegistry": {
+      "address": "0x8a424C9A34AeB0D63ade308b660EDDF1FfC89B99",
+      "block": 11670886,
+      "txHash": "0x2451c84e7e64a2fef994da285f57e53ef71c3a6fe5897957e719770ac5614111"
+    },
+    "safeSingleton": {
+      "address": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+      "block": null,
+      "txHash": null
+    },
+    "safeProxyFactory": {
+      "address": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+      "block": null,
+      "txHash": null
+    },
+    "weightedVerifier": {
+      "address": "0xd5Da5C835C8d47a8A2cF9fFF3Db3e91236283853",
+      "block": 11670888,
+      "txHash": "0xd39f1d2eeb4bf394cb7b4e4aad9b91c43d4d1fd9b8ea245033a74f6f3e5aaed2"
+    },
+    "weightedTrustgraphsFactory": {
+      "address": "0x35C560fAE4a65d6F579Ba2348ACf723eab56A926",
+      "block": 11670892,
+      "txHash": "0xa61741cec38aa000a779afe1a82ee685ca5fac5e833da4ca6699ac539ba5865b"
+    },
+    "governedWeightedTrustgraphsFactory": {
+      "address": "0x9b3cF205Bb29A4203ccb729f9CF3Fb1fEF7467E4",
+      "block": 11670893,
+      "txHash": "0x359cc29fa3068ea3aabfd2b8a089a1966479fb70691c2cdb3cdcae604b47f68d"
+    },
+    "compositionVerifier": {
+      "address": "0x7944035945F8CE03f2Da71b9030973E5f8e1327d",
+      "block": 11670895,
+      "txHash": "0x46ead123ce231ca13a980de099ed13d6d61846ffe45a70c7ba75cab8ebbf7919"
+    },
+    "trustComposeFactory": {
+      "address": "0x66dF2Da93A13a4208b7015e67e27101a1e1Ba617",
+      "block": 11670902,
+      "txHash": "0xb8657d7a219a92e47eb19340ad89b1c43a69fa7baf03d24d31fad782cb1179ff"
+    },
+    "governedTrustComposeFactory": {
+      "address": "0xCF1B2d0234d526dfC1c68eEC9E36835FF02d7e12",
+      "block": 11670903,
+      "txHash": "0x1d56ef7879e3cb58b4ca0fe8e2f483fd737ff3f30b904164028fc03a15335f98"
+    },
+    "contributionsVerifier": {
+      "address": "0xD56559ba91c08d165d1431e95D02E58Edf12530F",
+      "block": 11670905,
+      "txHash": "0x0ac5e35eb335fe9588f15e6938376fcb0c783f32f9d8dcafa167e9f19c47cc80"
+    },
+    "contributionsFactory": {
+      "address": "0x5e55DFD86df16cbB365b9978c76422b1F776Ca05",
+      "block": 11670907,
+      "txHash": "0x51c1eaa912d024eecbfa4bd4f1709c667099af53e868ea0a4d9d38ed50debdec"
+    }
+  },
+  "programs": {
+    "trustGraph": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00bbf3b3cc5efe71ced29517bd09edac2720bcc795b7094a314db17c224dcea3",
+      "elfSha256": "0x446d12fab5a9cde882ca7d07499e2db750915c21696c3945f8fcb061b6435f6e"
+    },
+    "weighted": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x0095b1a77a841e434307acdc8cd2340c3a82beda37cde4498170db3cdcc6eb80",
+      "elfSha256": "0x12e658843d2719b246f2898e3375610e65c255326a11df8ec16e57ae40142d95"
+    },
+    "composition": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00c6868afdf506311dcb1393a74f3c033ad0620ec25602b65d079227c88d9dfc",
+      "elfSha256": "0xd74643d1a62bf5951dcc3e3caee4e0d558a61f4fc0d8664509da277b31f0e082"
+    },
+    "signer": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00f8ad1fd05ff8c894a1e8906b3e1a1f9fba968d14ef8a121d3107d3c57df7fb",
+      "elfSha256": "0x73ca7d5e2fd1516a83645aefe3ce8541fe76007d7416267a5169ff5dd6bbb912"
+    },
+    "contributions": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x0098fb1266d6ca97c12c529c29ef59b45dae9bede0cbe0990a2fbb1b4394d798",
+      "elfSha256": "0x48603c146a0d7100f5a2a6e92ba518b6b7f9ca0d55816be1742d70f70e5a2480"
+    },
+    "hypercerts": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x0072790ce927dab3afab201f8517b7b0ac36764c825825f6a23d9ed3c080c8d2",
+      "elfSha256": "0x00cdda54fb2eccffed8b393cad91926a9560faa1341c0b7ae05248565b9222f0"
+    },
+    "nostrWorkspace": {
+      "sp1Version": "6.6.0",
+      "vkey": "0x00a8e5183dbdab1ff521c068ff2d2d8ed840f5beef4f516964d345a16bc302af",
+      "elfSha256": "0x3238e0ef525febdc094ed7d3fe1958ef93ddeddbb31599cd3d0d615d8ea121b7"
+    }
+  },
+  "instances": [
+    {
+      "instanceId": "0xe4470bdbbd69691686ecd6dec72fdf5c8caea136bf18f0a0214b6cf93c491ee3",
+      "name": "Ethereum Extitutional",
+      "schemaUid": "0x89a1cffc5596e57c49583f0e257f41f4859a5c23af6e1c8d2c0c9f8e80c6139d",
+      "contracts": {
+        "merkleSnapshot": "0x6CbB8Fe3D33F7483Ec1c0Bb8567a39aCd18aF641",
+        "easIndexerResolver": "0xf3CE152b68c8605e66A1149E8C811a9f7dFDD14d",
+        "merkleFundDistributor": "0x3321C56eefE022d5970ce7ff308af064b39CD2a7",
+        "paramsController": "0xAdC95F50923aD857274611e06013160C6BDc2EFe"
+      }
+    }
+  ]
+}

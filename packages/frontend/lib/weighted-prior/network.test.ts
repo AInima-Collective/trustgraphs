@@ -20,6 +20,14 @@ const instance: WeightedApiInstanceDetail = {
   admin: hex('5', 20),
   name: 'Weighted test',
   metadataURI: '',
+  metadataURIHash: hex('0', 32),
+  metadataRevision: '0',
+  metadataStatus: 'valid',
+  metadataUpdated: {
+    block: '10',
+    timestamp: '20',
+    txHash: hex('d', 32),
+  },
   metadata: {
     name: 'Weighted community',
     description: 'A weighted network for trusted maintainers.',
@@ -68,6 +76,9 @@ const network = weightedInstanceToNetwork(instance, [
 assert.equal(network.program, 'trust-graph-weighted')
 assert.equal(network.id, instance.id)
 assert.equal(network.name, 'Weighted community')
+assert.equal(network.image, 'https://example.org/weighted-banner.png')
+assert.equal(network.metadataRevision, '0')
+assert.deepEqual(network.profile, instance.metadata)
 assert.equal(network.about, 'A weighted network for trusted maintainers.')
 assert.equal(
   network.criteria,
@@ -80,6 +91,22 @@ assert.equal(network.contracts.safe?.proxy, instance.governance?.safe)
 assert.equal(network.schemas[0]?.uid, instance.schemaUid)
 assert.deepEqual(network.pagerank.trustedSeeds, [account])
 assert.equal(network.safeZodiacSignerSync.enabled, false)
+
+const cleared = weightedInstanceToNetwork({
+  ...instance,
+  metadataRevision: '1',
+  metadata: {
+    name: 'Weighted community',
+    description: '',
+    criteria: '',
+    image: '',
+    applicationUrl: '',
+  },
+})
+assert.equal(cleared.about, '')
+assert.equal(cleared.criteria, '')
+assert.equal(cleared.applicationUrl, undefined)
+
 network.contracts.merkleFundDistributor = hex('2', 20)
 assert.deepEqual(
   trustgraphsTabs(network).map((tab) => tab.label),
@@ -97,5 +124,13 @@ const settings = readFileSync(
 assert.match(settings, /WEIGHTED_TRUSTGRAPH_PROGRAM/)
 assert.match(settings, /Review starting shares/)
 assert.match(settings, /Weighted networks cannot start/)
+
+const profileSettings = readFileSync(
+  'app/networks/[id]/settings/profile.tsx',
+  'utf8'
+)
+assert.match(profileSettings, /functionName: 'setMetadataURI'/)
+assert.match(profileSettings, /Create governance proposal/)
+assert.match(profileSettings, /Publish profile update/)
 
 console.log('weighted network overview adapter tests passed')

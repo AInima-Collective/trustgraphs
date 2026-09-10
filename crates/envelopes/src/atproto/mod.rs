@@ -38,7 +38,7 @@ pub struct AtprotoWitness {
     /// The repo owner's DID (`nodeId = keccak256(did bytes)`).
     pub did: String,
     /// The full repo CAR at the anchored commit (commit + MST nodes + records).
-    #[serde(with = "serde_bytes_hex")]
+    #[serde(with = "zk_core::serde_hex")]
     pub car: Vec<u8>,
     /// The DID's PLC audit log (self-certifying ops + directory-attested metadata).
     pub plc_ops: Vec<plc::PlcOpWitness>,
@@ -119,19 +119,4 @@ pub fn verify(
         }
     }
     Ok(out)
-}
-
-/// Minimal `serde` helper so byte fields round-trip as `0x`-hex in fixtures.
-mod serde_bytes_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&format!("0x{}", alloy_primitives::hex::encode(bytes)))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        let s = s.strip_prefix("0x").unwrap_or(&s);
-        alloy_primitives::hex::decode(s).map_err(serde::de::Error::custom)
-    }
 }

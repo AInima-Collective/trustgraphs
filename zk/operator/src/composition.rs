@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use alloy_primitives::{keccak256, Address, B256};
 use anyhow::{anyhow, bail, Context, Result};
-use composition_core::{codec, compute::compute, Binding, GuestInput, SourcePreimage};
+use composition_core::{codec, Binding, GuestInput, SourcePreimage};
 use operator_core::catalog::CatalogEntry;
 use operator_core::types::Program;
 
@@ -111,7 +111,6 @@ pub fn prepare(
     anyhow::ensure!(entry.program == Program::Composition, "not a composition catalog entry");
     let params = entry
         .composition_params
-        .clone()
         .ok_or_else(|| anyhow!("{} has no authenticated composition params", entry.name))?;
     params.validate().map_err(|error| anyhow!("invalid composition params: {error}"))?;
     anyhow::ensure!(
@@ -122,24 +121,17 @@ pub fn prepare(
     );
 
     let manifest = read_composition_manifest(rpc, entry.accumulator, checkpoint_id)?;
+    let binding = Binding {
+        recipient,
+        instance_domain: crate::chain::expected_instance_domain(
+            entry.snapshot,
+            rpc.eth_chain_id()?,
+        ),
+    };
     let digest = codec::manifest_digest(&manifest);
     let parsed = codec::parse_capture_manifest(&manifest, params.chain_id)
         .map_err(|error| anyhow!("invalid checkpoint TGCM: {error}"))?;
-    if let Some(id) = checkpoint_id {
-        let checkpoint = read_checkpoint(rpc, entry.snapshot, id)?;
-        anyhow::ensure!(
-            checkpoint.commitments.acc == digest,
-            "checkpoint {id} commits {:#x}, recovered TGCM hashes to {digest:#x}",
-            checkpoint.commitments.acc
-        );
-        anyhow::ensure!(
-            checkpoint.commitments.leaf_count == parsed.sources.len() as u64,
-            "checkpoint {id} source count {} != TGCM {}",
-            checkpoint.commitments.leaf_count,
-            parsed.sources.len()
-        );
-    }
-
+    assert_checkpoint(rpc, entry, checkpoint_id, digest, parsed.sources.len())?;
     let source_preimages = parsed
         .sources
         .iter()
@@ -151,17 +143,36 @@ pub fn prepare(
         source_preimages,
         capture_commitment: digest,
         capture_count: parsed.sources.len() as u64,
-        binding: Binding {
-            recipient,
-            instance_domain: crate::chain::expected_instance_domain(
-                entry.snapshot,
-                rpc.eth_chain_id()?,
-            ),
-        },
+        binding,
     };
     let work = work_shape(&input)?;
-    compute(&input).map_err(|error| anyhow!("composition consensus refusal: {error}"))?;
+    composition_core::compute::compute(&input)
+        .map_err(|error| anyhow!("composition consensus refusal: {error}"))?;
     Ok(Prepared { input, work })
+}
+
+fn assert_checkpoint(
+    rpc: &Rpc,
+    entry: &CatalogEntry,
+    checkpoint_id: Option<u64>,
+    digest: B256,
+    source_count: usize,
+) -> Result<()> {
+    if let Some(id) = checkpoint_id {
+        let checkpoint = read_checkpoint(rpc, entry.snapshot, id)?;
+        anyhow::ensure!(
+            checkpoint.commitments.acc == digest,
+            "checkpoint {id} commits {:#x}, recovered TGCM hashes to {digest:#x}",
+            checkpoint.commitments.acc
+        );
+        anyhow::ensure!(
+            checkpoint.commitments.leaf_count == source_count as u64,
+            "checkpoint {id} source count {} != TGCM {}",
+            checkpoint.commitments.leaf_count,
+            source_count
+        );
+    }
+    Ok(())
 }
 
 fn fetch_source(
@@ -242,16 +253,19 @@ mod tests {
         assert_eq!(classify_work(8, 8_192, 8_192, 1024 * 1024).unwrap().band, 4);
     }
 
-    #[test]
-    fn measured_cycle_bands_are_monotonic_and_below_the_guest_cap() {
-        assert!(BAND_1_CYCLES < BAND_2_CYCLES);
-        assert!(BAND_2_CYCLES < BAND_3_CYCLES);
-        assert!(BAND_3_CYCLES < BAND_4_CYCLES);
-        assert!(BAND_4_CYCLES < 1_000_000_000);
-    }
+    // Compile-time: the measured cycle bands must stay monotonic and below the guest cap.
+    const _: () = assert!(
+        BAND_1_CYCLES < BAND_2_CYCLES
+            && BAND_2_CYCLES < BAND_3_CYCLES
+            && BAND_3_CYCLES < BAND_4_CYCLES
+            && BAND_4_CYCLES < 1_000_000_000
+    );
 
     #[test]
-    fn two_source_and_exact_maximum_guest_fixtures_select_authenticated_bands() {
+    fn mixed_and_exact_maximum_guest_fixtures_select_authenticated_bands() {
+        let mixed = composition_core::fixture::mixed_input();
+        assert_eq!(work_shape(&mixed).unwrap().band, 1);
+
         let two = composition_core::fixture::benchmark_input(2, 128);
         assert_eq!(work_shape(&two).unwrap().band, 1);
 
@@ -305,7 +319,7 @@ gateway = "{gateway}"
 
     #[test]
     fn unavailable_and_malformed_source_bytes_fail_before_proving() {
-        let input = composition_core::fixture::sample_input();
+        let input = composition_core::fixture::mixed_input();
         let source = codec::parse_capture_manifest(&input.manifest, input.params.chain_id)
             .unwrap()
             .sources[0];
@@ -332,7 +346,7 @@ gateway = "{gateway}"
         .to_string();
         assert!(error.contains("served bytes SHA-256"), "{error}");
 
-        let mut noncanonical = composition_core::fixture::sample_input();
+        let mut noncanonical = composition_core::fixture::mixed_input();
         noncanonical.source_preimages[0].blob.insert(1, b' ');
         assert!(
             work_shape(&noncanonical).unwrap_err().to_string().contains("not canonical"),

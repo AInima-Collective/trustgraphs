@@ -34,7 +34,9 @@ import { type RawEdge } from '../pagerank/types'
 
 // ---- load the exported golden vectors ---------------------------------------
 
-const g = JSON.parse(readFileSync('../../tests/golden/contributions.json', 'utf8'))
+const g = JSON.parse(
+  readFileSync('../../tests/golden/contributions.json', 'utf8')
+)
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const toParams = (p: any): ContributionsParams => ({

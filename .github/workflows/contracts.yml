@@ -2,6 +2,7 @@ name: Solidity
 
 on:
   pull_request:
+  workflow_call:
 
 jobs:
   tests:
@@ -20,9 +21,7 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.3
+        uses: pnpm/action-setup@v4
 
       - name: Install Task
         uses: go-task/setup-task@v1
@@ -37,7 +36,10 @@ jobs:
         run: forge fmt --check
 
       - name: Run Solidity static analysis
-        run: forge lint contracts/src --severity high --deny warnings
+        # Solc 0.8.36 reserves future keywords used by pinned OZ/Safe dependencies (6335).
+        # Keep Foundry's existing Safe assembly-comment exception (2424) when overriding codes.
+        # Neither exception disables high-severity security lints.
+        run: forge lint contracts/src --severity high --deny warnings --ignored-error-codes 6335 --ignored-error-codes 2424
 
       - name: Run forge build
         run: forge build -vvv
@@ -46,4 +48,4 @@ jobs:
         run: forge test -vvv
         env:
           # M6 hardening: a deeper fuzz budget in CI than the local default.
-          FOUNDRY_FUZZ_RUNS: "1024"
+          FOUNDRY_FUZZ_RUNS: '1024'

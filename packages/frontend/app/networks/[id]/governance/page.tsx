@@ -3,12 +3,11 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type React from 'react'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 
 import { TableAddress } from '@/components/Address'
-import { Button } from '@/components/Button'
-import { CreateProposalForm } from '@/components/CreateProposalForm'
+import { ButtonLink } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
@@ -26,15 +25,12 @@ import {
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { useRouteModal } from '@/hooks/useRouteModal'
 import { formatBlockEta } from '@/lib/blocks'
-import {
-  clearGovernancePrefill,
-  loadGovernancePrefill,
-} from '@/lib/governance-prefill'
 import { formatBigNumber, formatPercentage } from '@/lib/utils'
 
 interface ProposalRow {
   core: ProposalCore
   actions: ProposalAction[]
+  actionsError?: string
 }
 
 /** Active proposals first (they can still be voted on), then newest first. */
@@ -113,19 +109,20 @@ function GovernancePageContent() {
   const { address, isConnected } = useAccount()
   const { network } = useNetwork()
   const pushBreadcrumb = usePushBreadcrumb()
-  const createModal = useRouteModal('new')
   const delegateModal = useRouteModal('delegate')
   const searchParams = useSearchParams()
-  const prefillFingerprint =
-    searchParams.get('actionDraft') ?? searchParams.get('scoringDraft')
-  const [scoringPrefill, setScoringPrefill] =
-    useState<ReturnType<typeof loadGovernancePrefill>>(null)
+  // Preserve bookmarks and older links that opened the proposal modal.
   useEffect(() => {
-    setScoringPrefill(loadGovernancePrefill(network.id, prefillFingerprint))
-  }, [network.id, prefillFingerprint])
+    if (searchParams.get('new') !== '1') return
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('new')
+    const query = params.toString()
+    router.replace(
+      `/networks/${network.id}/governance/new${query ? `?${query}` : ''}`
+    )
+  }, [network.id, router, searchParams])
 
   const {
-    isAnyActionLoading,
     isLoadingProposals,
     isLoadingUserVotingPower,
     isLoadingModule,
@@ -135,7 +132,6 @@ function GovernancePageContent() {
     totalVotingPower,
     currentBlockNumber,
     canCreateProposal,
-    createProposal,
     getAllProposals,
     getProposalStateText,
     safeBalance,
@@ -162,9 +158,15 @@ function GovernancePageContent() {
       tooltip: 'What the proposal is about.',
       sortable: false,
       render: (row) => (
-        <div className="max-w-[300px] truncate font-medium">
-          {row.core.title || `Proposal #${row.core.id.toString()}`}
-        </div>
+        <Link
+          href={`/networks/${network.id}/governance/${row.core.id}`}
+          onClick={() => pushBreadcrumb()}
+          className="tg-touch-target inline-flex max-w-[300px] items-center font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        >
+          <span className="truncate">
+            {row.core.title || `Proposal #${row.core.id.toString()}`}
+          </span>
+        </Link>
       ),
     },
     {
@@ -302,11 +304,12 @@ function GovernancePageContent() {
       <div className="space-y-4">
         <SectionHeading
           actions={
-            canCreateProposal ? (
-              <Button onClick={createModal.open} size="sm">
-                + New proposal
-              </Button>
-            ) : undefined
+            <ButtonLink
+              href={`/networks/${network.id}/governance/new`}
+              size="sm"
+            >
+              + New proposal
+            </ButtonLink>
           }
         >
           Proposals
@@ -356,34 +359,6 @@ function GovernancePageContent() {
           />
         )}
       </div>
-
-      <Modal
-        isOpen={createModal.isOpen}
-        onClose={createModal.close}
-        title="New proposal"
-      >
-        <CreateProposalForm
-          canCreateProposal={canCreateProposal}
-          userVotingPower={userVotingPower?.value}
-          onCreateProposal={async (title, description, actions, voteType) => {
-            const result = await createProposal(
-              title,
-              description,
-              actions,
-              voteType
-            )
-            if (result) {
-              if (prefillFingerprint) {
-                clearGovernancePrefill(network.id, prefillFingerprint)
-              }
-              createModal.close()
-            }
-            return result
-          }}
-          isLoading={isAnyActionLoading}
-          prefill={scoringPrefill}
-        />
-      </Modal>
 
       {merkleGovAddress && (
         <Modal

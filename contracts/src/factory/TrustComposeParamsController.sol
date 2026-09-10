@@ -12,8 +12,10 @@ import {ITrustComposeParamsController} from "interfaces/factory/ITrustComposePar
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
 /// @title TrustComposeParamsController
-/// @notice Timelocks complete source policies and atomically advances accumulator, snapshot, and
-///         registry state. Cancelled proposal versions remain queryable; gaps are never reused.
+/// @notice Timelocks complete source policies and atomically advances accumulator, snapshot,
+///         and registry state. Cancelled proposal versions remain queryable; gaps are never
+///         reused. A rotation may add, remove, reweight, or replace sources from either admitted
+///         program — the compatibility class itself is immutable.
 contract TrustComposeParamsController is ITrustComposeParamsController, Ownable2Step {
     bytes32 public immutable instanceId;
     address public immutable snapshot;
@@ -73,7 +75,7 @@ contract TrustComposeParamsController is ITrustComposeParamsController, Ownable2
 
         TrustComposeValidator.validateComputationalEnvelope(initialParams);
         TrustComposeValidator.Commitment memory policy = TrustComposeValidator.validatePolicyManifestMemory(
-            initialManifest, initialParams.chainId, initialParams.admittedProgramId, initialParams.maxSourceAgeBlocks
+            initialManifest, initialParams.chainId, initialParams.maxSourceAgeBlocks
         );
         if (
             initialParams.sourcePolicyRoot != policy.sourcePolicyRoot || initialParams.sourceCount != policy.sourceCount
@@ -152,7 +154,7 @@ contract TrustComposeParamsController is ITrustComposeParamsController, Ownable2
         if (_pending.version != 0) revert PendingPolicyExists(_pending.version, _pending.proposalId);
 
         TrustComposeValidator.Commitment memory policy = TrustComposeValidator.validatePolicyManifest(
-            manifest, _currentParams.chainId, _currentParams.admittedProgramId, _currentParams.maxSourceAgeBlocks
+            manifest, _currentParams.chainId, _currentParams.maxSourceAgeBlocks
         );
         accumulator.validatePolicy(manifest, adapters);
         bytes32 adapterSetHash = keccak256(abi.encode(adapters));
@@ -241,7 +243,7 @@ contract TrustComposeParamsController is ITrustComposeParamsController, Ownable2
         if (block.timestamp < pending.readyAt) revert ActivationDelayNotElapsed(pending.readyAt);
 
         TrustComposeValidator.Commitment memory policy = TrustComposeValidator.validatePolicyManifest(
-            manifest, _currentParams.chainId, _currentParams.admittedProgramId, _currentParams.maxSourceAgeBlocks
+            manifest, _currentParams.chainId, _currentParams.maxSourceAgeBlocks
         );
         accumulator.validatePolicy(manifest, adapters);
         bytes32 adapterSetHash = keccak256(abi.encode(adapters));
@@ -286,7 +288,7 @@ contract TrustComposeParamsController is ITrustComposeParamsController, Ownable2
     function _assertInitialPreimage(bytes calldata manifest, address[] calldata adapters) private view {
         VersionCommitment memory v1 = _versionCommitments[1];
         TrustComposeValidator.Commitment memory policy = TrustComposeValidator.validatePolicyManifest(
-            manifest, _currentParams.chainId, _currentParams.admittedProgramId, _currentParams.maxSourceAgeBlocks
+            manifest, _currentParams.chainId, _currentParams.maxSourceAgeBlocks
         );
         accumulator.validatePolicy(manifest, adapters);
         if (

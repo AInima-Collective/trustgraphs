@@ -9,7 +9,7 @@
 # guest build, which is immutable and cost a redeploy of two contracts. Everything below is
 # either that failure or a neighbour of it.
 #
-# Usage:  bash scripts/sepolia-preflight.sh
+# Usage:  bash scripts/sepolia-preflight.sh [--new-generation NAME]
 # Exit code is the number of failed checks, so it composes with `&&`.
 
 set -uo pipefail
@@ -19,9 +19,19 @@ if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
   exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
 fi
 
-# The release the deploy is pinned to. Bump both together.
-RELEASE_TAG=v0.0.5
-RELEASE_COMMIT=f64a4c7c9b5e552e2392894a2e0d6f6c40973549
+NEW_GENERATION=''
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -ne 2 ] || [ "$1" != '--new-generation' ] || ! [[ "$2" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$ ]]; then
+    echo 'Usage: sepolia-preflight.sh [--new-generation NAME]' >&2
+    exit 1
+  fi
+  NEW_GENERATION=$2
+fi
+
+# One candidate identity: the archived guest manifest. Checkout and env must agree with it.
+GUEST_MANIFEST=${GUEST_MANIFEST:-guest-manifest.json}
+RELEASE_TAG=$(jq -r '.tag // "untagged candidate"' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
+RELEASE_COMMIT=$(jq -r '.commit // empty' "$GUEST_MANIFEST" 2>/dev/null || echo missing)
 
 # The expansion adds weighted, composition and contributions factory families. Their latest local
 # receipts total 39,406,718 gas with registry grants enabled; Sepolia disables those grants, but
@@ -33,7 +43,7 @@ BURNED_KEY_ADDRESS=0x3ed16f90e8ea54d9a1bae67ab2d6bdc177eadeec
 
 # The SP1 verifier gateway routes proofs by a 4-byte selector taken from the proof itself, and
 # that selector is sha256 of the Groth16 verifying key shipped with the prover's sp1 version.
-# Stable across sp1-verifier 6.1.0 through 6.3.1. Derived, not copied: see check 9.
+# Stable across sp1-verifier 6.1.0 through 6.6.0. Derived, not copied: see check 9.
 EXPECTED_SELECTOR=0x4388a21c
 
 pass=0; fail=0
@@ -55,15 +65,18 @@ echo "=== 1. the checkout is the release we mean to deploy ==="
 [ "${DEPLOYMENT_COMMIT:-}" = "$RELEASE_COMMIT" ] \
   && ok "DEPLOYMENT_COMMIT is $RELEASE_TAG ($RELEASE_COMMIT)" \
   || bad "DEPLOYMENT_COMMIT=${DEPLOYMENT_COMMIT:-unset}, expected $RELEASE_COMMIT"
-note "HEAD is $(git rev-parse HEAD)"
-note "working tree: $(git status --porcelain | wc -l | tr -d ' ') modified path(s)"
+if node scripts/release-checkout.cjs; then
+  ok "checkout and release build inputs match DEPLOYMENT_COMMIT"
+else
+  bad "checkout is not the clean release source"
+fi
 
 echo "=== 2. every vkey came from that release, not from this machine ==="
 # The one that failed. A locally built vkey is well-formed bytes32 and passes every shape check,
 # so the only thing that can tell it apart from a real one is the table the release published.
-if [ -f guest-manifest.json ]; then
-  GM_TAG=$(jq -r .tag guest-manifest.json)
-  GM_COMMIT=$(jq -r .commit guest-manifest.json)
+if [ -f "$GUEST_MANIFEST" ]; then
+  GM_TAG=$(jq -r .tag "$GUEST_MANIFEST")
+  GM_COMMIT=$(jq -r .commit "$GUEST_MANIFEST")
   [ "$GM_TAG" = "$RELEASE_TAG" ] && ok "guest-manifest.json is $GM_TAG" \
     || bad "guest-manifest.json is $GM_TAG, expected $RELEASE_TAG"
   [ "$GM_COMMIT" = "${DEPLOYMENT_COMMIT:-}" ] && ok "manifest commit matches DEPLOYMENT_COMMIT" \
@@ -74,21 +87,36 @@ if [ -f guest-manifest.json ]; then
               "signer-sync:SP1_SIGNER_PROGRAM_VKEY" \
               "contributions:CONTRIBUTIONS_PROGRAM_VKEY"; do
     prog=${pair%%:*}; var=${pair##*:}
-    want=$(jq -r --arg p "$prog" '.programs[] | select(.program==$p) | .vkey' guest-manifest.json)
+    want=$(jq -r --arg p "$prog" '.programs[] | select(.program==$p) | .vkey' "$GUEST_MANIFEST")
     eval "have=\${$var:-unset}"
     { [ -n "$want" ] && [ "$want" = "$have" ]; } \
       && ok "$var is the released $prog vkey" \
       || bad "$var is $have, release says $want"
   done
-  ELF=$(jq -r '.programs[] | select(.program=="trust-graph") | .elf_sha256' guest-manifest.json)
+  ELF=$(jq -r '.programs[] | select(.program=="trust-graph") | .elf_sha256' "$GUEST_MANIFEST")
   [ "0x$ELF" = "${SP1_PROGRAM_ELF_SHA256:-}" ] \
     && ok "SP1_PROGRAM_ELF_SHA256 describes the same ELF as the vkey" \
     || bad "SP1_PROGRAM_ELF_SHA256=${SP1_PROGRAM_ELF_SHA256:-unset}, release says 0x$ELF"
+  jq -e --arg image "$(cat zk/sp1-builder-image.txt)" \
+    '.guest_build == "docker" and .builder_image == $image' "$GUEST_MANIFEST" >/dev/null \
+    && ok "manifest uses the pinned reproducible builder" \
+    || bad "manifest lacks the pinned reproducible builder identity"
 else
   bad "guest-manifest.json absent: gh release download $RELEASE_TAG -R AInima-Collective/trustgraphs -p guest-manifest.json"
 fi
 
 echo "=== 3. scratch artifacts cannot steer the continuation ==="
+if [ -n "$NEW_GENERATION" ]; then
+  if [ -e "deployments/generations/$NEW_GENERATION" ]; then
+    bad "generation already exists; reconcile its receipts before retrying"
+  else
+    ok "generation name is unused"
+  fi
+  for file in .docker/*_deploy.json; do
+    [ -f "$file" ] || continue
+    bad "$file is from an earlier attempt; use a fresh checkout for the new generation"
+  done
+else
 # The continuation ignores all five core artifacts and preserves those addresses from the tracked
 # manifest. Matching originals are useful deployment evidence, so do not demand their deletion.
 # Every scratch artifact either has to agree with a recorded live address or be absent. An artifact
@@ -122,6 +150,7 @@ for item in \
     bad "$file disagrees with manifest.contracts.$key (the continuation will ignore it)"
   fi
 done
+fi
 
 echo "=== 4. .env.sepolia points at the chain we mean ==="
 # `pnpm deploy:contracts` with no flags follows these. A demo once inherited them and deployed
@@ -129,6 +158,19 @@ echo "=== 4. .env.sepolia points at the chain we mean ==="
 [ "${DEPLOY_TARGET:-}" = "sepolia" ]   && ok "DEPLOY_TARGET=sepolia"     || bad "DEPLOY_TARGET=${DEPLOY_TARGET:-unset}"
 [ "${DEPLOY_STAGE:-}" = "production" ] && ok "DEPLOY_STAGE=production"   || bad "DEPLOY_STAGE=${DEPLOY_STAGE:-unset}"
 [ "${CHAIN_ID:-}" = "11155111" ]       && ok "CHAIN_ID=11155111"         || bad "CHAIN_ID=${CHAIN_ID:-unset}"
+# The factory scripts fail closed below ~1 day of blocks on a real chain unless the testnet opts
+# in explicitly. Attempt 2 of v0.1.0 (2026-09-09) broadcast four contracts before step 5 hit
+# that guard; this is the check that would have stopped it at zero transactions.
+FLOOR=${FACTORY_EPOCH_FLOOR:-unset}
+if [ "$FLOOR" = unset ] || ! [[ "$FLOOR" =~ ^[0-9]+$ ]]; then
+  bad "FACTORY_EPOCH_FLOOR=$FLOOR (must be a positive block count)"
+elif [ "$FLOOR" -ge 7200 ]; then
+  ok "FACTORY_EPOCH_FLOOR=$FLOOR (deliberate: at least ~1 day of blocks)"
+elif [ "${ALLOW_TESTNET_EPOCH_FLOOR:-}" = true ]; then
+  ok "FACTORY_EPOCH_FLOOR=$FLOOR with ALLOW_TESTNET_EPOCH_FLOOR=true (fast-cadence testnet factories)"
+else
+  bad "FACTORY_EPOCH_FLOOR=$FLOOR is below 7200; the factory scripts will revert at step 5 unless ALLOW_TESTNET_EPOCH_FLOOR=true"
+fi
 
 echo "=== 5. the RPC is the chain it claims to be ==="
 CHAIN=$(cast chain-id --rpc-url "${RPC_URL:-}" 2>/dev/null || echo 0)
@@ -207,8 +249,12 @@ fi
 echo "=== 10. the record this deploy will overwrite ==="
 STATUS=$(jq -r .status deployments/sepolia.json)
 if [ "$STATUS" = "deployed" ]; then
+  if [ -n "$NEW_GENERATION" ]; then
+    ok "active deployment is preserved; candidate writes deployments/generations/$NEW_GENERATION/sepolia.json"
+  else
   note "deployments/sepolia.json already records a deploy. It is the release manifest file, so"
   note "the next run writes straight over it. Keep a copy if that record still matters."
+  fi
 else
   ok "deployments/sepolia.json is '$STATUS', so nothing is lost by deploying"
 fi

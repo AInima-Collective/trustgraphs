@@ -115,10 +115,10 @@ pub async fn assemble_strict_witness(
                 "HeadAnchored #{fold_index} predecessor {previous_head:#x} != reconstructed {expected_previous:#x}"
             );
         }
-        if eas_offchain_v2::address_node_id(owner) != anchor.node_id {
+        if eas_offchain::address_node_id(owner) != anchor.node_id {
             bail!("HeadAnchored #{fold_index} owner does not derive nodeId");
         }
-        let message = eas_offchain_v2::payload_v1::AnchorMessage {
+        let message = eas_offchain::payload::AnchorMessage {
             node_id: anchor.node_id,
             envelope_kind: anchor.envelope_kind,
             schema_uid: expected_schema,
@@ -127,7 +127,7 @@ pub async fn assemble_strict_witness(
             count: anchor.count,
             data_commitment: anchor.data_commitment,
         };
-        let recovered = eas_offchain_v2::payload_v1::verify_anchor_authorization(
+        let recovered = eas_offchain::payload::verify_anchor_authorization(
             head_domain,
             &message,
             &head_signature,
@@ -178,9 +178,9 @@ pub async fn assemble_strict_witness(
                 let payload = std::fs::read(&path).with_context(|| {
                     format!("failed to read {} as Envelope0PayloadV1 bytes", path.display())
                 })?;
-                let decoded = eas_offchain_v2::payload_v1::decode(&payload, expected_schema)
+                let decoded = eas_offchain::payload::decode(&payload, expected_schema)
                     .map_err(|error| anyhow::anyhow!("{}: {}", error.code(), path.display()))?;
-                let node_id = eas_offchain_v2::address_node_id(decoded.owner);
+                let node_id = eas_offchain::address_node_id(decoded.owner);
                 if payloads_by_node.insert(node_id, payload).is_some() {
                     bail!("more than one debug payload supplied for node {node_id:#x}");
                 }

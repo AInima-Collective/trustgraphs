@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {Enum} from "@safe-global/safe-smart-account/libraries/Enum.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {SignerSyncZkModule} from "src/zodiac/SignerSyncZkModule.sol";
@@ -29,8 +32,8 @@ contract AlwaysAccept is IZkVerifier {
 /// ADJUDICATION: does owning the governed Safe's owner slot actually confer control?
 contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
-    GnosisSafe internal singleton;
-    GnosisSafeProxyFactory internal proxyFactory;
+    Safe internal singleton;
+    SafeProxyFactory internal proxyFactory;
     AlwaysAccept internal fake;
 
     address internal creator = address(0xA11CE);
@@ -38,8 +41,8 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
 
     function setUp() public override {
         super.setUp();
-        singleton = new GnosisSafe();
-        proxyFactory = new GnosisSafeProxyFactory();
+        singleton = new Safe();
+        proxyFactory = new SafeProxyFactory();
         fake = new AlwaysAccept();
         gf = new GovernedTrustgraphsFactory(
             factory,
@@ -48,6 +51,8 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             fake,
             fake.programVKey()
         );
@@ -60,14 +65,12 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy(0, 0),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.InitialPolicy(0, 0),
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
 
-        GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
-        GnosisSafe safe = GnosisSafe(payable(safeAddr));
+        GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
+        Safe safe = Safe(payable(safeAddr));
 
         // Give the Safe something worth stealing.
         vm.deal(safeAddr, 10 ether);
@@ -77,23 +80,24 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         uint256 cp = snap.trigger();
         _mockActivity(auth.governanceModule);
 
-        address[] memory desired = new address[](1);
+        address[] memory desired = new address[](2);
         desired[0] = stranger;
+        desired[1] = address(uint160(stranger) + 1);
         vm.prank(stranger);
-        SignerSyncZkModule(auth.signerSyncModule).submitSignerProof(cp, 0, desired, 1, hex"00");
+        SignerSyncZkModule(auth.signerSyncModule).submitSignerProof(cp, 0, desired, 2, hex"00");
 
-        assertTrue(safe.isOwner(stranger), "stranger is sole owner");
-        assertEq(safe.getThreshold(), 1);
+        assertTrue(safe.isOwner(stranger), "stranger controls an owner");
+        assertEq(safe.getThreshold(), 2);
 
-        // The guard is sealed. Try to move the Safe's ETH as the sole owner with an approved-hash
-        // signature (v=1, valid for a 1-of-1 owner calling execTransaction directly).
-        bytes memory sig = abi.encodePacked(uint256(uint160(stranger)), uint256(0), uint8(1));
+        // The guard is sealed. Both attacker-controlled owners approve the transfer.
+        bytes memory sig = _approvedSignatures(safe, stranger, 10 ether, "");
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(SafeExecutionGuard.OwnerExecutionLocked.selector, stranger));
         safe.execTransaction(stranger, 10 ether, "", Enum.Operation.Call, 0, 0, 0, address(0), payable(address(0)), sig);
         assertEq(safeAddr.balance, 10 ether, "funds untouched");
 
         // ... and cannot remove the guard, enable a module, or delegatecall either.
+        sig = _approvedSignatures(safe, safeAddr, 0, abi.encodeWithSignature("setGuard(address)", address(0)));
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(SafeExecutionGuard.OwnerExecutionLocked.selector, stranger));
         safe.execTransaction(
@@ -129,13 +133,11 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy(0, 0),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.InitialPolicy(0, 0),
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
-        GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
-        GnosisSafe safe = GnosisSafe(payable(safeAddr));
+        GovernedFactoryBase.Authority memory auth = gf.authorityOf(instanceId);
+        Safe safe = Safe(payable(safeAddr));
         vm.deal(safeAddr, 10 ether);
 
         MerkleSnapshot snap = MerkleSnapshot(snapshot);
@@ -143,10 +145,11 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         uint256 cp = snap.trigger();
         _mockActivity(auth.governanceModule);
 
-        address[] memory desired = new address[](1);
+        address[] memory desired = new address[](2);
         desired[0] = stranger;
+        desired[1] = address(uint160(stranger) + 1);
         vm.prank(stranger);
-        SignerSyncZkModule(auth.signerSyncModule).submitSignerProof(cp, 0, desired, 1, hex"00");
+        SignerSyncZkModule(auth.signerSyncModule).submitSignerProof(cp, 0, desired, 2, hex"00");
 
         // The recovery proposer (the creator) queues an ordinary guard removal.
         DelayedRecoveryModule rec = DelayedRecoveryModule(auth.recoveryModule);
@@ -157,7 +160,7 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         rec.execute(0, safeAddr, 0, removeGuard, Enum.Operation.Call);
 
         // The seized owner set is now full control of the Safe.
-        bytes memory sig = abi.encodePacked(uint256(uint160(stranger)), uint256(0), uint8(1));
+        bytes memory sig = _approvedSignatures(safe, stranger, 10 ether, "");
         vm.prank(stranger);
         assertTrue(
             safe.execTransaction(
@@ -166,6 +169,21 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         );
         assertEq(safeAddr.balance, 0, "attacker drained the Safe once the guard was gone");
         assertEq(stranger.balance, 10 ether);
+    }
+
+    function _approvedSignatures(Safe safe, address to, uint256 value, bytes memory data)
+        internal
+        returns (bytes memory)
+    {
+        address second = address(uint160(stranger) + 1);
+        bytes32 digest = safe.getTransactionHash(
+            to, value, data, Enum.Operation.Call, 0, 0, 0, address(0), address(0), safe.nonce()
+        );
+        vm.prank(second);
+        safe.approveHash(digest);
+        return abi.encodePacked(
+            uint256(uint160(stranger)), uint256(0), uint8(1), uint256(uint160(second)), uint256(0), uint8(1)
+        );
     }
 
     function _mockActivity(address governanceModule) internal {

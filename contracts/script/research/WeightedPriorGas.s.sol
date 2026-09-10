@@ -4,6 +4,9 @@ pragma solidity ^0.8.27;
 import {Script, console2} from "forge-std/Script.sol";
 
 /// @notice Research-only validator used to benchmark issue #34's compact-calldata architecture.
+/// @dev FROZEN research benchmark copy. The shipped validator is
+///      `src/params/WeightedPriorValidator.sol` and has since diverged — never read this one as
+///      authoritative.
 contract WeightedPriorValidatorSpike {
     uint256 internal constant SCALE = 1e18;
     uint32 internal constant MAX_ENTRIES = 2048;

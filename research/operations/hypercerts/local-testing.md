@@ -154,7 +154,7 @@ verifies — same trick as the main guide's full-stack section:
 anvil --fork-url "$FORK_RPC_URL" --chain-id 31337 --block-time 2
 
 # Succinct's Groth16 gateway — same CREATE2 address on every chain, pinned in .env.example
-# (must carry the verifier for the SDK version this repo pins, v6.3.1):
+# (must carry the verifier for the SDK version this repo pins, v6.6.0):
 export GW=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
 ```
 
@@ -322,7 +322,7 @@ label nodes but never mislabel them.
   never use. Prefix them with `SP1_PROVER=mock` — identical executor + `guest == native`
   byte-assert, nothing else changes. Real proving needs `SP1_PROVER=network` or a 16–32 GiB box.
 - **`succinct` toolchain missing** (fresh container) → `curl -L https://sp1up.succinct.xyz | bash
-  && ~/.sp1/bin/sp1up --version v6.3.1`, then `task zk:build`.
+  && ~/.sp1/bin/sp1up --version v6.6.0`, then `task zk:build`.
 - **`include_elf!` fails with a missing file under a `zk/*/target/` directory** → the guests were never
   built, and whatever you ran exports `SP1_SKIP_PROGRAM_BUILD=true`. `task zk:build`.
 - **`prove` gets killed right after the `vkey:` line** → you're on the `cpu` backend and the

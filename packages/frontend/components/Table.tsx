@@ -135,12 +135,20 @@ export function Table<T>({
     if (!column.sortable) return null
 
     if (sortColumn !== column.key) {
-      return <span className="ml-1 text-text-subtle">↕</span>
+      return (
+        <span aria-hidden="true" className="ml-1 text-text-subtle">
+          ↕
+        </span>
+      )
     }
     return sortDirection === 'asc' ? (
-      <span className="ml-1 text-text">↑</span>
+      <span aria-hidden="true" className="ml-1 text-text">
+        ↑
+      </span>
     ) : (
-      <span className="ml-1 text-text">↓</span>
+      <span aria-hidden="true" className="ml-1 text-text">
+        ↓
+      </span>
     )
   }
 
@@ -181,19 +189,37 @@ export function Table<T>({
                   key={column.key}
                   className={cn(
                     'select-none border-b border-hairline-strong px-3 py-2 text-left text-xs font-normal uppercase tracking-wider text-text-subtle transition-colors',
-                    column.sortable && 'cursor-pointer hover:text-text',
                     column.headerClassName
                   )}
-                  onClick={() => handleSort(column)}
+                  scope="col"
+                  aria-sort={
+                    column.sortable
+                      ? sortColumn === column.key
+                        ? sortDirection === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                      : undefined
+                  }
                 >
                   {/* inline-flex, not flex: a block-level flex container fills
                    * the cell and ignores the th's text-align, so a column
                    * declaring `text-right` in headerClassName would keep its
                    * header stuck on the left while its values moved right. */}
                   <span className="inline-flex items-center gap-1 align-middle">
-                    <span>{column.header}</span>
+                    {column.sortable ? (
+                      <button
+                        type="button"
+                        className="tg-touch-target inline-flex items-center text-left uppercase tracking-wider hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                        onClick={() => handleSort(column)}
+                      >
+                        {column.header}
+                        {getSortIndicator(column)}
+                      </button>
+                    ) : (
+                      <span>{column.header}</span>
+                    )}
                     {column.tooltip && <InfoTooltip title={column.tooltip} />}
-                    {getSortIndicator(column)}
                   </span>
                 </th>
               )
@@ -210,7 +236,20 @@ export function Table<T>({
                   onRowClick && 'hover:bg-surface-2',
                   getRowClassName(row)
                 )}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onClick={
+                  onRowClick
+                    ? (event) => {
+                        if (
+                          !(event.target instanceof Element) ||
+                          !event.target.closest(
+                            'a, button, input, select, textarea'
+                          )
+                        ) {
+                          onRowClick(row)
+                        }
+                      }
+                    : undefined
+                }
                 title={onRowClick ? rowClickTitle : undefined}
               >
                 {columns.map((column) => {

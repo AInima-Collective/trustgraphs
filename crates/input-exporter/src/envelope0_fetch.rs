@@ -89,7 +89,7 @@ async fn fetch_one(
             anyhow::ensure!(response.status().is_success(), "HTTP {}", response.status());
             if let Some(length) = response.content_length() {
                 anyhow::ensure!(
-                    length <= eas_offchain_v2::payload_v1::MAX_PAYLOAD_BYTES as u64,
+                    length <= eas_offchain::payload::MAX_PAYLOAD_BYTES as u64,
                     "declared body is {length} bytes"
                 );
             }
@@ -99,9 +99,9 @@ async fn fetch_one(
             while let Some(chunk) = response.chunk().await? {
                 anyhow::ensure!(
                     bytes.len().saturating_add(chunk.len())
-                        <= eas_offchain_v2::payload_v1::MAX_PAYLOAD_BYTES,
+                        <= eas_offchain::payload::MAX_PAYLOAD_BYTES,
                     "streamed body exceeds {} bytes",
-                    eas_offchain_v2::payload_v1::MAX_PAYLOAD_BYTES
+                    eas_offchain::payload::MAX_PAYLOAD_BYTES
                 );
                 bytes.extend_from_slice(&chunk);
             }
@@ -337,7 +337,7 @@ mod tests {
 
     #[tokio::test]
     async fn declared_and_chunked_oversized_bodies_are_bounded() {
-        let maximum = eas_offchain_v2::payload_v1::MAX_PAYLOAD_BYTES;
+        let maximum = eas_offchain::payload::MAX_PAYLOAD_BYTES;
         for (label, gateway) in [
             ("declared", one_response("200 OK", vec![0; maximum + 1])),
             ("chunked", one_chunked_response(vec![0; maximum + 1], 32 * 1024)),

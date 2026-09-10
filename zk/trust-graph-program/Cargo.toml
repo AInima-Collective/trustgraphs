@@ -1,0 +1,24 @@
+[package]
+name = "trust-graph-program"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "trust-graph-program"
+path = "src/main.rs"
+
+[dependencies]
+sp1-zkvm = "=6.6.0"
+pagerank-core = { path = "../../crates/pagerank-core" }
+trustgraph-core = { path = "../../crates/trustgraph-core" }
+
+[workspace]
+
+[patch.crates-io]
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.2.0" }
+k256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "k256", tag = "patch-k256-13.4-sp1-6.2.0" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

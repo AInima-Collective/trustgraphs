@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
-import { scoreProgramBinding, scoreProgramBindingEvent } from 'ponder:schema'
+import { scoreProgramBinding } from 'ponder:schema'
 
 import {
   type ScoreProgramProvenance,
@@ -80,8 +80,7 @@ const recordBinding = async (
       conflictReason: reason,
     })
   } else if (!accepted && !existing.conflict) {
-    // Preserve the first accepted identity and its provenance; only add the conflict marker. The
-    // append-only event row below carries the competing tuple for audit.
+    // Preserve the first accepted identity and its provenance; only add the conflict marker.
     await context.db.update(scoreProgramBinding, { id }).set({
       conflict: true,
       conflictReason: reason,
@@ -99,27 +98,6 @@ const recordBinding = async (
       sourceTxHash: event.transaction.hash,
     })
   }
-
-  await context.db.insert(scoreProgramBindingEvent).values({
-    id: event.id,
-    bindingId: id,
-    chainId,
-    snapshot: args.snapshot,
-    instanceId: args.instanceId,
-    programId: args.program,
-    outputDomain: definition?.outputDomain ?? null,
-    verifier: args.verifier,
-    registryOrAccumulator: args.registryOrAccumulator,
-    paramsHash: args.paramsHash,
-    sourceRegistry: event.log.address,
-    sourceKind,
-    accepted,
-    reason,
-    blockNumber: event.block.number,
-    logIndex: event.log.logIndex,
-    timestamp: event.block.timestamp,
-    txHash: event.transaction.hash,
-  })
 }
 
 ponder.on('instanceRegistry:InstanceRegistered', async ({ event, context }) =>
@@ -153,7 +131,7 @@ ponder.on(
       )
       .limit(1)
     if (!binding) {
-      // M0 hazard sweep: a params-hash rotation for an instance whose registration predates the
+      // Out-of-universe guard: a params-hash rotation for an instance whose registration predates the
       // start block is out-of-universe. The fold is event-sourced provenance — synthesizing a
       // binding from current chain state would forge history — so log and skip (there is no
       // binding id to hang even a receipt on), and never wedge the indexer on a valid chain.
@@ -183,27 +161,6 @@ ponder.on(
         conflictReason: reason,
       })
     }
-
-    await context.db.insert(scoreProgramBindingEvent).values({
-      id: event.id,
-      bindingId: binding.id,
-      chainId,
-      snapshot: binding.snapshot,
-      instanceId: args.instanceId,
-      programId: binding.programId,
-      outputDomain: binding.outputDomain,
-      verifier: binding.verifier,
-      registryOrAccumulator: binding.registryOrAccumulator,
-      paramsHash: args.newParamsHash,
-      sourceRegistry: event.log.address,
-      sourceKind: 'instance-params-hash-updated',
-      accepted,
-      reason,
-      blockNumber: event.block.number,
-      logIndex: event.log.logIndex,
-      timestamp: event.block.timestamp,
-      txHash: event.transaction.hash,
-    })
   }
 )
 

@@ -10,6 +10,7 @@ import {
   equalBytes,
   headDomain,
   hexToBytes,
+  toOwnedArrayBuffer,
   ZERO32,
   type AnchorMessage,
   type LiveNodeHead,
@@ -615,7 +616,7 @@ test('Kubo target uses a pinned raw block and performs byte-exact block/get read
     }
     assert.equal(url.pathname.endsWith('/block/get'), true)
     assert.equal(url.searchParams.get('arg'), bundle.cid)
-    return new Response(bytes, {
+    return new Response(toOwnedArrayBuffer(bytes), {
       status: 200,
       headers: { 'content-type': 'application/vnd.ipld.raw' },
     })

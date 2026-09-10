@@ -2,180 +2,138 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useUpdatingRef } from './useUpdatingRef'
 
-// Pass `null` to left, right, or width to skip setting that property.
 export type UseTrackDropdownOptions = {
-  // Default: rect.bottom
   top?: (rect: DOMRect) => number
-  // Default: rect.left
   left?: null | ((rect: DOMRect) => number)
-  // Default: null
   right?: null | ((rect: DOMRect) => number)
-  // Default: rect.width
   width?: null | ((rect: DOMRect) => number)
-  /**
-   * Padding pixels between the edge of the popup and the window. Default: 32.
-   */
+  /** Minimum distance from the visible viewport edge. */
   padding?: number
+  enabled?: boolean
 }
 
-// This hook tracks the rect of an element on the page and positions a dropdown
-// relative to it. Pass the dropdown ref to the hook, and get a ref returned
-// that should be set on the element you want to track. The hook will update the
-// dropdown when things resize and scroll. The dropdown will be positioned below
-// the tracked element by default, but the options let you customize the final
-// position.
+/** Anchor a fixed panel to its trigger and keep it inside the visible viewport. */
 export const useTrackDropdown = ({
   top,
   left,
   right = null,
   width,
   padding = 32,
+  enabled = true,
 }: UseTrackDropdownOptions = {}) => {
   const dropdownRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
+  const [ready, setReady] = useState(0)
 
   const updateRect = () => {
-    if (!trackRef.current || !dropdownRef.current) {
-      return
-    }
+    const panel = dropdownRef.current
+    const trigger = trackRef.current
+    if (!enabled || !panel || !trigger) return
 
-    // On iOS Safari, when the keyboard is open, the entire body is offset,
-    // which makes the dropdown positioned incorrectly since it is fixed above
-    // everything. The body is offset by the height of the keyboard, so we can
-    // use it to fix the position. On desktop browsers, this should be 0.
-    const topOffset = Math.max(
-      0,
-      document.body.getBoundingClientRect().top ?? 0
-    )
+    // visualViewport follows the on-screen keyboard and pinch zoom; innerHeight
+    // alone can leave controls behind a mobile keyboard.
+    const viewport = window.visualViewport
+    const inset = Math.max(8, padding)
+    const viewportLeft = viewport?.offsetLeft ?? 0
+    const viewportTop = viewport?.offsetTop ?? 0
+    const viewportWidth =
+      viewport?.width ?? document.documentElement.clientWidth
+    const viewportHeight = viewport?.height ?? window.innerHeight
+    const minLeft = viewportLeft + inset
+    const maxRight = viewportLeft + viewportWidth - inset
+    const minTop = viewportTop + inset
+    const maxBottom = viewportTop + viewportHeight - inset
+    const rect = trigger.getBoundingClientRect()
 
-    const rect = trackRef.current.getBoundingClientRect()
+    panel.style.left = ''
+    panel.style.right = ''
+    panel.style.bottom = ''
+    panel.style.width = ''
+    panel.style.maxWidth = `${Math.max(0, maxRight - minLeft)}px`
+    // Keep the existing height constraint while measuring scrollHeight. Temporarily
+    // expanding a scrollable panel would reset its scrollTop on every scroll event.
 
-    const dropdownTop = (top?.(rect) ?? rect.bottom) - topOffset
-    dropdownRef.current.style.top = `${dropdownTop}px`
-
-    // Unset since this may have been set by a previous constraint (below),
-    // and we want to make sure to re-run the contraints fresh.
-    dropdownRef.current.style.left = ''
-    dropdownRef.current.style.right = ''
-    dropdownRef.current.style.bottom = ''
-
-    let dropdownLeft: number | undefined
-    if (left !== null) {
-      dropdownLeft = Math.max(padding, left?.(rect) ?? rect.left)
-      dropdownRef.current.style.left = `${dropdownLeft}px`
-    }
-
-    let dropdownRight: number | undefined
-    if (right !== null) {
-      dropdownRight = Math.max(padding, right?.(rect) ?? rect.right)
-      dropdownRef.current.style.right = `${dropdownRight}px`
-    }
-
+    const requestedLeft =
+      left === null ? undefined : (left?.(rect) ?? rect.left)
+    const requestedRight =
+      right === null ? undefined : (right?.(rect) ?? rect.right)
     if (width !== null) {
-      dropdownRef.current.style.width = `${width?.(rect) ?? rect.width}px`
+      panel.style.width = `${width?.(rect) ?? rect.width}px`
+    } else if (requestedLeft !== undefined && requestedRight !== undefined) {
+      panel.style.width = `${Math.max(0, document.documentElement.clientWidth - requestedRight - requestedLeft)}px`
     }
 
-    // Apply edge constraints. Since we cap the left and right values at the
-    // minimum padding, we only need to check if the opposite side plus the
-    // width will cause an overflow.
-    const dropdownRect = dropdownRef.current.getBoundingClientRect()
-    const paddingPixels = `${padding}px`
+    const panelWidth = panel.getBoundingClientRect().width
+    const alignedLeft =
+      requestedLeft ??
+      document.documentElement.clientWidth - (requestedRight ?? 0) - panelWidth
+    panel.style.left = `${Math.max(minLeft, Math.min(alignedLeft, maxRight - panelWidth))}px`
 
-    // If dropdown is past the left edge of the screen, set the left.
-    if (
-      dropdownRight &&
-      // Use document client width instead of window inner width to account for scrollbar.
-      document.documentElement.clientWidth -
-        dropdownRight -
-        dropdownRect.width <
-        padding
-    ) {
-      dropdownRef.current.style.left = paddingPixels
-    }
+    const belowTop = Math.max(minTop, top?.(rect) ?? rect.bottom)
+    const gap = Math.max(0, (top?.(rect) ?? rect.bottom) - rect.bottom)
+    const aboveBottom = Math.min(maxBottom, rect.top - gap)
+    const belowSpace = Math.max(0, maxBottom - belowTop)
+    const aboveSpace = Math.max(0, aboveBottom - minTop)
+    const naturalHeight =
+      panel.scrollHeight + panel.offsetHeight - panel.clientHeight
+    const above = naturalHeight > belowSpace && aboveSpace > belowSpace
+    const available = above ? aboveSpace : belowSpace
+    const height = Math.min(naturalHeight, available)
 
-    // If dropdown is past the right edge of the screen, set the right.
-    if (
-      dropdownLeft &&
-      // Use document client width instead of window inner width to account for scrollbar.
-      dropdownLeft + dropdownRect.width >
-        document.documentElement.clientWidth - padding
-    ) {
-      dropdownRef.current.style.right = paddingPixels
-    }
-
-    // If dropdown is past the bottom of the screen, set the bottom.
-    if (dropdownTop + dropdownRect.height > window.innerHeight - padding) {
-      dropdownRef.current.style.bottom = paddingPixels
-    }
+    panel.style.maxHeight = `${available}px`
+    panel.style.top = `${above ? aboveBottom - height : Math.min(belowTop, maxBottom)}px`
+    panel.dataset.side = above ? 'top' : 'bottom'
   }
 
-  // Memoize ref to prevent listener from resetting on every render.
   const updateRectRef = useUpdatingRef(updateRect)
 
-  // Update the rect of the element on window scroll and resize.
   useEffect(() => {
-    const updateRect = () => updateRectRef.current()
+    if (!enabled) return
+    let frame = 0
+    const schedule = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => updateRectRef.current())
+    }
+    schedule()
+    window.addEventListener('scroll', schedule, true)
+    window.addEventListener('resize', schedule)
+    const viewport = window.visualViewport
+    viewport?.addEventListener('resize', schedule)
+    viewport?.addEventListener('scroll', schedule)
 
-    // The third argument set to `true` makes the event fire when any scroll
-    // event happens, not just when the window is scrolled. The actual
-    // scrollable container is some parent element.
-    window.addEventListener('scroll', updateRect, true)
-    // window.addEventListener('resize', updateRect, true)
+    const observer = new ResizeObserver(schedule)
+    if (trackRef.current) observer.observe(trackRef.current)
+    if (dropdownRef.current) observer.observe(dropdownRef.current)
+    const contentObserver = new MutationObserver(schedule)
+    if (dropdownRef.current) {
+      contentObserver.observe(dropdownRef.current, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      })
+    }
 
     return () => {
-      // The `true` matters: it was registered with capture, and a removal whose
-      // capture flag does not match removes nothing, so the listener outlived
-      // every unmount.
-      window.removeEventListener('scroll', updateRect, true)
-      // window.removeEventListener('resize', updateRect)
-    }
-  }, [updateRectRef])
-
-  // Trigger state change when elements are set so the effects run.
-  const [dropdownReady, setDropdownReady] = useState(false)
-  const [trackReady, setTrackReady] = useState(false)
-
-  // Update the rect when both elements are ready.
-  useEffect(() => {
-    if (dropdownReady && trackReady) {
-      updateRectRef.current()
-    }
-  }, [dropdownReady, trackReady, updateRectRef])
-
-  // Use a ResizeObserver to update the rect when the element changes size.
-  useEffect(() => {
-    if (!trackRef.current) {
-      return
-    }
-
-    const observer = new ResizeObserver(() => updateRectRef.current())
-    observer.observe(trackRef.current)
-
-    // Update on a timer to catch other changes.
-    const timer = setInterval(() => updateRectRef.current(), 1000)
-
-    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', schedule)
+      viewport?.removeEventListener('resize', schedule)
+      viewport?.removeEventListener('scroll', schedule)
       observer.disconnect()
-      clearInterval(timer)
+      contentObserver.disconnect()
     }
-  }, [trackReady, updateRectRef])
+  }, [enabled, ready, updateRectRef])
 
-  // Use a callback ref so we can trigger a state change to update.
   const onDropdownRef = useCallback((element: HTMLDivElement | null) => {
+    if (dropdownRef.current === element) return
     dropdownRef.current = element
-    setDropdownReady(!!element)
+    if (element) setReady((value) => value + 1)
   }, [])
-
-  // Use a callback ref so we can trigger a state change to activate the
-  // ResizeObserver when the ref is ready.
   const onTrackRef = useCallback((element: HTMLDivElement | null) => {
+    if (trackRef.current === element) return
     trackRef.current = element
-    setTrackReady(!!element)
+    if (element) setReady((value) => value + 1)
   }, [])
 
-  return {
-    onDropdownRef,
-    onTrackRef,
-    updateRectRef,
-  }
+  return { onDropdownRef, onTrackRef, updateRectRef }
 }

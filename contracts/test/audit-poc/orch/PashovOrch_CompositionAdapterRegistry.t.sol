@@ -166,10 +166,24 @@ contract PashovOrch_CompositionAdapterRegistry is Test {
         manifest = bytes.concat(
             manifest,
             abi.encodePacked(
-                bytes32(uint256(1)), snapshot1, keccak256("famA"), ADMITTED, uint64(5e17), uint64(1000), uint8(1)
+                bytes32(uint256(1)),
+                snapshot1,
+                keccak256("famA"),
+                ADMITTED,
+                keccak256("trustgraphs.output.trust-graph-account.v1"),
+                uint64(5e17),
+                uint64(1000),
+                uint8(1)
             ),
             abi.encodePacked(
-                bytes32(uint256(2)), snapshot2, keccak256("famB"), ADMITTED, uint64(5e17), uint64(1000), uint8(1)
+                bytes32(uint256(2)),
+                snapshot2,
+                keccak256("famB"),
+                ADMITTED,
+                keccak256("trustgraphs.output.trust-graph-account.v1"),
+                uint64(5e17),
+                uint64(1000),
+                uint8(1)
             )
         );
 

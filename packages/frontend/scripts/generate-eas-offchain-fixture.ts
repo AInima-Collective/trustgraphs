@@ -6,6 +6,10 @@
  * bytes are consumed by Rust, guest, and Solidity tests. This script never handles a real key;
  * FIXTURE_PRIVATE_KEY is public deterministic test material.
  */
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import {
   EAS,
   Offchain,
@@ -14,18 +18,15 @@ import {
   type SignedOffchainAttestation,
 } from '@ethereum-attestation-service/eas-sdk'
 import {
+  type Address,
+  type Hex,
   encodeAbiParameters,
   encodePacked,
   hashTypedData,
   keccak256,
   sha256,
-  type Address,
-  type Hex,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const SDK_VERSION = '2.9.0'
 const SDK_INTEGRITY =

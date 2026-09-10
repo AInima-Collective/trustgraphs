@@ -19,7 +19,7 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
 /// @title TrustgraphsFactoryInstanceTest
-/// @notice The half of M1 that a deployment check cannot fake: an instance minted by one transaction
+/// @notice The half of the factory battery that a deployment check cannot fake: an instance minted by one transaction
 ///         is a WORKING instance. Members attest against its schema, its resolver folds the edge, its
 ///         snapshot checkpoints on its own epoch schedule, and a proof over that checkpoint writes a
 ///         root — through the real EAS, not a mock. Plus the factory-level half of the
@@ -314,14 +314,15 @@ contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
         return keccak256(abi.encode(uint8(0), member, peer, uid, block.timestamp, keccak256(data)));
     }
 
-    /// @dev Journal v2 for a lane-1-only instance, over its own checkpoint and its own paramsHash.
+    /// @dev The journal digest for a lane-1-only instance, over its own checkpoint and its own paramsHash.
     function _journalDigest(Created memory c, uint256 checkpointId) internal view returns (bytes32) {
         IAttestationAccumulator.Checkpoint memory cp = IAttestationAccumulator(c.resolver).getCheckpoint(checkpointId);
         return _digest(c.snapshot, cp.acc, cp.leafCount, MerkleSnapshot(c.snapshot).paramsHash());
     }
 
-    /// @dev Journal v3, field order FROZEN (`MerkleSnapshot.submitProof`): lane-2 is the zero
-    ///      accumulator on every v1 factory instance, and the last two words are the v3 bindings.
+    /// @dev The full journal, field order FROZEN (`MerkleSnapshot.submitProof`): lane 2 is the
+    ///      zero accumulator on every factory instance, and the last two words are the recipient
+    ///      and instance-domain bindings.
     function _digest(address snapshot, bytes32 inputAcc, uint64 leafCount, bytes32 paramsHash)
         internal
         view

@@ -7,8 +7,8 @@ import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {ParamsJson} from "script/lib/ParamsJson.sol";
 
 /// @title ParamsJsonTest
-/// @notice Locks the deploy-time reader: `DeployNetwork` computes `paramsHash` by reading the same
-///         `params.json` the prover feeds the guest, so the field names + the 0x-hex-string U256
+/// @notice Locks the deploy-time reader: the deploy scripts compute `paramsHash` by reading the
+///         same `params.json` the prover feeds the guest, so the field names + the 0x-hex-string U256
 ///         format must stay in sync with `pagerank_core::Params`. Reads the committed template and
 ///         asserts each field lands where the codec expects it. If someone renames a field or
 ///         changes the serialization, this fails instead of silently producing a wrong hash.

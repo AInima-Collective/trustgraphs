@@ -19,7 +19,7 @@ pub fn main() {
     let input: GuestInput = sp1_zkvm::io::read();
 
     // Canonical, deterministic, float-free computation (lane-2-only journal v2).
-    let result = compute(&input);
+    let result = compute(&input).expect("invalid hypercerts witness");
 
     // Commit the journal tuple as public values (preimage of the journal digest).
     let public_values = journal_encoded(&result.journal);

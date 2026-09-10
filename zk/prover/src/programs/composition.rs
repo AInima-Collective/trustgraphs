@@ -1,4 +1,4 @@
-//! Host/prover for the isolated `trust-compose` V1 SP1 program.
+//! Host/prover for the isolated `trust-compose` mixed-source params/manifest SP1 program.
 
 use anyhow::Result;
 use clap::Subcommand;
@@ -12,7 +12,7 @@ pub fn elf() -> Elf {
 }
 
 pub fn sample_input() -> GuestInput {
-    fixture::sample_input()
+    fixture::mixed_input()
 }
 
 pub fn benchmark_input(source_count: usize, aggregate_entries: usize) -> GuestInput {
@@ -21,11 +21,9 @@ pub fn benchmark_input(source_count: usize, aggregate_entries: usize) -> GuestIn
 
 pub fn parity_inputs() -> Vec<(&'static str, GuestInput)> {
     vec![
-        ("research-overlap-unequal-pools", fixture::sample_input()),
-        ("source-reordered", fixture::reversed_sample_input()),
-        ("post-trigger-update", fixture::post_trigger_input()),
-        ("exact-source-reproduction", fixture::reproduction_input()),
-        ("address-remainder-tie", fixture::remainder_tie_input()),
+        ("mixed-standard-weighted", fixture::mixed_input()),
+        ("source-reordered", fixture::reversed_mixed_input()),
+        ("rotated-equal-weights", fixture::rotated_mixed_input()),
         ("representative-eight-source", fixture::benchmark_input(8, 1_024)),
     ]
 }
@@ -39,9 +37,9 @@ fn load_input(path: Option<&String>) -> Result<GuestInput> {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Print the composition guest verification key (bytes32).
+    /// Print the V2 composition guest verification key (bytes32).
     Vkey,
-    /// Print keccak256 of the frozen composition V1 params tuple.
+    /// Print keccak256 of the frozen composition V2 params tuple.
     Paramshash { input: Option<String> },
     /// Execute the guest and byte-assert its journal against native computation.
     Execute {
@@ -49,7 +47,7 @@ pub enum Command {
         #[arg(long)]
         out_dir: Option<String>,
     },
-    /// Prove and locally verify a composition root.
+    /// Prove and locally verify a mixed composition root.
     Prove {
         input: Option<String>,
         #[arg(long)]

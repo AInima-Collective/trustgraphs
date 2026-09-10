@@ -46,7 +46,8 @@ contract QuillExtCall_SnapshotHookStipend is Test {
             keccak256("params"),
             IAttestationAccumulator(address(accumulator)),
             address(this),
-            address(this)
+            address(this),
+            ""
         );
     }
 

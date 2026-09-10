@@ -1,4 +1,7 @@
-import { equalBytes } from '@trustgraphs/eas-offchain-client'
+import {
+  equalBytes,
+  toOwnedArrayBuffer,
+} from '@trustgraphs/eas-offchain-client'
 
 import { RelayError } from './errors.ts'
 import type { BlobStore } from './types.ts'
@@ -35,7 +38,7 @@ export class IpfsBlockStore implements BlobStore {
     putUrl.searchParams.set('mhlen', '32')
     putUrl.searchParams.set('pin', 'true')
     const form = new FormData()
-    form.append('file', new Blob([bytes]), 'payload.bin')
+    form.append('file', new Blob([toOwnedArrayBuffer(bytes)]), 'payload.bin')
     const response = await fetch(putUrl, {
       method: 'POST',
       headers: this.headers(),

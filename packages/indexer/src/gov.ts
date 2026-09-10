@@ -3,24 +3,15 @@ import {
   merkleGovModule,
   merkleGovModuleProposal,
   merkleGovModuleVote,
-  merkleGovVoteDelegate,
-  merkleGovVoteDelegationEvent,
 } from 'ponder:schema'
 import type { Address } from 'viem'
 
+import { formatProposalActions } from './gov-actions'
 import {
   ensureMerkleGovModuleRow,
   readMerkleGovModuleRow,
 } from './gov-module-shared'
 import { merkleGovModuleAbi } from '../../frontend/lib/contract-abis'
-
-// Helper type for proposal actions
-type ProposalAction = {
-  target: string
-  value: string
-  data: string
-  operation: number
-}
 
 // Scalar compatibility seam for the field appended to Proposal. Keeping this fragment local lets
 // the indexer adopt execution expiry without rewriting generated full-contract ABI artifacts.
@@ -108,13 +99,7 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
           i
         )
 
-        // Format actions for JSON storage
-        const formattedActions: ProposalAction[] = actions.map((action) => ({
-          target: action.target,
-          value: action.value.toString(),
-          data: action.data,
-          operation: action.operation,
-        }))
+        const formattedActions = formatProposalActions(actions)
 
         await context.db
           .insert(merkleGovModuleProposal)
@@ -171,20 +156,7 @@ const proposalCreated = async ({ event, context }: any) => {
     proposalId
   )
 
-  // Format actions for JSON storage
-  const formattedActions: ProposalAction[] = actions.map(
-    (action: {
-      target: string
-      value: bigint
-      data: string
-      operation: number
-    }) => ({
-      target: action.target,
-      value: action.value.toString(),
-      data: action.data,
-      operation: action.operation,
-    })
-  )
+  const formattedActions = formatProposalActions(actions)
 
   // Insert the new proposal
   await context.db.insert(merkleGovModuleProposal).values({
@@ -265,34 +237,6 @@ const voteCast = async ({ event, context }: any) => {
 
 ponder.on('merkleGovModule:VoteCast', voteCast)
 ponder.on('governedMerkleGovModule:VoteCast', voteCast)
-
-// VoteDelegateSet: keep both the current assignment and the append-only receipt history.
-const voteDelegateSet = async ({ event, context }: any) => {
-  const { principal, previousDelegate, newDelegate } = event.args
-  const position = eventPosition(event)
-
-  await context.db
-    .insert(merkleGovVoteDelegate)
-    .values({
-      module: event.log.address,
-      principal,
-      delegate: newDelegate,
-      ...position,
-    })
-    .onConflictDoUpdate({ delegate: newDelegate, ...position })
-
-  await context.db.insert(merkleGovVoteDelegationEvent).values({
-    id: event.id,
-    module: event.log.address,
-    principal,
-    previousDelegate,
-    delegate: newDelegate,
-    ...position,
-  })
-}
-
-ponder.on('merkleGovModule:VoteDelegateSet', voteDelegateSet)
-ponder.on('governedMerkleGovModule:VoteDelegateSet', voteDelegateSet)
 
 // DelegateVoteCast follows VoteCast in the same transaction and decorates that principal's row
 // with the actual actor and event-only rationale. The vote stays provisional until an override.

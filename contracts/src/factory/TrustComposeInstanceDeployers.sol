@@ -7,7 +7,7 @@ import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
 import {ICompositionSourceAdapterFactory} from "interfaces/composition/ICompositionSourceAdapter.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
-/// @notice Holds composition accumulator creation code outside the public factory runtime.
+/// @notice Holds the composition accumulator creation code outside the public factory runtime.
 contract CompositionSourceAccumulatorDeployer {
     function deploy(ICompositionSourceAdapterFactory adapterFactory) external returns (CompositionSourceAccumulator) {
         return new CompositionSourceAccumulator(adapterFactory, msg.sender);

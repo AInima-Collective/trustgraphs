@@ -125,8 +125,13 @@ fn repo(did: &str, idx: u64, records: Vec<(&str, Vec<u8>)>) -> RepoRecords {
     }
 }
 
+fn open_definition() -> (String, Vec<u8>) {
+    let bytes = enc(&m(vec![("$type", st("app.certified.badge.definition"))]));
+    (zk_core::cid::cid_v1_dagcbor(&zk_core::cid::sha256(&bytes)), bytes)
+}
+
 fn derive(repos: &[RepoRecords]) -> DerivedGraph {
-    semantics::derive(repos, &BTreeMap::new(), &params())
+    semantics::derive(repos, &BTreeMap::from([open_definition()]), &params()).unwrap()
 }
 
 #[test]
@@ -222,7 +227,7 @@ fn badge_accept_reject_and_allowlist() {
     let award_uri = format!("at://{ALICE}/app.certified.badge.award/aw");
     // Accepted with weight 0.85 (bob's own repo) -> base 0.85 × ackBoost.
     let g = derive(&[
-        repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, "bafydef"))]),
+        repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &open_definition().0))]),
         repo(
             BOB,
             1,
@@ -238,7 +243,7 @@ fn badge_accept_reject_and_allowlist() {
 
     // Rejected zeroes the award.
     let g2 = derive(&[
-        repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, "bafydef"))]),
+        repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &open_definition().0))]),
         repo(
             BOB,
             1,
@@ -264,24 +269,25 @@ fn badge_accept_reject_and_allowlist() {
         &[repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &def_cid))])],
         &targets,
         &params(),
-    );
+    )
+    .unwrap();
     assert!(g3
         .outgoing
         .get(&did_node_id(ALICE))
         .map_or(true, |o| !o.contains_key(&did_node_id(BOB))));
     assert!(g3.skips.iter().any(|sk| sk.reason == skip_reason::ALLOWED_ISSUERS_MISS));
 
-    // C-1 forgery guard: same award, but the prover supplies a block that does NOT hash to
-    // the CID (a forged restriction). It must be ignored, not honored -> award stands, so no
-    // ALLOWED_ISSUERS_MISS skip is produced by a fabricated definition.
-    let mut forged = BTreeMap::new();
-    forged.insert(def_cid.clone(), enc(&m(vec![("$type", st("totally.different.record"))])));
-    let g4 = semantics::derive(
-        &[repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &def_cid))])],
-        &forged,
-        &params(),
-    );
-    assert!(!g4.skips.iter().any(|sk| sk.reason == skip_reason::ALLOWED_ISSUERS_MISS));
+    // Neither omission nor a forged restriction can substitute a different issuer policy.
+    let repos = [repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &def_cid))])];
+    assert!(matches!(
+        semantics::derive(&repos, &BTreeMap::new(), &params()),
+        Err(semantics::SemanticsError::MissingStrongRef(_))
+    ));
+    let forged = BTreeMap::from([(def_cid, enc(&m(vec![("$type", st("different.record"))])))]);
+    assert!(matches!(
+        semantics::derive(&repos, &forged, &params()),
+        Err(semantics::SemanticsError::InvalidStrongRef(_))
+    ));
 }
 
 #[test]

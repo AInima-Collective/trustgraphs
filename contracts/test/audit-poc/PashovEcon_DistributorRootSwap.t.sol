@@ -115,10 +115,8 @@ contract PashovEcon_DistributorRootSwap is Test {
         dist.claim(idx, contributorA, 500, p);
     }
 
-    /// @notice Separate defect, same contract: `claim` is `whenNotPaused` and the claim window is a
-    ///         hard timestamp, so an owner that pauses across `claimDeadline` permanently
-    ///         confiscates every unclaimed share and hands it back to the funder via `sweep`.
-    function test_PauseAcrossClaimDeadlinePermanentlyConfiscatesUnclaimedShares() public {
+    /// @notice Regression: pausing across the original deadline preserves contributors' claim time.
+    function test_PauseAcrossClaimDeadlinePreservesUnclaimedShares() public {
         uint256 pot = 100_000e18;
         uint64 deadline = uint64(block.timestamp + 30 days);
 
@@ -140,20 +138,22 @@ contract PashovEcon_DistributorRootSwap is Test {
         vm.expectRevert(Pausable.EnforcedPause.selector);
         dist.claim(idx, contributorA, 500, p);
 
-        // The deadline passes while paused. Unpausing does not reopen it.
+        // The original deadline passes while paused, but the effective deadline moves with it.
         vm.warp(uint256(deadline) + 1);
         vm.prank(owner);
         dist.unpause();
 
-        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
-        dist.claim(idx, contributorA, 500, p);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        dist.sweep(idx);
+        uint256 claimed = dist.claim(idx, contributorA, 500, p);
+        assertEq(claimed, (pot - pot / 100) / 2);
 
+        vm.warp(dist.effectiveClaimDeadline(idx) + 1);
         uint256 funderBefore = token.balanceOf(funder);
         uint256 swept = dist.sweep(idx);
-        console2.log("swept back to funder:", swept);
-        assertEq(swept, pot - pot / 100, "100% of the contributor pot returned to the funder");
+        assertEq(swept, pot - pot / 100 - claimed, "only unclaimed funds return after effective expiry");
         assertEq(token.balanceOf(funder) - funderBefore, swept);
-        assertEq(token.balanceOf(contributorA), 0);
+        assertEq(token.balanceOf(contributorA), claimed);
         assertEq(token.balanceOf(contributorB), 0);
     }
 }

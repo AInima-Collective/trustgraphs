@@ -1,6 +1,12 @@
 import type { Hex } from 'viem'
 
-import { base64Decode, base64Encode, utf8, ZERO32 } from './bytes.ts'
+import {
+  base64Decode,
+  base64Encode,
+  toOwnedArrayBuffer,
+  utf8,
+  ZERO32,
+} from './bytes.ts'
 import {
   addressNodeId,
   payloadCommitment,
@@ -35,7 +41,7 @@ export const encryptDraft = async (
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12))
   const material = await globalThis.crypto.subtle.importKey(
     'raw',
-    utf8(passphrase),
+    toOwnedArrayBuffer(utf8(passphrase)),
     'PBKDF2',
     false,
     ['deriveKey']
@@ -50,7 +56,7 @@ export const encryptDraft = async (
   const ciphertext = await globalThis.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
-    utf8(draftJson(draft))
+    toOwnedArrayBuffer(utf8(draftJson(draft)))
   )
   return {
     protocol: 'TrustgraphsEncryptedDraftV1',
@@ -80,7 +86,7 @@ export const decryptDraft = async (
       )
     const material = await globalThis.crypto.subtle.importKey(
       'raw',
-      utf8(passphrase),
+      toOwnedArrayBuffer(utf8(passphrase)),
       'PBKDF2',
       false,
       ['deriveKey']
@@ -88,7 +94,7 @@ export const decryptDraft = async (
     const key = await globalThis.crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: base64Decode(encrypted.salt),
+        salt: toOwnedArrayBuffer(base64Decode(encrypted.salt)),
         iterations: encrypted.iterations,
         hash: 'SHA-256',
       },
@@ -98,9 +104,12 @@ export const decryptDraft = async (
       ['decrypt']
     )
     const plaintext = await globalThis.crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64Decode(encrypted.iv) },
+      {
+        name: 'AES-GCM',
+        iv: toOwnedArrayBuffer(base64Decode(encrypted.iv)),
+      },
       key,
-      base64Decode(encrypted.ciphertext)
+      toOwnedArrayBuffer(base64Decode(encrypted.ciphertext))
     )
     const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as Omit<
       RecoverableDraft,

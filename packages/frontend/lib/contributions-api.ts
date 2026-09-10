@@ -1,8 +1,8 @@
-//! Thin client for the indexer's `/contributions` routes (the M3 lane). EVERY HTTP call the
-//! contributions screens make to the indexer goes through this module, so if the M3 route shapes
+//! Thin client for the indexer's `/contributions` routes. EVERY HTTP call the
+//! contributions screens make to the indexer goes through this module, so if the route shapes
 //! drift, this file is the one-file fix.
 //!
-//! Route map (built against the M3 interface expectation; each returns `null` on 404 = "not
+//! Route map (each returns `null` on 404 = "not
 //! indexed yet"):
 //!   GET /contributions/:snapshot/round            → ContributionsRound
 //!   GET /contributions/:snapshot/claims           → ContributionsClaimsResponse

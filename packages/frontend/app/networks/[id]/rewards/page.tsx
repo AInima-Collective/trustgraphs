@@ -6,6 +6,7 @@ import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
 import { compositionAsNetwork } from '@/lib/composition/network'
 import { getCompositionInstance } from '@/lib/composition.server'
+import { isSubnetworkFeatureAvailable } from '@/lib/config'
 import { getContributionsCatalog } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
 import {
@@ -14,7 +15,7 @@ import {
   sortRoundsNewestActiveFirst,
 } from '@/lib/network-nav'
 
-import { RewardsPage } from '../claims/component'
+import { RewardsPage } from './component'
 
 // Permissionless instances can be created after the production build, and `?fund=` controls the
 // request's initial UI. Keep the route request-time while its catalog reads retain their own
@@ -59,7 +60,10 @@ export default async function RewardsPageServer({
       return (
         <RewardsPage
           network={compositionAsNetwork(composition.instance)}
-          tabs={compositionTabs(composition.instance)}
+          tabs={compositionTabs(
+            composition.instance,
+            isSubnetworkFeatureAvailable()
+          )}
           defaultFundOpen={fund === 'true' || fund === '1'}
         />
       )

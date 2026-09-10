@@ -138,21 +138,4 @@ app.get('/:instanceId', async (c) => {
   })
 })
 
-/** What an address is owed and can pull. */
-app.get('/credit/:account', async (c) => {
-  const account = c.req.param('account').toLowerCase() as `0x${string}`
-  const rows = await db
-    .select()
-    .from(schema.provingVaultCredit)
-    .where(eq(schema.provingVaultCredit.account, account))
-  return c.json(
-    rows.map((r) => ({
-      token: r.token,
-      accrued: r.accrued.toString(),
-      withdrawn: r.withdrawn.toString(),
-      outstanding: r.outstanding.toString(),
-    }))
-  )
-})
-
 export default app

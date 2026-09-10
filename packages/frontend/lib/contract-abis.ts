@@ -926,6 +926,13 @@ export const contributionResolverAbi = [
   { type: 'error', inputs: [], name: 'AccessDenied' },
   { type: 'error', inputs: [], name: 'AlreadyBound' },
   { type: 'error', inputs: [], name: 'DuplicateSchemaUid' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expirationTime', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'ExpirationNotSupported',
+  },
   { type: 'error', inputs: [], name: 'InsufficientValue' },
   { type: 'error', inputs: [], name: 'InvalidEAS' },
   { type: 'error', inputs: [], name: 'InvalidLength' },
@@ -2493,7 +2500,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'safeFactory_',
-        internalType: 'contract GnosisSafeProxyFactory',
+        internalType: 'contract SafeProxyFactory',
         type: 'address',
       },
       { name: 'safeSingleton_', internalType: 'address', type: 'address' },
@@ -2510,6 +2517,16 @@ export const governedTrustgraphsFactoryAbi = [
       {
         name: 'govModuleDeployer_',
         internalType: 'contract MerkleGovModuleDeployer',
+        type: 'address',
+      },
+      {
+        name: 'parentAuthorityDeployer_',
+        internalType: 'contract ParentAuthorityModuleDeployer',
+        type: 'address',
+      },
+      {
+        name: 'subnetworkRegistry_',
+        internalType: 'contract ISubnetworkRegistry',
         type: 'address',
       },
       {
@@ -2542,13 +2559,7 @@ export const governedTrustgraphsFactoryAbi = [
     type: 'function',
     inputs: [],
     name: 'FACTORY',
-    outputs: [
-      {
-        name: '',
-        internalType: 'contract TrustgraphsFactory',
-        type: 'address',
-      },
-    ],
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -2602,6 +2613,19 @@ export const governedTrustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'PARENT_AUTHORITY_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ParentAuthorityModuleDeployer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'RECOVERY_DELAY',
     outputs: [{ name: '', internalType: 'uint48', type: 'uint48' }],
     stateMutability: 'view',
@@ -2611,11 +2635,7 @@ export const governedTrustgraphsFactoryAbi = [
     inputs: [],
     name: 'SAFE_FACTORY',
     outputs: [
-      {
-        name: '',
-        internalType: 'contract GnosisSafeProxyFactory',
-        type: 'address',
-      },
+      { name: '', internalType: 'contract SafeProxyFactory', type: 'address' },
     ],
     stateMutability: 'view',
   },
@@ -2671,12 +2691,25 @@ export const governedTrustgraphsFactoryAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'SUBNETWORK_REGISTRY',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ISubnetworkRegistry',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'authorityOf',
     outputs: [
       {
         name: '',
-        internalType: 'struct GovernedTrustgraphsFactory.Authority',
+        internalType: 'struct GovernedFactoryBase.Authority',
         type: 'tuple',
         components: [
           { name: 'safe', internalType: 'address', type: 'address' },
@@ -2790,7 +2823,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'policy',
-        internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
+        internalType: 'struct GovernedFactoryBase.InitialPolicy',
         type: 'tuple',
         components: [
           {
@@ -2803,7 +2836,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'signerSync',
-        internalType: 'struct GovernedTrustgraphsFactory.SignerSyncConfig',
+        internalType: 'struct GovernedFactoryBase.SignerSyncConfig',
         type: 'tuple',
         components: [
           { name: 'enabled', internalType: 'bool', type: 'bool' },
@@ -2900,7 +2933,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'policy',
-        internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
+        internalType: 'struct GovernedFactoryBase.InitialPolicy',
         type: 'tuple',
         components: [
           {
@@ -2913,7 +2946,7 @@ export const governedTrustgraphsFactoryAbi = [
       },
       {
         name: 'signerSync',
-        internalType: 'struct GovernedTrustgraphsFactory.SignerSyncConfig',
+        internalType: 'struct GovernedFactoryBase.SignerSyncConfig',
         type: 'tuple',
         components: [
           { name: 'enabled', internalType: 'bool', type: 'bool' },
@@ -2935,6 +2968,135 @@ export const governedTrustgraphsFactoryAbi = [
       { name: 'snapshot', internalType: 'address', type: 'address' },
     ],
     stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'requested',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
+        type: 'tuple',
+        components: [
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'metadataURI', internalType: 'string', type: 'string' },
+          {
+            name: 'params',
+            internalType: 'struct ParamsCodec.Params',
+            type: 'tuple',
+            components: [
+              { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+              { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'trustShareFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustDecayFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustedSeeds',
+                internalType: 'address[]',
+                type: 'address[]',
+              },
+              { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'precisionScale',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+              {
+                name: 'weightFieldIndex',
+                internalType: 'uint32',
+                type: 'uint32',
+              },
+              {
+                name: 'envelope0DomainSeparators',
+                internalType: 'bytes32[]',
+                type: 'bytes32[]',
+              },
+              {
+                name: 'lane2MaxHeadAge',
+                internalType: 'uint64',
+                type: 'uint64',
+              },
+              { name: 'accumulator', internalType: 'address', type: 'address' },
+              { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+            ],
+          },
+          { name: 'admin', internalType: 'address', type: 'address' },
+          { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
+          { name: 'withDistributor', internalType: 'bool', type: 'bool' },
+          {
+            name: 'distributorToken',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+      {
+        name: 'policy',
+        internalType: 'struct GovernedFactoryBase.InitialPolicy',
+        type: 'tuple',
+        components: [
+          {
+            name: 'minPaidIntervalBlocks',
+            internalType: 'uint64',
+            type: 'uint64',
+          },
+          { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
+        ],
+      },
+      {
+        name: 'signerSync',
+        internalType: 'struct GovernedFactoryBase.SignerSyncConfig',
+        type: 'tuple',
+        components: [
+          { name: 'enabled', internalType: 'bool', type: 'bool' },
+          { name: 'topN', internalType: 'uint32', type: 'uint32' },
+          { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+          {
+            name: 'targetThresholdBps',
+            internalType: 'uint32',
+            type: 'uint32',
+          },
+        ],
+      },
+      { name: 'parentInstanceId', internalType: 'bytes32', type: 'bytes32' },
+      {
+        name: 'tier',
+        internalType: 'enum GovernedFactoryBase.SubnetworkTier',
+        type: 'uint8',
+      },
+    ],
+    name: 'createGovernedSubnetwork',
+    outputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'safeAddress', internalType: 'address', type: 'address' },
+      { name: 'merkleGovModule', internalType: 'address', type: 'address' },
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'parentAuthorityModuleOf',
+    outputs: [
+      {
+        name: 'parentAuthorityModule',
+        internalType: 'address',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
   },
   {
     type: 'event',
@@ -3019,6 +3181,37 @@ export const governedTrustgraphsFactoryAbi = [
     name: 'GovernedInstanceCreated',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'childInstanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'parentInstanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'parentAuthorityModule',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'tier',
+        internalType: 'enum GovernedFactoryBase.SubnetworkTier',
+        type: 'uint8',
+        indexed: false,
+      },
+    ],
+    name: 'GovernedSubnetworkCreated',
+  },
+  {
     type: 'error',
     inputs: [{ name: 'baseNonce', internalType: 'uint256', type: 'uint256' }],
     name: 'BootstrapSafeUnavailable',
@@ -3062,7 +3255,17 @@ export const governedTrustgraphsFactoryAbi = [
     inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'InstanceDiscoveryFailed',
   },
+  { type: 'error', inputs: [], name: 'InvalidParentInstance' },
   { type: 'error', inputs: [], name: 'InvalidSignerSyncVerifier' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'parentInstanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'caller', internalType: 'address', type: 'address' },
+      { name: 'expectedAuthority', internalType: 'address', type: 'address' },
+    ],
+    name: 'NotParentAuthority',
+  },
   { type: 'error', inputs: [], name: 'PolicyRequiresPrepay' },
   { type: 'error', inputs: [], name: 'PrepayRequiresPolicy' },
   { type: 'error', inputs: [], name: 'PrepayUnavailable' },
@@ -3075,6 +3278,7 @@ export const governedTrustgraphsFactoryAbi = [
     name: 'SafeExecutionFailed',
   },
   { type: 'error', inputs: [], name: 'SafeFundingFailed' },
+  { type: 'error', inputs: [], name: 'SafeProxyReferenceDeploymentFailed' },
   {
     type: 'error',
     inputs: [
@@ -3082,6 +3286,19 @@ export const governedTrustgraphsFactoryAbi = [
       { name: 'actual', internalType: 'bytes32', type: 'bytes32' },
     ],
     name: 'SignerSyncProgramVKeyMismatch',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expected', internalType: 'address', type: 'address' },
+      { name: 'actual', internalType: 'address', type: 'address' },
+    ],
+    name: 'SubnetworkRegistryMismatch',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'program', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'UnsupportedSignerSyncProgram',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
@@ -3188,6 +3405,15 @@ export const merkleFundDistributorAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'distributionPausedDuration',
+    outputs: [{ name: 'duration', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     name: 'distributions',
     outputs: [
@@ -3206,6 +3432,15 @@ export const merkleFundDistributorAbi = [
       { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
       { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
     ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'effectiveClaimDeadline',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -3231,26 +3466,9 @@ export const merkleFundDistributorAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
-    name: 'getAllowlistAt',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [],
     name: 'getAllowlistLength',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getAllowlistPaginated',
-    outputs: [{ name: '', internalType: 'address[]', type: 'address[]' }],
     stateMutability: 'view',
   },
   {
@@ -3301,46 +3519,6 @@ export const merkleFundDistributorAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getDistributions',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct IMerkleFundDistributor.DistributionState[]',
-        type: 'tuple[]',
-        components: [
-          { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-          { name: 'timestamp', internalType: 'uint256', type: 'uint256' },
-          { name: 'root', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
-          {
-            name: 'totalMerkleValue',
-            internalType: 'uint256',
-            type: 'uint256',
-          },
-          { name: 'distributor', internalType: 'address', type: 'address' },
-          { name: 'token', internalType: 'address', type: 'address' },
-          { name: 'amountFunded', internalType: 'uint256', type: 'uint256' },
-          {
-            name: 'amountDistributed',
-            internalType: 'uint256',
-            type: 'uint256',
-          },
-          { name: 'feeRecipient', internalType: 'address', type: 'address' },
-          { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
-          { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
-          { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [{ name: 'distributor', internalType: 'address', type: 'address' }],
     name: 'isAllowlisted',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
@@ -3370,6 +3548,13 @@ export const merkleFundDistributorAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'pauseStartedAt',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'paused',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
@@ -3393,6 +3578,13 @@ export const merkleFundDistributorAbi = [
     inputs: [],
     name: 'pendingOwner',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'renounceOwnership',
+    outputs: [],
     stateMutability: 'view',
   },
   {
@@ -3439,6 +3631,13 @@ export const merkleFundDistributorAbi = [
       { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'totalPausedDuration',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -3652,7 +3851,13 @@ export const merkleFundDistributorAbi = [
     anonymous: false,
     inputs: [
       {
-        name: 'pendingOwner',
+        name: 'previousOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newOwner',
         internalType: 'address',
         type: 'address',
         indexed: true,
@@ -3774,9 +3979,17 @@ export const merkleFundDistributorAbi = [
   { type: 'error', inputs: [], name: 'NoClaimDeadline' },
   { type: 'error', inputs: [], name: 'NoFundsToClaim' },
   { type: 'error', inputs: [], name: 'NoScheduledFeeIncrease' },
-  { type: 'error', inputs: [], name: 'NotOwner' },
-  { type: 'error', inputs: [], name: 'NotPendingOwner' },
   { type: 'error', inputs: [], name: 'NothingToSweep' },
+  {
+    type: 'error',
+    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
+    name: 'OwnableInvalidOwner',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
+    name: 'OwnableUnauthorizedAccount',
+  },
   { type: 'error', inputs: [], name: 'ReentrancyGuardReentrantCall' },
   {
     type: 'error',
@@ -3970,26 +4183,6 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: 'proposalId', internalType: 'uint256', type: 'uint256' }],
-    name: 'getActions',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct MerkleGovModule.ProposalAction[]',
-        type: 'tuple[]',
-        components: [
-          { name: 'target', internalType: 'address', type: 'address' },
-          { name: 'value', internalType: 'uint256', type: 'uint256' },
-          { name: 'data', internalType: 'bytes', type: 'bytes' },
-          { name: 'operation', internalType: 'enum Operation', type: 'uint8' },
-          { name: 'description', internalType: 'string', type: 'string' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [
       { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
     ],
@@ -4092,13 +4285,6 @@ export const merkleGovModuleAbi = [
     inputs: [],
     name: 'ipfsHashCid',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
-    name: 'lastDirectActivityBlock',
-    outputs: [{ name: 'blockNumber', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
   {
@@ -4256,13 +4442,6 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [],
-    name: 'renounceOwnership',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     inputs: [{ name: '_avatar', internalType: 'address', type: 'address' }],
     name: 'setAvatar',
     outputs: [],
@@ -4308,12 +4487,10 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'initializeParams', internalType: 'bytes', type: 'bytes' },
-    ],
+    inputs: [{ name: '', internalType: 'bytes', type: 'bytes' }],
     name: 'setUp',
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: 'pure',
   },
   {
     type: 'function',
@@ -4547,19 +4724,6 @@ export const merkleGovModuleAbi = [
       },
     ],
     name: 'ExecutionDelayUpdated',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'version',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'Initialized',
   },
   {
     type: 'event',
@@ -4908,8 +5072,8 @@ export const merkleGovModuleAbi = [
     ],
     name: 'ExecutionDelayNotElapsed',
   },
+  { type: 'error', inputs: [], name: 'InitialBindingAlreadyPublished' },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
-  { type: 'error', inputs: [], name: 'InvalidInitialization' },
   { type: 'error', inputs: [], name: 'InvalidMerkleProof' },
   { type: 'error', inputs: [], name: 'InvalidProposalData' },
   { type: 'error', inputs: [], name: 'InvalidQuorum' },
@@ -4917,7 +5081,6 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'NoMerkleRootSet' },
   { type: 'error', inputs: [], name: 'NoSignerActivity' },
   { type: 'error', inputs: [], name: 'NotAuthorized' },
-  { type: 'error', inputs: [], name: 'NotInitializing' },
   {
     type: 'error',
     inputs: [
@@ -4929,11 +5092,6 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'OnlyMerkleSnapshot' },
   {
     type: 'error',
-    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
-    name: 'OwnableInvalidOwner',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
     name: 'OwnableUnauthorizedAccount',
   },
@@ -4941,6 +5099,7 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'ProposalAlreadyExecuted' },
   { type: 'error', inputs: [], name: 'ProposalNotFound' },
   { type: 'error', inputs: [], name: 'ProposalNotPassed' },
+  { type: 'error', inputs: [], name: 'ProxyDeploymentUnsupported' },
   { type: 'error', inputs: [], name: 'SelfDelegation' },
   { type: 'error', inputs: [], name: 'VotingClosed' },
   {
@@ -4974,6 +5133,7 @@ export const merkleSnapshotAbi = [
       },
       { name: 'constitutionalAdmin', internalType: 'address', type: 'address' },
       { name: 'operationalAdmin', internalType: 'address', type: 'address' },
+      { name: 'initialMetadataURI', internalType: 'string', type: 'string' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -4995,6 +5155,13 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [],
     name: 'HOOK_GAS_STIPEND',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_METADATA_URI_BYTES',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -5089,6 +5256,15 @@ export const merkleSnapshotAbi = [
     ],
     name: 'checkpointRecipient',
     outputs: [{ name: 'recipient', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'checkpointVerifier',
+    outputs: [{ name: 'verifier', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -5254,18 +5430,6 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getStateBlocks',
-    outputs: [
-      { name: 'result_', internalType: 'uint256[]', type: 'uint256[]' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [],
     name: 'getStateCount',
     outputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
@@ -5292,30 +5456,6 @@ export const merkleSnapshotAbi = [
             type: 'bytes32',
           },
           { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'offset', internalType: 'uint256', type: 'uint256' },
-      { name: 'limit', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'getStates',
-    outputs: [
-      {
-        name: 'result_',
-        internalType: 'struct IMerkleSnapshot.MerkleState[]',
-        type: 'tuple[]',
-        components: [
-          { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-          { name: 'timestamp', internalType: 'uint256', type: 'uint256' },
-          { name: 'root', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
-          { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
         ],
       },
     ],
@@ -5359,7 +5499,7 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [],
     name: 'hookCount',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -5407,6 +5547,27 @@ export const merkleSnapshotAbi = [
     inputs: [],
     name: 'lastTriggerBlock',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'metadataRevision',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'metadataURI',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'metadataURIHash',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -5526,6 +5687,15 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'nextMetadataURI', internalType: 'string', type: 'string' },
+    ],
+    name: 'setMetadataURI',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
     name: 'setParamsHash',
     outputs: [],
@@ -5600,67 +5770,11 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-    ],
-    name: 'verifyMyProof',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyMyProofAtBlock',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'stateIndex', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyMyProofAtStateIndex',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
       { name: 'account', internalType: 'address', type: 'address' },
       { name: 'value', internalType: 'uint256', type: 'uint256' },
       { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
     ],
     name: 'verifyProof',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyProofAtBlock',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
-      { name: 'stateIndex', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'verifyProofAtStateIndex',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
@@ -5922,6 +6036,43 @@ export const merkleSnapshotAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'revision',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: true,
+      },
+      {
+        name: 'authority',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'metadataURIHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'previousMetadataURIHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'metadataURI',
+        internalType: 'string',
+        type: 'string',
+        indexed: false,
+      },
+    ],
+    name: 'MetadataURIUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'paramsHash',
         internalType: 'bytes32',
         type: 'bytes32',
@@ -6108,6 +6259,7 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'transferor', internalType: 'address', type: 'address' }],
     name: 'ConstitutionalTransferorLostRole',
   },
+  { type: 'error', inputs: [], name: 'EmptyMetadataURI' },
   {
     type: 'error',
     inputs: [
@@ -6123,10 +6275,26 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'successor', internalType: 'address', type: 'address' }],
     name: 'InvalidConstitutionalSuccessor',
   },
+  { type: 'error', inputs: [], name: 'InvalidMetadataURIScheme' },
   {
     type: 'error',
     inputs: [{ name: 'holder', internalType: 'address', type: 'address' }],
     name: 'LastConstitutionalHolder',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'length', internalType: 'uint256', type: 'uint256' },
+      { name: 'maximum', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'MetadataURITooLong',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'metadataURIHash', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'MetadataURIUnchanged',
   },
   {
     type: 'error',
@@ -6168,6 +6336,7 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'stateCount', internalType: 'uint256', type: 'uint256' }],
     name: 'ProvenanceEnableAfterState',
   },
+  { type: 'error', inputs: [], name: 'ReentrancyGuardReentrantCall' },
   {
     type: 'error',
     inputs: [
@@ -6193,1069 +6362,6 @@ export const merkleSnapshotAbi = [
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
   { type: 'error', inputs: [], name: 'ZeroParamsHash' },
-] as const
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ProvingVault
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-export const provingVaultAbi = [
-  {
-    type: 'constructor',
-    inputs: [
-      {
-        name: 'registry',
-        internalType: 'contract IInstanceRegistry',
-        type: 'address',
-      },
-      { name: 'usdc', internalType: 'contract IERC20', type: 'address' },
-      { name: 'feed', internalType: 'contract IEthUsdFeed', type: 'address' },
-      { name: 'feedMaxStaleness', internalType: 'uint64', type: 'uint64' },
-      { name: 'minEthUsd', internalType: 'uint256', type: 'uint256' },
-      { name: 'maxEthUsd', internalType: 'uint256', type: 'uint256' },
-      { name: 'feeSetter', internalType: 'address', type: 'address' },
-      { name: 'admin', internalType: 'address', type: 'address' },
-    ],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'DEFAULT_ADMIN_ROLE',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'ETH',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'ETH_USD_FEED',
-    outputs: [
-      { name: '', internalType: 'contract IEthUsdFeed', type: 'address' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'FEED_MAX_STALENESS',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'FEE_SETTER_ROLE',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_ETH_USD',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_PRICED_INPUTS',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MIN_ETH_USD',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'REGISTRY',
-    outputs: [
-      { name: '', internalType: 'contract IInstanceRegistry', type: 'address' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'USD',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'USDC',
-    outputs: [{ name: '', internalType: 'contract IERC20', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'WITHDRAWAL_NOTICE',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'accountOf',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct IProvingVault.Account',
-        type: 'tuple',
-        components: [
-          { name: 'snapshot', internalType: 'address', type: 'address' },
-          { name: 'program', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ethBalance', internalType: 'uint128', type: 'uint128' },
-          { name: 'usdcBalance', internalType: 'uint128', type: 'uint128' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'program', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
-      { name: 'anchorCount', internalType: 'uint64', type: 'uint64' },
-    ],
-    name: 'bandOf',
-    outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
-    stateMutability: 'pure',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'cancelWithdrawal',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'claim',
-    outputs: [{ name: 'feeUsd', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'token', internalType: 'address', type: 'address' },
-    ],
-    name: 'creditOf',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'depositETH',
-    outputs: [],
-    stateMutability: 'payable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'amount', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'depositUSDC',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'to', internalType: 'address', type: 'address' },
-    ],
-    name: 'executeWithdrawal',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'program', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'band', internalType: 'uint8', type: 'uint8' },
-    ],
-    name: 'feePerRootUsd',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'role', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'getRoleAdmin',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'account', internalType: 'address', type: 'address' },
-    ],
-    name: 'grantRole',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'account', internalType: 'address', type: 'address' },
-    ],
-    name: 'hasRole',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'isClaimed',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'maxGasUnitsPerClaim',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'migrate',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'nominalGasUnits',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'pendingWithdrawalOf',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct IProvingVault.PendingWithdrawal',
-        type: 'tuple',
-        components: [
-          { name: 'ethAmount', internalType: 'uint128', type: 'uint128' },
-          { name: 'usdcAmount', internalType: 'uint128', type: 'uint128' },
-          { name: 'readyAt', internalType: 'uint64', type: 'uint64' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'policyOf',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct IProvingVault.Policy',
-        type: 'tuple',
-        components: [
-          {
-            name: 'minPaidIntervalBlocks',
-            internalType: 'uint64',
-            type: 'uint64',
-          },
-          { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
-          { name: 'lastPaidBlock', internalType: 'uint64', type: 'uint64' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'quote',
-    outputs: [
-      {
-        name: 'q',
-        internalType: 'struct IProvingVault.Quote',
-        type: 'tuple',
-        components: [
-          { name: 'feeUsd', internalType: 'uint256', type: 'uint256' },
-          { name: 'gasUsd', internalType: 'uint256', type: 'uint256' },
-          { name: 'payableUsd', internalType: 'uint256', type: 'uint256' },
-          { name: 'eligible', internalType: 'bool', type: 'bool' },
-          { name: 'reason', internalType: 'uint8', type: 'uint8' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'callerConfirmation', internalType: 'address', type: 'address' },
-    ],
-    name: 'renounceRole',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'ethAmount', internalType: 'uint256', type: 'uint256' },
-      { name: 'usdcAmount', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'requestWithdrawal',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'account', internalType: 'address', type: 'address' },
-    ],
-    name: 'revokeRole',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'program', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'band', internalType: 'uint8', type: 'uint8' },
-      { name: 'usdPerRoot', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'setFeePerRootUsd',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'maxUnits', internalType: 'uint256', type: 'uint256' },
-      { name: 'nominalUnits', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'setGasParams',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'minPaidIntervalBlocks', internalType: 'uint64', type: 'uint64' },
-      { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
-    ],
-    name: 'setPolicy',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      {
-        name: 'args',
-        internalType: 'struct IProvingVault.SubmitArgs',
-        type: 'tuple',
-        components: [
-          { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-          { name: 'outputRoot', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
-          { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
-          { name: 'skippedDigest', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'recipient', internalType: 'address', type: 'address' },
-          { name: 'proof', internalType: 'bytes', type: 'bytes' },
-          { name: 'minPayoutUsd', internalType: 'uint256', type: 'uint256' },
-        ],
-      },
-    ],
-    name: 'submitAndClaim',
-    outputs: [
-      { name: 'feeUsd', internalType: 'uint256', type: 'uint256' },
-      { name: 'gasUsd', internalType: 'uint256', type: 'uint256' },
-    ],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'interfaceId', internalType: 'bytes4', type: 'bytes4' }],
-    name: 'supportsInterface',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'token', internalType: 'address', type: 'address' },
-      { name: 'to', internalType: 'address', type: 'address' },
-    ],
-    name: 'withdrawCredit',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'withdrawalNotice',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
-    stateMutability: 'pure',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'snapshot',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'program',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: false,
-      },
-    ],
-    name: 'AccountBound',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'checkpointId',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: true,
-      },
-      { name: 'reason', internalType: 'uint8', type: 'uint8', indexed: false },
-    ],
-    name: 'ClaimSkipped',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'checkpointId',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: true,
-      },
-      {
-        name: 'recipient',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'submitter',
-        internalType: 'address',
-        type: 'address',
-        indexed: false,
-      },
-      {
-        name: 'feeUsd',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'gasUsd',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'ethSpent',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'usdcSpent',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'Claimed',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'account',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'token',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'amount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'CreditAccrued',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'account',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'token',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      { name: 'to', internalType: 'address', type: 'address', indexed: false },
-      {
-        name: 'amount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'CreditWithdrawn',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'token',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      { name: 'from', internalType: 'address', type: 'address', indexed: true },
-      {
-        name: 'amount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'Deposited',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'program',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      { name: 'band', internalType: 'uint8', type: 'uint8', indexed: true },
-      {
-        name: 'usdPerRoot',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'FeeScheduleUpdated',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'maxGasUnitsPerClaim',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'nominalGasUnits',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'GasParamsUpdated',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'minPaidIntervalBlocks',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-      {
-        name: 'maxPerRootUsd',
-        internalType: 'uint96',
-        type: 'uint96',
-        indexed: false,
-      },
-    ],
-    name: 'PolicyUpdated',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'feed',
-        internalType: 'address',
-        type: 'address',
-        indexed: false,
-      },
-      {
-        name: 'maxStaleness',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'PriceFeedUpdated',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
-      {
-        name: 'previousAdminRole',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'newAdminRole',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-    ],
-    name: 'RoleAdminChanged',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
-      {
-        name: 'account',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'sender',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-    ],
-    name: 'RoleGranted',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
-      {
-        name: 'account',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'sender',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-    ],
-    name: 'RoleRevoked',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-    ],
-    name: 'WithdrawalCancelled',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      { name: 'to', internalType: 'address', type: 'address', indexed: false },
-      {
-        name: 'ethAmount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'usdcAmount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'WithdrawalExecuted',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'instanceId',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
-      {
-        name: 'ethAmount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'usdcAmount',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-      {
-        name: 'readyAt',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'WithdrawalRequested',
-  },
-  { type: 'error', inputs: [], name: 'AccessControlBadConfirmation' },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'neededRole', internalType: 'bytes32', type: 'bytes32' },
-    ],
-    name: 'AccessControlUnauthorizedAccount',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'AlreadyClaimed',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'expected', internalType: 'uint256', type: 'uint256' },
-      { name: 'actual', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'CheckpointNotApplied',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'CheckpointNotApplied2',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'decimals', internalType: 'uint8', type: 'uint8' }],
-    name: 'FeedDecimalsUnsupported',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'ethBalance', internalType: 'uint128', type: 'uint128' },
-      { name: 'usdcBalance', internalType: 'uint128', type: 'uint128' },
-    ],
-    name: 'InsufficientBalance',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'account', internalType: 'address', type: 'address' },
-      { name: 'token', internalType: 'address', type: 'address' },
-    ],
-    name: 'NoCredit',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'caller', internalType: 'address', type: 'address' },
-    ],
-    name: 'NotConstitutional',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'NothingPending',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'offeredUsd', internalType: 'uint256', type: 'uint256' },
-      { name: 'requiredUsd', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'PayoutBelowMinimum',
-  },
-  { type: 'error', inputs: [], name: 'ReentrancyGuardReentrantCall' },
-  {
-    type: 'error',
-    inputs: [{ name: 'token', internalType: 'address', type: 'address' }],
-    name: 'SafeERC20FailedOperation',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'bound', internalType: 'address', type: 'address' },
-      { name: 'registry', internalType: 'address', type: 'address' },
-    ],
-    name: 'SnapshotMismatch',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'decimals', internalType: 'uint8', type: 'uint8' }],
-    name: 'StablecoinDecimalsUnsupported',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'statement', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'StatementAlreadyPaid',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'UnknownInstance',
-  },
-  { type: 'error', inputs: [], name: 'UnpricedBandIsReserved' },
-  {
-    type: 'error',
-    inputs: [{ name: 'readyAt', internalType: 'uint64', type: 'uint64' }],
-    name: 'WithdrawalNotReady',
-  },
-  { type: 'error', inputs: [], name: 'ZeroAmount' },
-] as const
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// SchemaRegistrar
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-export const schemaRegistrarAbi = [
-  {
-    type: 'constructor',
-    inputs: [
-      {
-        name: 'schemaRegistry',
-        internalType: 'contract ISchemaRegistry',
-        type: 'address',
-      },
-    ],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'schema', internalType: 'string', type: 'string' },
-      {
-        name: 'resolver',
-        internalType: 'contract ISchemaResolver',
-        type: 'address',
-      },
-      { name: 'revocable', internalType: 'bool', type: 'bool' },
-    ],
-    name: 'register',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'nonpayable',
-  },
-  { type: 'error', inputs: [], name: 'InvalidResolver' },
-  { type: 'error', inputs: [], name: 'InvalidSchema' },
-  { type: 'error', inputs: [], name: 'InvalidSchemaRegistry' },
-] as const
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// SchemaRegistry
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-export const schemaRegistryAbi = [
-  { type: 'constructor', inputs: [], stateMutability: 'nonpayable' },
-  {
-    type: 'function',
-    inputs: [{ name: 'uid', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'getSchema',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct SchemaRecord',
-        type: 'tuple',
-        components: [
-          { name: 'uid', internalType: 'bytes32', type: 'bytes32' },
-          {
-            name: 'resolver',
-            internalType: 'contract ISchemaResolver',
-            type: 'address',
-          },
-          { name: 'revocable', internalType: 'bool', type: 'bool' },
-          { name: 'schema', internalType: 'string', type: 'string' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'schema', internalType: 'string', type: 'string' },
-      {
-        name: 'resolver',
-        internalType: 'contract ISchemaResolver',
-        type: 'address',
-      },
-      { name: 'revocable', internalType: 'bool', type: 'bool' },
-    ],
-    name: 'register',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'version',
-    outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      { name: 'uid', internalType: 'bytes32', type: 'bytes32', indexed: true },
-      {
-        name: 'registerer',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'schema',
-        internalType: 'struct SchemaRecord',
-        type: 'tuple',
-        components: [
-          { name: 'uid', internalType: 'bytes32', type: 'bytes32' },
-          {
-            name: 'resolver',
-            internalType: 'contract ISchemaResolver',
-            type: 'address',
-          },
-          { name: 'revocable', internalType: 'bool', type: 'bool' },
-          { name: 'schema', internalType: 'string', type: 'string' },
-        ],
-        indexed: false,
-      },
-    ],
-    name: 'Registered',
-  },
-  { type: 'error', inputs: [], name: 'AlreadyExists' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7295,7 +6401,6 @@ export const signerSyncModuleDeployerAbi = [
         internalType: 'contract ISignerActivitySource',
         type: 'address',
       },
-      { name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' },
       { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
       { name: 'topN', internalType: 'uint32', type: 'uint32' },
       { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
@@ -7458,7 +6563,6 @@ export const signerSyncZkModuleAbi = [
         internalType: 'contract ISignerActivitySource',
         type: 'address',
       },
-      { name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' },
       { name: '_topN', internalType: 'uint32', type: 'uint32' },
       { name: '_minThreshold', internalType: 'uint32', type: 'uint32' },
       { name: '_targetThresholdBps', internalType: 'uint32', type: 'uint32' },
@@ -7470,9 +6574,16 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'acceptParamsAuthority',
-    outputs: [],
-    stateMutability: 'nonpayable',
+    name: 'MAX_ACTIVITY_CHECKPOINT_AGE',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_SIGNERS',
+    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -7517,6 +6628,13 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'lastAppliedActivityCheckpoint',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'lastAppliedCheckpoint',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
@@ -7538,37 +6656,9 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'paramsAuthority',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'paramsHash',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
     name: 'paused',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'pendingParamsAuthority',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'renounceOwnership',
-    outputs: [],
-    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
@@ -7625,13 +6715,6 @@ export const signerSyncZkModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'setParamsHash',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
     inputs: [{ name: 'paused_', internalType: 'bool', type: 'bool' }],
     name: 'setPaused',
     outputs: [],
@@ -7659,12 +6742,10 @@ export const signerSyncZkModuleAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'initializeParams', internalType: 'bytes', type: 'bytes' },
-    ],
+    inputs: [{ name: '', internalType: 'bytes', type: 'bytes' }],
     name: 'setUp',
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: 'pure',
   },
   {
     type: 'function',
@@ -7707,15 +6788,6 @@ export const signerSyncZkModuleAbi = [
     type: 'function',
     inputs: [{ name: 'newOwner', internalType: 'address', type: 'address' }],
     name: 'transferOwnership',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'nextAuthority', internalType: 'address', type: 'address' },
-    ],
-    name: 'transferParamsAuthority',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -7778,19 +6850,6 @@ export const signerSyncZkModuleAbi = [
     anonymous: false,
     inputs: [
       {
-        name: 'version',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'Initialized',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
         name: 'previousOwner',
         internalType: 'address',
         type: 'address',
@@ -7804,57 +6863,6 @@ export const signerSyncZkModuleAbi = [
       },
     ],
     name: 'OwnershipTransferred',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'currentAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'pendingAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-    ],
-    name: 'ParamsAuthorityTransferStarted',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'previousAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'newAuthority',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-    ],
-    name: 'ParamsAuthorityTransferred',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'paramsHash',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: false,
-      },
-    ],
-    name: 'ParamsHashUpdated',
   },
   {
     type: 'event',
@@ -7968,17 +6976,26 @@ export const signerSyncZkModuleAbi = [
       { name: 'checkpointBlock', internalType: 'uint64', type: 'uint64' },
       { name: 'currentBlock', internalType: 'uint256', type: 'uint256' },
     ],
-    name: 'ActivityCheckpointStale',
+    name: 'ActivityCheckpointInFuture',
   },
-  { type: 'error', inputs: [], name: 'ActivityCheckpointSuperseded' },
-  { type: 'error', inputs: [], name: 'AlreadyInitialized' },
-  { type: 'error', inputs: [], name: 'EmptySignerSet' },
-  { type: 'error', inputs: [], name: 'InvalidInitialization' },
   {
     type: 'error',
-    inputs: [{ name: 'authority', internalType: 'address', type: 'address' }],
-    name: 'InvalidParamsAuthority',
+    inputs: [
+      { name: 'submitted', internalType: 'uint256', type: 'uint256' },
+      { name: 'lastApplied', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ActivityCheckpointRegression',
   },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointBlock', internalType: 'uint64', type: 'uint64' },
+      { name: 'currentBlock', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ActivityCheckpointStale',
+  },
+  { type: 'error', inputs: [], name: 'AlreadyInitialized' },
+  { type: 'error', inputs: [], name: 'EmptySignerSet' },
   { type: 'error', inputs: [], name: 'InvalidSelectionParams' },
   {
     type: 'error',
@@ -7987,22 +7004,16 @@ export const signerSyncZkModuleAbi = [
   },
   {
     type: 'error',
+    inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidSignerCount',
+  },
+  {
+    type: 'error',
     inputs: [
       { name: 'threshold', internalType: 'uint256', type: 'uint256' },
       { name: 'ownerCount', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidThreshold',
-  },
-  { type: 'error', inputs: [], name: 'NotInitializing' },
-  {
-    type: 'error',
-    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
-    name: 'NotParamsAuthority',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
-    name: 'OwnableInvalidOwner',
   },
   {
     type: 'error',
@@ -8014,6 +7025,7 @@ export const signerSyncZkModuleAbi = [
     inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     name: 'OwnerNotFound',
   },
+  { type: 'error', inputs: [], name: 'ProxyDeploymentUnsupported' },
   {
     type: 'error',
     inputs: [{ name: 'data', internalType: 'bytes', type: 'bytes' }],
@@ -8037,178 +7049,6 @@ export const signerSyncZkModuleAbi = [
     name: 'UnpinnedCheckpoint',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
-] as const
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TestUSDC
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-export const testUsdcAbi = [
-  { type: 'constructor', inputs: [], stateMutability: 'nonpayable' },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'owner', internalType: 'address', type: 'address' },
-      { name: 'spender', internalType: 'address', type: 'address' },
-    ],
-    name: 'allowance',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'spender', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'approve',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'decimals',
-    outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
-    stateMutability: 'pure',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'to', internalType: 'address', type: 'address' },
-      { name: 'amount', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'mint',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'name',
-    outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'symbol',
-    outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'totalSupply',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'to', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'transfer',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'from', internalType: 'address', type: 'address' },
-      { name: 'to', internalType: 'address', type: 'address' },
-      { name: 'value', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'transferFrom',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'owner',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'spender',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
-      {
-        name: 'value',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'Approval',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      { name: 'from', internalType: 'address', type: 'address', indexed: true },
-      { name: 'to', internalType: 'address', type: 'address', indexed: true },
-      {
-        name: 'value',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'Transfer',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'spender', internalType: 'address', type: 'address' },
-      { name: 'allowance', internalType: 'uint256', type: 'uint256' },
-      { name: 'needed', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'ERC20InsufficientAllowance',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'sender', internalType: 'address', type: 'address' },
-      { name: 'balance', internalType: 'uint256', type: 'uint256' },
-      { name: 'needed', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'ERC20InsufficientBalance',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'approver', internalType: 'address', type: 'address' }],
-    name: 'ERC20InvalidApprover',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'receiver', internalType: 'address', type: 'address' }],
-    name: 'ERC20InvalidReceiver',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'sender', internalType: 'address', type: 'address' }],
-    name: 'ERC20InvalidSender',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'spender', internalType: 'address', type: 'address' }],
-    name: 'ERC20InvalidSpender',
-  },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -8468,42 +7308,7 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'MAX_ITERATIONS',
-    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
     name: 'MAX_NAME_BYTES',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_TOLERANCE_FP',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_TRUSTED_SEEDS',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MAX_WEIGHT_FP',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'MIN_TOLERANCE_FP',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -8518,13 +7323,6 @@ export const trustgraphsFactoryAbi = [
         type: 'address',
       },
     ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'PRECISION_SCALE',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -8579,13 +7377,6 @@ export const trustgraphsFactoryAbi = [
     inputs: [],
     name: 'VOUCH_SCHEMA',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'WEIGHT_FIELD_INDEX',
-    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
     stateMutability: 'view',
   },
   {
@@ -9054,7 +7845,6 @@ export const trustgraphsFactoryAbi = [
     name: 'SchemaAdopted',
   },
   { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
-  { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
   {
     type: 'error',
     inputs: [
@@ -9072,11 +7862,6 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'error',
-    inputs: [{ name: 'dampingFp', internalType: 'uint256', type: 'uint256' }],
-    name: 'InvalidDamping',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     name: 'InvalidDistributorSafe',
   },
@@ -9084,18 +7869,6 @@ export const trustgraphsFactoryAbi = [
     type: 'error',
     inputs: [{ name: 'maxIterations', internalType: 'uint32', type: 'uint32' }],
     name: 'InvalidIterations',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'maxIterations', internalType: 'uint32', type: 'uint32' }],
-    name: 'InvalidIterations',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidPrecisionScale',
   },
   {
     type: 'error',
@@ -9125,20 +7898,9 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'error',
-    inputs: [{ name: 'seed', internalType: 'address', type: 'address' }],
-    name: 'InvalidSeed',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
     name: 'InvalidTolerance',
   },
-  {
-    type: 'error',
-    inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
-    name: 'InvalidTolerance',
-  },
-  { type: 'error', inputs: [], name: 'InvalidTotalPool' },
   { type: 'error', inputs: [], name: 'InvalidTotalPool' },
   {
     type: 'error',
@@ -9146,20 +7908,6 @@ export const trustgraphsFactoryAbi = [
       { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidTrustDecay',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidTrustDecay',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidTrustShare',
   },
   {
     type: 'error',
@@ -9179,33 +7927,16 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'error',
     inputs: [
-      { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
-      { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidWeightBounds',
-  },
-  {
-    type: 'error',
-    inputs: [
       { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
     ],
     name: 'InvalidWeightFieldIndex',
   },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
-    ],
-    name: 'InvalidWeightFieldIndex',
-  },
-  { type: 'error', inputs: [], name: 'Lane2NotSupported' },
   { type: 'error', inputs: [], name: 'Lane2NotSupported' },
   {
     type: 'error',
     inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
     name: 'NameTooLong',
   },
-  { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
   { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
   { type: 'error', inputs: [], name: 'NoVaultConfigured' },
   {
@@ -9223,11 +7954,6 @@ export const trustgraphsFactoryAbi = [
       { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
     ],
     name: 'SchemaUidMismatch',
-  },
-  {
-    type: 'error',
-    inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
-    name: 'TooManyTrustedSeeds',
   },
   {
     type: 'error',

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {OzMerkle} from "../merkle/OzMerkle.sol";
+
 /// @title NostrWorkspaceParamsCodec
 /// @notice Frozen 39-word params codec for the `nostr-workspace` SP1 program.
 /// @dev Field order and widths mirror `nostr_workspace_core::params::params_encoded` exactly.
@@ -137,41 +139,11 @@ library NostrWorkspaceParamsCodec {
         for (uint256 i = 0; i < pubkeys.length; i++) {
             ids[i] = nostrNodeId(pubkeys[i]);
         }
-        _sort(ids);
+        OzMerkle.sortInPlace(ids);
         bytes32[] memory leaves = new bytes32[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {
             leaves[i] = keccak256(abi.encodePacked(ids[i]));
         }
-        return _ozRoot(leaves);
-    }
-
-    function _sort(bytes32[] memory values) private pure {
-        for (uint256 i = 1; i < values.length; i++) {
-            bytes32 key = values[i];
-            uint256 j = i;
-            while (j > 0 && values[j - 1] > key) {
-                values[j] = values[j - 1];
-                j--;
-            }
-            values[j] = key;
-        }
-    }
-
-    function _ozRoot(bytes32[] memory leaves) private pure returns (bytes32) {
-        uint256 count = leaves.length;
-        if (count == 0) return bytes32(0);
-        _sort(leaves);
-        if (count == 1) return leaves[0];
-        bytes32[] memory tree = new bytes32[](2 * count - 1);
-        for (uint256 i = 0; i < count; i++) {
-            tree[tree.length - 1 - i] = leaves[i];
-        }
-        for (uint256 i = count - 1; i > 0; i--) {
-            uint256 index = i - 1;
-            bytes32 left = tree[2 * index + 1];
-            bytes32 right = tree[2 * index + 2];
-            tree[index] = left <= right ? keccak256(abi.encode(left, right)) : keccak256(abi.encode(right, left));
-        }
-        return tree[0];
+        return OzMerkle.root(leaves);
     }
 }

@@ -154,7 +154,7 @@ check(
   String(j.digest).toLowerCase()
 )
 
-// ---- reduced-tier recompute (the M4 exit criterion at the vector layer) -----
+// ---- reduced-tier recompute, checked at the vector layer -----
 //
 // Feed the indexer-served derived edge set + skips + bindings + chain accumulators into
 // recompute.ts and assert the reproduced journal EQUALS the golden journal, byte-for-byte. This is

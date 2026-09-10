@@ -217,16 +217,6 @@ fn trigger_or_idle(state: &InstanceState, policy: &Policy) -> Action {
     Action::Trigger
 }
 
-/// Whether an action spends anything. Used by the daemon to decide what to journal before acting.
-pub fn spends(action: &Action) -> bool {
-    matches!(action, Action::Trigger | Action::Prove { .. } | Action::Submit { .. })
-}
-
-/// Whether an action is a terminal refusal for this tick (as opposed to progress).
-pub fn is_refusal(action: &Action) -> bool {
-    matches!(action, Action::Skip(_) | Action::Hold(_))
-}
-
 /// Whether an action should raise an alert rather than just a log line.
 ///
 /// Idle is normal. A skip or a hold is a human-visible condition — except the two that are simply

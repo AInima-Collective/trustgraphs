@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {Safe} from "@safe-global/safe-smart-account/Safe.sol";
+import {SafeProxyFactory} from "@safe-global/safe-smart-account/proxies/SafeProxyFactory.sol";
 
 import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
+import {GovernedFactoryBase} from "src/factory/GovernedFactoryBase.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
+    ParentAuthorityModuleDeployer,
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
+import {SubnetworkRegistry} from "src/registry/SubnetworkRegistry.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {SignerSyncZkModule} from "src/zodiac/SignerSyncZkModule.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -30,16 +33,16 @@ contract CreatorControlledVerifier is IZkVerifier {
 ///         every signer module receives the wrapper's constructor-validated immutable pair.
 contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
-    GnosisSafe internal safeSingleton;
-    GnosisSafeProxyFactory internal safeFactory;
+    Safe internal safeSingleton;
+    SafeProxyFactory internal safeFactory;
     CreatorControlledVerifier internal canonicalVerifier;
 
     address internal creator = address(0xA11CE);
 
     function setUp() public override {
         super.setUp();
-        safeSingleton = new GnosisSafe();
-        safeFactory = new GnosisSafeProxyFactory();
+        safeSingleton = new Safe();
+        safeFactory = new SafeProxyFactory();
         canonicalVerifier = new CreatorControlledVerifier(keccak256("canonical-signer-guest"));
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
@@ -48,6 +51,8 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
             new MerkleGovModuleDeployer(),
+            new ParentAuthorityModuleDeployer(),
+            new SubnetworkRegistry(registry, registryAdmin),
             canonicalVerifier,
             canonicalVerifier.programVKey()
         );
@@ -62,16 +67,14 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
         vm.prank(creator);
         (bytes32 instanceId, address safe,,) = governedFactory.createGovernedInstance(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
-            GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
-            })
+            GovernedFactoryBase.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
+            GovernedFactoryBase.SignerSyncConfig({enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000})
         );
 
-        GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        GovernedFactoryBase.Authority memory authority = governedFactory.authorityOf(instanceId);
         address module = authority.signerSyncModule;
         assertTrue(module != address(0), "module not installed");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "canonical signer module is live on the Safe");
+        assertTrue(Safe(payable(safe)).isModuleEnabled(module), "canonical signer module is live on the Safe");
         assertEq(
             address(SignerSyncZkModule(module).zkVerifier()),
             address(canonicalVerifier),

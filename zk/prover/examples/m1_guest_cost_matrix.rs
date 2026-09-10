@@ -193,7 +193,8 @@ fn main() -> Result<()> {
     )?;
 
     let hypercerts = programs::hypercerts::sample_input();
-    let hypercerts_native = hypercerts_core::compute::compute(&hypercerts);
+    let hypercerts_native =
+        hypercerts_core::compute::compute(&hypercerts).expect("valid hypercerts fixture");
     // One PLC signature per operation plus the commit signature. Add one more per selected head
     // for the permitted provisional-key fallback; this is a safe call bound for valid witnesses.
     let hypercert_signatures = hypercerts.witnesses.iter().fold(0u64, |total, witness| {

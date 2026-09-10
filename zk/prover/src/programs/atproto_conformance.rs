@@ -12,8 +12,6 @@ use clap::Subcommand;
 use envelopes::atproto::{self, plc::PlcOpWitness, AtprotoWitness};
 use sp1_sdk::{include_elf, Elf};
 
-use crate::common;
-
 fn load_elf() -> Elf {
     include_elf!("trustgraph-atproto-conformance")
 }
@@ -153,7 +151,6 @@ pub fn run(cmd: Command) -> Result<()> {
             println!("head:           0x{}", hex::encode(head));
             println!("records:        {}", records.len());
             println!("recordsDigest:  0x{}", hex::encode(records_digest));
-            let _ = common::abi_encode_two_bytes; // shared plumbing intentionally unused here
             Ok(())
         }
     }

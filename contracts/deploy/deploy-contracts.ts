@@ -13,7 +13,13 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 
 import { DEPLOYMENT_SUMMARY_FILE } from './constants'
-import { initProgram } from './env'
+import { initProgram, SepoliaEnv } from './env'
+import { assertReleaseCheckout } from '../../scripts/release-checkout.cjs'
+import {
+  assertGenerationComplete,
+  beginGeneration,
+  generationManifestPath,
+} from './generation'
 import {
   type ReleaseManifest,
   loadReleaseManifest,
@@ -48,6 +54,10 @@ const program = new Command('deploy-contracts')
   .option(
     '--continue-existing',
     'Sepolia only: verify and preserve the five live contracts, then deploy only missing additive steps'
+  )
+  .option(
+    '--new-generation <name>',
+    'Sepolia only: deploy replacements into deployments/generations/<name>/sepolia.json; preserve the active deployment'
   )
 
 const ANVIL_DEFAULT_KEY =
@@ -144,10 +154,11 @@ const main = async () => {
   const context = initProgram(program)
   const {
     env,
-    options: { fundedKey, dryRun, continueExisting },
+    options: { fundedKey, dryRun, continueExisting, newGeneration },
   } = context
 
   await env.validateDeployment?.()
+  if (env.profile.public) assertReleaseCheckout(process.env.DEPLOYMENT_COMMIT)
 
   const sepoliaManifest =
     env.profile.target === 'sepolia'
@@ -158,13 +169,30 @@ const main = async () => {
   if (continueExisting && env.profile.target !== 'sepolia') {
     throw new Error('--continue-existing is only valid for Sepolia')
   }
-  if (sepoliaManifest?.status === 'deployed' && !continueExisting) {
+  if (
+    sepoliaManifest?.status === 'deployed' &&
+    !continueExisting &&
+    !newGeneration
+  ) {
     throw new Error(
-      'Sepolia already has a deployed manifest. Use pnpm deploy:sepolia:continue; a full deploy is refused.'
+      'Sepolia already has a deployed manifest. Use --new-generation <name> for replacements or pnpm deploy:sepolia:continue for missing additive steps.'
     )
   }
   if (continueExisting && sepoliaManifest) {
     await verifySepoliaContinuation(sepoliaManifest, env.rpcUrl)
+  }
+  const activeBytes = newGeneration
+    ? fs.readFileSync('deployments/sepolia.json', 'utf8')
+    : undefined
+  if (
+    newGeneration &&
+    fs.existsSync(
+      generationManifestPath(newGeneration).replace(/\/sepolia\.json$/, '')
+    )
+  ) {
+    throw new Error(
+      'Generation directory already exists; preserve its receipts and reconcile the prior attempt before retrying'
+    )
   }
 
   if (dryRun) {
@@ -179,6 +207,10 @@ const main = async () => {
         `${index + 1}. ${contract.name} — ${contract.script}${skipped ? ' [skipped by configuration]' : ''}`
       )
     }
+    if (newGeneration)
+      console.log(
+        `Candidate output: ${env.profile.releaseManifestFile}; active deployments/sepolia.json is preserved.`
+      )
     console.log(
       continueExisting
         ? 'The continuation made read-only RPC checks; no Forge scripts, files, or broadcasts were performed.'
@@ -188,6 +220,20 @@ const main = async () => {
   }
 
   const privateKey = requireFundedKey(fundedKey, env.profile.public)
+  if (newGeneration && env instanceof SepoliaEnv) {
+    const chain = await rpc(env.rpcUrl, 'eth_chainId')
+    if (!chain || BigInt(chain) !== 11155111n)
+      throw new Error('New generation RPC must be Sepolia (11155111)')
+    beginGeneration(
+      newGeneration,
+      env.releaseBase,
+      activeBytes!,
+      fs.readFileSync(
+        process.env.GUEST_MANIFEST || 'guest-manifest.json',
+        'utf8'
+      )
+    )
+  }
 
   for (const contract of env.deployContracts) {
     const skip = await contract.skip?.(context)
@@ -198,6 +244,8 @@ const main = async () => {
 
     console.log(chalk.blueBright(`🚀 Deploying ${contract.name}...`))
 
+    // Recheck after asynchronous RPC/continuation work, immediately before compiling/broadcasting.
+    if (env.profile.public) assertReleaseCheckout(process.env.DEPLOYMENT_COMMIT)
     await execFull({
       cmd: [
         'forge',
@@ -242,6 +290,14 @@ const main = async () => {
     )
     if (continueExisting && sepoliaManifest) {
       assertCoreUnchanged(sepoliaManifest, generatedManifest)
+    }
+    if (newGeneration && env instanceof SepoliaEnv) {
+      assertGenerationComplete(env.releaseBase, generatedManifest)
+      if (fs.readFileSync('deployments/sepolia.json', 'utf8') !== activeBytes) {
+        throw new Error(
+          'Active Sepolia manifest changed during deployment; preserve receipts and reconcile before finalizing'
+        )
+      }
     }
     fs.writeFileSync(
       releaseManifestFile,

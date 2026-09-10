@@ -1,10 +1,12 @@
-import { and, asc, count, desc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
   compositionCapture,
   compositionInstance,
   compositionPolicyVersion,
+  merkleGovModule,
+  networkMetadataRevision,
 } from 'ponder:schema'
 import { type Hex, isHex } from 'viem'
 
@@ -31,14 +33,65 @@ const page = (limit: string | undefined, offset: string | undefined) => ({
   offset: boundedInteger(offset, 0),
 })
 
-const serializeInstance = (row: typeof compositionInstance.$inferSelect) => ({
+type GovernanceRow = Pick<
+  typeof merkleGovModule.$inferSelect,
+  'address' | 'merkleSnapshot' | 'target' | 'recoveryModule' | 'executionGuard'
+>
+
+const serializeInstance = (
+  row: typeof compositionInstance.$inferSelect,
+  governance?: GovernanceRow
+) => ({
   ...row,
   program: 'trust-compose',
+  governance: governance
+    ? {
+        module: governance.address,
+        safe: governance.target,
+        recoveryModule: governance.recoveryModule,
+        executionGuard: governance.executionGuard,
+      }
+    : null,
   epochLength: row.epochLength.toString(),
   currentVersion: row.currentVersion.toString(),
+  metadataRevision: row.metadataRevision.toString(),
+  metadataUpdatedBlock: row.metadataUpdatedBlock.toString(),
+  metadataUpdatedTimestamp: row.metadataUpdatedTimestamp.toString(),
+  metadataUpdated: {
+    block: row.metadataUpdatedBlock.toString(),
+    timestamp: row.metadataUpdatedTimestamp.toString(),
+    txHash: row.metadataUpdatedTxHash,
+  },
   createdBlock: row.createdBlock.toString(),
   createdTimestamp: row.createdTimestamp.toString(),
 })
+
+const governanceFor = async (
+  rows: Array<typeof compositionInstance.$inferSelect>
+) => {
+  if (rows.length === 0) return new Map<string, GovernanceRow>()
+  const governanceRows = await db
+    .select({
+      address: merkleGovModule.address,
+      merkleSnapshot: merkleGovModule.merkleSnapshot,
+      target: merkleGovModule.target,
+      recoveryModule: merkleGovModule.recoveryModule,
+      executionGuard: merkleGovModule.executionGuard,
+    })
+    .from(merkleGovModule)
+    .where(
+      inArray(
+        merkleGovModule.merkleSnapshot,
+        rows.map((row) => row.snapshot)
+      )
+    )
+  return new Map(
+    governanceRows.map((governance) => [
+      governance.merkleSnapshot.toLowerCase(),
+      governance,
+    ])
+  )
+}
 
 const serializePolicy = (
   row: typeof compositionPolicyVersion.$inferSelect
@@ -83,19 +136,22 @@ app.get('/', async (c) => {
       { error: 'limit and offset must be non-negative integers' },
       400
     )
-  const [rows, totals] = await Promise.all([
-    db
-      .select()
-      .from(compositionInstance)
-      .orderBy(desc(compositionInstance.createdBlock))
-      .limit(pagination.limit)
-      .offset(pagination.offset),
+  const rows = await db
+    .select()
+    .from(compositionInstance)
+    .orderBy(desc(compositionInstance.createdBlock))
+    .limit(pagination.limit)
+    .offset(pagination.offset)
+  const [totals, governance] = await Promise.all([
     db
       .select({ value: count(compositionInstance.id) })
       .from(compositionInstance),
+    governanceFor(rows),
   ])
   return c.json({
-    instances: rows.map(serializeInstance),
+    instances: rows.map((row) =>
+      serializeInstance(row, governance.get(row.snapshot.toLowerCase()))
+    ),
     page: { ...pagination, total: totals[0]?.value ?? 0 },
   })
 })
@@ -106,9 +162,45 @@ app.get('/:instanceId', async (c) => {
   const row = await db.query.compositionInstance.findFirst({
     where: eq(compositionInstance.id, instanceId),
   })
+  const governance = row ? await governanceFor([row]) : null
   return row
-    ? c.json({ instance: serializeInstance(row) })
+    ? c.json({
+        instance: serializeInstance(
+          row,
+          governance?.get(row.snapshot.toLowerCase())
+        ),
+      })
     : c.json({ error: 'not found' }, 404)
+})
+
+app.get('/:instanceId/metadata-revisions', async (c) => {
+  const instanceId = idParam(c.req.param('instanceId'))
+  const pagination = page(c.req.query('limit'), c.req.query('offset'))
+  if (!instanceId || pagination.limit === null || pagination.offset === null)
+    return c.json({ error: 'invalid instanceId, limit, or offset' }, 400)
+  const where = eq(networkMetadataRevision.instanceId, instanceId)
+  const [rows, totals] = await Promise.all([
+    db
+      .select()
+      .from(networkMetadataRevision)
+      .where(where)
+      .orderBy(desc(networkMetadataRevision.revision))
+      .limit(pagination.limit)
+      .offset(pagination.offset),
+    db
+      .select({ value: count(networkMetadataRevision.id) })
+      .from(networkMetadataRevision)
+      .where(where),
+  ])
+  return c.json({
+    revisions: rows.map((row) => ({
+      ...row,
+      revision: row.revision.toString(),
+      blockNumber: row.blockNumber.toString(),
+      timestamp: row.timestamp.toString(),
+    })),
+    page: { ...pagination, total: totals[0]?.value ?? 0 },
+  })
 })
 
 app.get('/:instanceId/policies', async (c) => {

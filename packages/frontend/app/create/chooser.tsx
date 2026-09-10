@@ -1,9 +1,14 @@
 import { ArrowRight } from 'lucide-react'
 import { isAddress, zeroAddress } from 'viem'
 
+import { AlphaNotice } from '@/components/AlphaNotice'
 import { ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
-import { TRUST_COMPOSE_CONFIG, WEIGHTED_FACTORY } from '@/lib/config'
+import {
+  IMPORTED_FACTORY_CONFIG,
+  TRUST_COMPOSE_CONFIG,
+  WEIGHTED_FACTORY,
+} from '@/lib/config'
 import { getTargetChainConfig } from '@/lib/wagmi'
 
 import { isFactoryAvailable } from './model'
@@ -19,17 +24,31 @@ const WEIGHTED_PATH_AVAILABLE = publicFactoryAvailable(WEIGHTED_FACTORY)
 const COMPOSITION_PATH_AVAILABLE = publicFactoryAvailable(
   TRUST_COMPOSE_CONFIG?.factory
 )
+const IMPORTED_PATH_AVAILABLE =
+  publicFactoryAvailable(IMPORTED_FACTORY_CONFIG?.factory) &&
+  publicFactoryAvailable(IMPORTED_FACTORY_CONFIG?.governedFactory)
+
+const STANDARD_ONLY =
+  isFactoryAvailable() &&
+  !WEIGHTED_PATH_AVAILABLE &&
+  !COMPOSITION_PATH_AVAILABLE &&
+  !IMPORTED_PATH_AVAILABLE
 
 /** Every creation program gets a stable URL before any form state exists. */
 export const CreateNetworkChooser = () => (
   <div className="space-y-8 max-w-3xl">
     <div className="space-y-2">
-      <h1 className="text-2xl">Create a network</h1>
+      <h1 className="text-2xl">
+        {STANDARD_ONLY ? 'Create a standard network' : 'Create a network'}
+      </h1>
       <p className="text-sm text-muted-foreground max-w-2xl">
-        Choose from the network types available on this deployment. Nothing is
-        saved or sent while you choose.
+        {STANDARD_ONLY
+          ? 'Start with a few trusted accounts, set the rules for vouching, and review your network before creating it.'
+          : 'Choose the kind of network your community needs. You can review every setting before creating it.'}
       </p>
     </div>
+
+    <AlphaNotice />
 
     <div className="space-y-4">
       <Card type="accent" size="md" className="space-y-3">
@@ -56,6 +75,24 @@ export const CreateNetworkChooser = () => (
           </p>
         )}
       </Card>
+
+      {IMPORTED_PATH_AVAILABLE && (
+        <Card type="accent" size="md" className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="tg-label-strong">
+              Start from existing attestations
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Preview an existing EAS schema and turn its historical
+              attestations into a governed trust network.
+            </p>
+          </div>
+          <ButtonLink href="/create/imported" variant="outline" size="sm">
+            Preview an EAS schema
+            <ArrowRight className="h-4 w-4" />
+          </ButtonLink>
+        </Card>
+      )}
 
       {WEIGHTED_PATH_AVAILABLE && (
         <Card type="accent" size="md" className="space-y-3">

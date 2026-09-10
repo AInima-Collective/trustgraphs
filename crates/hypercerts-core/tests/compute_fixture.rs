@@ -97,7 +97,18 @@ fn fixture_input() -> (GuestInput, B256) {
             block_timestamp: 1_000,
         }],
         witnesses: vec![AtprotoWitness { did: ALICE.to_string(), car, plc_ops }],
-        strongref_targets: BTreeMap::new(),
+        strongref_targets: envelopes::atproto::carset::Car::parse(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../tests/fixtures/atproto/hypercerts/fixtures/bob.car"
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+        .blocks
+        .into_iter()
+        .map(|(cid, bytes)| (cid.to_string(), bytes))
+        .collect(),
         binding: Default::default(),
     };
     (input, head)
@@ -106,7 +117,7 @@ fn fixture_input() -> (GuestInput, B256) {
 #[test]
 fn full_pipeline_over_the_seeded_fixture() {
     let (input, _head) = fixture_input();
-    let r = compute(&input);
+    let r = compute(&input).unwrap();
 
     // Journal v2, lane-2-only shape: lane 1 is the zero accumulator.
     assert_eq!(r.journal.acc, B256::ZERO);
@@ -132,50 +143,69 @@ fn full_pipeline_over_the_seeded_fixture() {
     assert!(r.scores.iter().any(|(id, _)| *id == did_node_id(BOB)), "bob must be scored");
 
     // Deterministic: recompute reproduces the journal byte-for-byte.
-    let r2 = compute(&input);
+    let r2 = compute(&input).unwrap();
     assert_eq!(r.journal, r2.journal);
     assert_eq!(r.blob, r2.blob);
 }
 
-/// M-12 regression: a TRUNCATED CAR in the witness must not panic the guest — the node is
-/// skipped (rule Φ, publicly committed) and the epoch still proves. Pre-fix, `Car::parse`
-/// panicked on out-of-range LEB128 lengths, aborting the whole proof.
 #[test]
-fn truncated_car_skips_node_and_epoch_still_proves() {
+fn incomplete_or_invalid_current_repo_aborts() {
     let (input, _) = fixture_input();
-    // Truncate the CAR at every 1/8th boundary — none may panic, all must degrade.
     let full = input.witnesses[0].car.clone();
     for frac in 1..8 {
         let mut cut = input.clone();
         cut.witnesses[0].car = full[..full.len() * frac / 8].to_vec();
-        let r = compute(&cut);
-        assert_eq!(r.journal.anchor_count, 1, "anchor log still committed");
-        assert_eq!(r.rank.live_edges, 0, "truncated CAR must yield no witness-derived edges");
-        assert_eq!(
-            r.scores,
-            vec![(did_node_id(ALICE), input.params.total_pool)],
-            "the configured seed remains in the ranked universe"
-        );
-        assert_ne!(r.journal.skipped_digest, B256::ZERO, "the skip is publicly committed");
-        assert_ne!(r.journal.output_root, B256::ZERO, "the seed-only epoch has a committed root");
+        assert!(matches!(
+            compute(&cut),
+            Err(hypercerts_core::compute::ComputeError::InvalidWitness(_, _))
+        ));
     }
+    let mut missing = input.clone();
+    missing.witnesses.clear();
+    assert!(matches!(
+        compute(&missing),
+        Err(hypercerts_core::compute::ComputeError::MissingWitness(_))
+    ));
+    let mut duplicate = input.clone();
+    duplicate.witnesses.push(duplicate.witnesses[0].clone());
+    assert!(matches!(
+        compute(&duplicate),
+        Err(hypercerts_core::compute::ComputeError::DuplicateWitness(_))
+    ));
 }
 
 #[test]
-fn withheld_witness_drops_node_and_root_still_lands() {
+fn definition_omission_or_forgery_cannot_change_issuer_policy() {
+    use hypercerts_core::{compute::ComputeError, semantics::SemanticsError};
     let (mut input, _) = fixture_input();
-    input.witnesses.clear(); // anchored head, data withheld
-    let r = compute(&input);
-    assert_eq!(r.journal.anchor_count, 1);
-    assert_eq!(r.rank.live_edges, 0, "no witness, no witness-derived edges");
-    assert_eq!(
-        r.scores,
-        vec![(did_node_id(ALICE), input.params.total_pool)],
-        "withholding cannot erase the governance-configured seed"
-    );
-    assert_ne!(r.journal.skipped_digest, B256::ZERO, "the drop is publicly committed");
-    // The journal still forms and commits the seed-only distribution.
-    assert_ne!(r.journal.output_root, B256::ZERO);
+    input.strongref_targets.clear();
+    let Err(ComputeError::Semantics(SemanticsError::MissingStrongRef(cid))) = compute(&input)
+    else {
+        panic!("missing badge definition must abort");
+    };
+    input.strongref_targets.insert(cid, vec![0]);
+    assert!(matches!(
+        compute(&input),
+        Err(ComputeError::Semantics(SemanticsError::InvalidStrongRef(_)))
+    ));
+}
+
+#[test]
+fn expired_head_selection_is_independent_of_witness_availability() {
+    let (mut input, _) = fixture_input();
+    // Alice's valid fresh anchor makes Bob's older head expire using only public timestamps.
+    let mut expired = input.anchors[0].clone();
+    expired.node_id = did_node_id(BOB);
+    expired.block_timestamp = 0;
+    input.anchors[0].block_timestamp = input.params.lane2_max_head_age + 1;
+    input.anchors.insert(0, expired);
+    let result = compute(&input).unwrap();
+    assert!(result.skips.iter().any(|entry| entry.node_id == did_node_id(BOB)
+        && entry.reason == pagerank_core::skip_reason::DROPPED));
+    let alice = input.witnesses[0].clone();
+    // Bytes for an expired, anchored node do not affect deterministic selection.
+    input.witnesses.push(envelopes::atproto::AtprotoWitness { did: BOB.into(), ..alice });
+    assert_eq!(compute(&input).unwrap().journal, result.journal);
 }
 
 #[test]
@@ -183,7 +213,7 @@ fn skip_reasons_include_self_edge_from_the_fixture() {
     // Alice's repo contains an evaluation of her OWN activity: derive must record it.
     let (input, _) = fixture_input();
     let repos_skips = {
-        let r = compute(&input);
+        let r = compute(&input).unwrap();
         // The digest commits the skip set; reproduce membership via a targeted re-derive:
         // the fixture is single-repo so the SELF_EDGE skip must exist for alice's node.
         r

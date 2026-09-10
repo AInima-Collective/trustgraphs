@@ -47,9 +47,9 @@ import {MockZkVerifier} from "../../mocks/MockZkVerifier.sol";
 import {MockSafeOwner} from "../../helpers/MockSafeOwner.sol";
 
 /// @title ContributionsFactoryTest
-/// @notice The M6 battery: one-transaction round creation against a LIVE parent (created through
+/// @notice The contributions-factory battery: one-transaction round creation against a LIVE parent (created through
 ///         the real `TrustgraphsFactory`, so the parent gate is exercised against real role
-///         wiring), the parent gate itself, schema squatting ×3, the M6-1 mirror-bind regression,
+///         wiring), the parent gate itself, schema squatting ×3, the mirror-bind regression,
 ///         validator bounds, ground-rule-3 inertness, EIP-170 headroom, and a recorded gas number.
 contract ContributionsFactoryTest is Test {
     /*//////////////////////////////////////////////////////////////
@@ -374,7 +374,7 @@ contract ContributionsFactoryTest is Test {
         assertEq(address(snapshot.accumulator()), c.mirror);
         assertEq(address(snapshot.anchorRegistry()), c.resolver);
         assertEq(address(TrustAccumulatorMirror(c.mirror).trustAccumulator()), parentResolver);
-        assertEq(TrustAccumulatorMirror(c.mirror).snapshot(), c.snapshot, "M6-1: mirror must be bound");
+        assertEq(TrustAccumulatorMirror(c.mirror).snapshot(), c.snapshot, "mirror must be bound");
         assertEq(snapshot.epochLength(), EPOCH_FLOOR);
 
         // Ordering: the creation event precedes the controller's first published version, so an
@@ -606,7 +606,7 @@ contract ContributionsFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        M6-1 MIRROR-BIND REGRESSION
+                        MIRROR-BIND REGRESSION
     //////////////////////////////////////////////////////////////*/
 
     function test_M61_DirectMirrorCheckpointReverts() public {

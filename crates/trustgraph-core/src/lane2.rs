@@ -7,7 +7,7 @@
 
 use crate::{Envelope0AnchorAuthorization, Envelope0PayloadWitness, Lane2Witness, Params, RawEdge};
 use alloy_primitives::B256;
-use eas_offchain_v2::{self as eas_offchain, payload_v1};
+use eas_offchain::payload;
 use std::collections::BTreeMap;
 use zk_core::anchor::{anchor_leaf, SkipEntry};
 use zk_core::fold::fold;
@@ -35,7 +35,7 @@ pub enum Lane2Error {
     StaleCount,
     SameCountConflict,
     PrefixFork,
-    Payload(payload_v1::PayloadError),
+    Payload(payload::PayloadError),
 }
 
 impl Lane2Error {
@@ -56,8 +56,8 @@ impl Lane2Error {
     }
 }
 
-impl From<payload_v1::PayloadError> for Lane2Error {
-    fn from(value: payload_v1::PayloadError) -> Self {
+impl From<payload::PayloadError> for Lane2Error {
+    fn from(value: payload::PayloadError) -> Self {
         Self::Payload(value)
     }
 }
@@ -78,8 +78,8 @@ fn anchor_message(
     params: &Params,
     anchor: &crate::AnchorRecord,
     previous_head: B256,
-) -> payload_v1::AnchorMessage {
-    payload_v1::AnchorMessage {
+) -> payload::AnchorMessage {
+    payload::AnchorMessage {
         node_id: anchor.node_id,
         envelope_kind: anchor.envelope_kind,
         schema_uid: params.schema_uid,
@@ -165,20 +165,20 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
             if anchor.count == previous_count {
                 return Err(Lane2Error::SameCountConflict);
             }
-            if anchor.count as usize > payload_v1::MAX_ENTRIES_PER_NODE {
-                return Err(payload_v1::PayloadError::EntryLimit.into());
+            if anchor.count as usize > payload::MAX_ENTRIES_PER_NODE {
+                return Err(payload::PayloadError::EntryLimit.into());
             }
             let message = anchor_message(params, anchor, previous_head);
             let authorization =
                 authorizations.remove(fold_index).ok_or(Lane2Error::MissingAuthorization)?;
-            let signer = payload_v1::verify_anchor_authorization(
+            let signer = payload::verify_anchor_authorization(
                 head_domain,
                 &message,
                 &authorization.head_signature,
             )?;
             signature_checks = signature_checks.saturating_add(1);
             if eas_offchain::address_node_id(signer) != node_id {
-                return Err(payload_v1::PayloadError::NodeId.into());
+                return Err(payload::PayloadError::NodeId.into());
             }
             previous_count = anchor.count;
             previous_head = anchor.head;
@@ -196,7 +196,7 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
             .iter()
             .find(|authorization| authorization.fold_index == *latest_fold_index as u64)
             .ok_or(Lane2Error::MissingAuthorization)?;
-        let context = payload_v1::VerificationContext {
+        let context = payload::VerificationContext {
             expected_schema: params.schema_uid,
             eas_domain_separator: eas_domain,
             head_domain_separator: head_domain,
@@ -204,22 +204,22 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
             anchor_timestamp: latest.block_timestamp,
             head_signature: &latest_authorization.head_signature,
         };
-        let payload = payload_v1::verify(&payload_witness.payload, &context)?;
+        let payload = payload::verify(&payload_witness.payload, &context)?;
         // `verify` checks the latest head again in its single-record context, plus every
         // EAS-offchain attestation signature in the payload.
         signature_checks =
             signature_checks.saturating_add(1).saturating_add(payload.attestations.len() as u64);
         if payload_witness.node_id != eas_offchain::address_node_id(payload.owner) {
-            return Err(payload_v1::PayloadError::NodeId.into());
+            return Err(payload::PayloadError::NodeId.into());
         }
 
         // The newest payload must reproduce every earlier anchored prefix. This is what turns
         // independently valid higher-count heads into one append-only history.
-        let prefixes = payload_v1::prefix_heads(&payload.entries);
+        let prefixes = payload::prefix_heads(&payload.entries);
         for (_, anchor) in &anchors {
             let prefix = prefixes
                 .get(anchor.count as usize - 1)
-                .ok_or(payload_v1::PayloadError::CountMismatch)?;
+                .ok_or(payload::PayloadError::CountMismatch)?;
             if *prefix != anchor.head {
                 return Err(Lane2Error::PrefixFork);
             }
@@ -241,10 +241,10 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
                     let attestation = payload
                         .attestations
                         .get(attestation_cursor)
-                        .ok_or(payload_v1::PayloadError::CountMismatch)?;
+                        .ok_or(payload::PayloadError::CountMismatch)?;
                     attestation_cursor += 1;
                     if attestation.time > first_commit_anchor.block_timestamp {
-                        return Err(payload_v1::PayloadError::FutureTime.into());
+                        return Err(payload::PayloadError::FutureTime.into());
                     }
                     attestations_by_uid.insert(entry.uid, attestation);
                     ordered_mutations.push((
@@ -263,7 +263,7 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
                 eas_offchain::ENTRY_REVOKE => {
                     let attestation = attestations_by_uid
                         .get(&entry.uid)
-                        .ok_or(payload_v1::PayloadError::RevokeBeforeAttest)?;
+                        .ok_or(payload::PayloadError::RevokeBeforeAttest)?;
                     ordered_mutations.push((
                         first_commit_fold,
                         entry_index,
@@ -277,11 +277,11 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
                         },
                     ));
                 }
-                _ => return Err(payload_v1::PayloadError::LogKind.into()),
+                _ => return Err(payload::PayloadError::LogKind.into()),
             }
         }
         if attestation_cursor != payload.attestations.len() {
-            return Err(payload_v1::PayloadError::CountMismatch.into());
+            return Err(payload::PayloadError::CountMismatch.into());
         }
     }
 

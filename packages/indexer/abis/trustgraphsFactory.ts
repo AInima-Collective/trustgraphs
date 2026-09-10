@@ -585,6 +585,43 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'event',
+    name: 'ImportedEasLaneCreated',
+    inputs: [
+      {
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
+      {
+        name: 'importer',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'router',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
+      {
+        name: 'eas',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
+      },
+      {
+        name: 'schemaUid',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'InstanceCreated',
     inputs: [
       {

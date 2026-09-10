@@ -4,7 +4,9 @@ use alloy_primitives::{Address, B256, U256};
 use nostr_envelope::nostr::event::decode_hex;
 use nostr_envelope::nostr::tgnw;
 use nostr_envelope::nostr::{community_node_id, nostr_node_id, CommitmentVariant, NostrLimits};
-use nostr_workspace_core::compute::{compute, GuestInput, HeadWitness, ENVELOPE_NOSTR};
+use nostr_workspace_core::compute::{
+    compute, ComputeError, GuestInput, HeadWitness, ENVELOPE_NOSTR,
+};
 use nostr_workspace_core::params::{output_domain, Params, PARAMS_VERSION};
 use pagerank_core::{AnchorRecord, Binding};
 use sha2::{Digest, Sha256};
@@ -117,7 +119,7 @@ fn input(include_c: bool) -> GuestInput {
 }
 
 #[test]
-fn two_epoch_fixture_mutates_state_and_exercises_carry_and_drop() {
+fn two_epoch_fixture_uses_complete_current_heads() {
     let a1 = std::fs::read(fixture().join("source-option-a.tgnw")).unwrap();
     let c1 = std::fs::read(fixture().join("source-option-c.tgnw")).unwrap();
     let a2 = std::fs::read(fixture().join("epoch2/source-option-a.tgnw")).unwrap();
@@ -129,33 +131,16 @@ fn two_epoch_fixture_mutates_state_and_exercises_carry_and_drop() {
     let c1_anchor = anchor(&c1, 101);
     let a2_anchor = anchor(&a2, 102);
     let c2_anchor = anchor(&c2, 104);
-    let community_node = a2_anchor.node_id;
-    let self_log_node = c2_anchor.node_id;
     assert_eq!(a1_anchor.count, 23);
     assert_eq!(a2_anchor.count, 30);
     assert_eq!(c1_anchor.count, 2);
     assert_eq!(c2_anchor.count, 3);
 
-    // A newer malformed claim at the same maximum A count carries the preceding valid A2 head.
-    // The higher-count C2 claim is deliberately withheld; H-5 forbids resurrection of C1.
-    let bad_a = b"not-a-valid-second-epoch-tgnw".to_vec();
-    let malformed_a2_anchor = AnchorRecord {
-        node_id: a2_anchor.node_id,
-        envelope_kind: ENVELOPE_NOSTR,
-        head: B256::repeat_byte(0x77),
-        count: a2_anchor.count,
-        data_commitment: B256::from(<[u8; 32]>::from(Sha256::digest(&bad_a))),
-        block_timestamp: 103,
-    };
     let epoch_two_input = GuestInput {
         params: params(),
-        anchors: vec![a1_anchor, c1_anchor, a2_anchor, malformed_a2_anchor, c2_anchor],
-        witnesses: vec![
-            HeadWitness { bytes: a1 },
-            HeadWitness { bytes: c1 },
-            HeadWitness { bytes: a2 },
-            HeadWitness { bytes: bad_a },
-        ],
+        anchors: vec![a1_anchor, c1_anchor, a2_anchor, c2_anchor],
+        // Historical candidate bytes are unnecessary: current heads are determined by anchors.
+        witnesses: vec![HeadWitness { bytes: a2 }, HeadWitness { bytes: c2 }],
         binding: epoch_one_input.binding,
     };
     let epoch_two = compute(&epoch_two_input).unwrap();
@@ -186,23 +171,15 @@ fn two_epoch_fixture_mutates_state_and_exercises_carry_and_drop() {
     assert_eq!(epoch_two.outgoing[&bob_node][&alice_node], fp(125, 10_000));
     // The newly admitted member's completed J1 lifecycle targets the delegated agent.
     assert_eq!(epoch_two.outgoing[&added_node][&agent_node], fp(25, 1_000));
-    // With C2 unavailable, the agent vouch remains only relay/exporter-attested and discounted.
-    assert_eq!(epoch_two.outgoing[&agent_node][&bob_node], fp(1625, 10_000));
+    // The required current self-log authenticates the agent vouch without relay discount.
+    assert_eq!(epoch_two.outgoing[&agent_node][&bob_node], fp(65, 100));
 
-    assert_eq!(epoch_two.journal.anchor_count, 5);
+    assert_eq!(epoch_two.journal.anchor_count, 4);
     assert_eq!(epoch_two.journal.total_value, epoch_two_input.params.total_pool);
     assert_ne!(epoch_one.journal.output_root, epoch_two.journal.output_root);
     assert_ne!(epoch_one.journal.skipped_digest, epoch_two.journal.skipped_digest);
-    assert!(epoch_two.skips.iter().any(|skip| {
-        skip.node_id == community_node
-            && skip.reason == pagerank_core::skip_reason::CARRIED
-            && skip.epoch_observed == 102
-    }));
-    assert!(epoch_two.skips.iter().any(|skip| {
-        skip.node_id == self_log_node
-            && skip.reason == pagerank_core::skip_reason::DROPPED
-            && skip.epoch_observed == 104
-    }));
+    assert!(epoch_two.skips.iter().all(|skip| skip.reason != pagerank_core::skip_reason::CARRIED
+        && skip.reason != pagerank_core::skip_reason::DROPPED));
     assert_eq!(compute(&epoch_two_input).unwrap().journal, epoch_two.journal);
 }
 
@@ -255,84 +232,70 @@ fn option_c_strengthens_but_does_not_duplicate_the_same_event() {
 }
 
 #[test]
-fn rule_phi_carries_the_newest_valid_head_past_malformed_bytes() {
-    let good = std::fs::read(fixture().join("source-option-a.tgnw")).unwrap();
-    let bad = b"not-a-tgnw-bundle".to_vec();
-    let good_anchor = anchor(&good, 100);
-    let node_id = good_anchor.node_id;
-    let bad_anchor = AnchorRecord {
-        node_id,
-        envelope_kind: ENVELOPE_NOSTR,
-        head: B256::repeat_byte(0x55),
-        count: good_anchor.count,
-        data_commitment: B256::from(<[u8; 32]>::from(Sha256::digest(&bad))),
-        block_timestamp: 101,
-    };
-    let result = compute(&GuestInput {
-        params: params(),
-        anchors: vec![good_anchor, bad_anchor],
-        witnesses: vec![HeadWitness { bytes: good }, HeadWitness { bytes: bad }],
-        binding: Binding::default(),
-    })
-    .unwrap();
-
-    assert_eq!(result.roster.len(), 2);
-    assert!(result.skips.iter().any(|skip| {
-        skip.node_id == node_id
-            && skip.reason == pagerank_core::skip_reason::CARRIED
-            && skip.epoch_observed == 100
-    }));
+fn malformed_latest_head_cannot_select_an_older_valid_head() {
+    for advance in [0, 1] {
+        let good = std::fs::read(fixture().join("source-option-a.tgnw")).unwrap();
+        let bad = b"not-a-tgnw-bundle".to_vec();
+        let good_anchor = anchor(&good, 100);
+        let node_id = good_anchor.node_id;
+        let bad_anchor = AnchorRecord {
+            node_id,
+            envelope_kind: ENVELOPE_NOSTR,
+            head: B256::repeat_byte(0x55),
+            count: good_anchor.count + advance,
+            data_commitment: B256::from(<[u8; 32]>::from(Sha256::digest(&bad))),
+            block_timestamp: 101,
+        };
+        let input = GuestInput {
+            params: params(),
+            anchors: vec![good_anchor, bad_anchor],
+            witnesses: vec![HeadWitness { bytes: good }, HeadWitness { bytes: bad }],
+            binding: Binding::default(),
+        };
+        assert_eq!(compute(&input).unwrap_err(), ComputeError::InvalidWitness(node_id));
+        let mut omitted = input;
+        omitted.witnesses.pop();
+        assert_eq!(compute(&omitted).unwrap_err(), ComputeError::MissingWitness(node_id));
+    }
 }
 
 #[test]
-fn rule_phi_never_resurrects_a_lower_signed_count() {
-    let good = std::fs::read(fixture().join("source-option-a.tgnw")).unwrap();
-    let bad = b"not-a-tgnw-bundle".to_vec();
-    let good_anchor = anchor(&good, 100);
-    let node_id = good_anchor.node_id;
-    let bad_anchor = AnchorRecord {
-        node_id,
-        envelope_kind: ENVELOPE_NOSTR,
-        head: B256::repeat_byte(0x55),
-        count: good_anchor.count + 1,
-        data_commitment: B256::from(<[u8; 32]>::from(Sha256::digest(&bad))),
-        block_timestamp: 101,
-    };
-    let result = compute(&GuestInput {
-        params: params(),
-        anchors: vec![good_anchor, bad_anchor],
-        witnesses: vec![HeadWitness { bytes: good }, HeadWitness { bytes: bad }],
-        binding: Binding::default(),
-    })
-    .unwrap();
-
-    assert!(result.roster.is_empty());
-    assert_eq!(result.skips.len(), 1);
-    assert_eq!(result.skips[0].node_id, node_id);
-    assert_eq!(result.skips[0].reason, pagerank_core::skip_reason::DROPPED);
-    assert_eq!(result.skips[0].epoch_observed, 101);
+fn omitting_any_required_valid_head_aborts_the_same_checkpoint() {
+    let complete = input(true);
+    compute(&complete).unwrap();
+    for index in 0..complete.witnesses.len() {
+        let mut omitted = complete.clone();
+        omitted.witnesses.remove(index);
+        assert!(matches!(compute(&omitted), Err(ComputeError::MissingWitness(_))));
+    }
 }
 
 #[test]
-fn rule_phi_drops_a_withheld_head_without_aborting_the_epoch() {
-    let bytes = std::fs::read(fixture().join("source-option-a.tgnw")).unwrap();
-    let withheld = anchor(&bytes, 100);
-    let node_id = withheld.node_id;
-    let result = compute(&GuestInput {
-        params: params(),
-        anchors: vec![withheld],
-        witnesses: Vec::new(),
-        binding: Binding::default(),
-    })
-    .unwrap();
+fn configured_seed_absent_from_roster_never_enables_unseeded_scoring() {
+    let missing_seed =
+        decode_hex::<32>("62c0a046dacce86ddd0343c6d3c7c79c2208ba0d9c9cf24a6d046d21d21f90f7")
+            .unwrap();
+    let mut input = input(true);
+    input.params.trusted_seed_pubkeys = vec![missing_seed];
+    let result = compute(&input).unwrap();
+    assert_eq!(result.scores, vec![(nostr_node_id(&missing_seed), input.params.total_pool)]);
+    input.params.trusted_seed_pubkeys.clear();
+    assert_ne!(result.scores, compute(&input).unwrap().scores);
+}
 
-    assert!(result.roster.is_empty());
-    assert!(result.scores.is_empty());
-    assert!(result.outgoing.is_empty());
-    assert_eq!(result.skips.len(), 1);
-    assert_eq!(result.skips[0].node_id, node_id);
-    assert_eq!(result.skips[0].reason, pagerank_core::skip_reason::DROPPED);
-    assert_eq!(result.journal.total_value, U256::ZERO);
+#[test]
+fn expired_head_omission_is_determined_by_public_timestamps() {
+    let mut complete = input(true);
+    complete.anchors[1].block_timestamp = complete.params.lane2_max_head_age + 101;
+    let with_expired_bytes = compute(&complete).unwrap();
+    complete.witnesses.remove(0);
+    let without_expired_bytes = compute(&complete).unwrap();
+    assert_eq!(with_expired_bytes.journal, without_expired_bytes.journal);
+    assert!(without_expired_bytes
+        .skips
+        .iter()
+        .any(|skip| skip.node_id == complete.anchors[0].node_id
+            && skip.reason == pagerank_core::skip_reason::DROPPED));
 }
 
 #[test]

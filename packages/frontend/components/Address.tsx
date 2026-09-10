@@ -66,10 +66,7 @@ export const Address = ({
     displayText = 'You'
   }
 
-  const { name: ensName } = useEns(address, {
-    enableName: showEns,
-    enableAvatar: false,
-  })
+  const { name: ensName } = useEns(address, { enableName: showEns })
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -102,10 +99,9 @@ export const Address = ({
   const isShowingEns = !!ensName && showEns && !displayText
   const shouldHighlight =
     !noHighlight && ((!noHighlightEns && isShowingEns) || isYou)
-  const isLoading = false // Don't show loading state, just display address
 
   const baseClasses = cn(
-    'group/address inline-flex items-center gap-2 transition-colors',
+    'group/address inline-flex min-w-0 items-center gap-2 transition-colors',
     monospace && !shouldHighlight && 'font-mono',
     clickable ? 'cursor-pointer' : 'cursor-default',
     className
@@ -165,46 +161,46 @@ export const Address = ({
       {showNavIcon && (
         <ArrowUpRight className={cn('-ml-1 w-3 h-3 shrink-0', hoverClasses)} />
       )}
+    </>
+  )
 
-      {/* Copy button */}
-      {showCopyIcon && !isLoading && (
+  const help = tooltip || (isShowingEns ? address : undefined)
+
+  return (
+    <span className={baseClasses}>
+      {clickable ? (
+        <Tooltip title={help} asChild nativeButton={false}>
+          <Link
+            role="link"
+            className="tg-touch-target inline-flex min-w-0 items-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            onClick={(e) => {
+              e.stopPropagation()
+              pushBreadcrumb()
+            }}
+            href={`/account/${address}`}
+          >
+            {content}
+          </Link>
+        </Tooltip>
+      ) : (
+        <Tooltip title={help}>
+          <span className="inline-flex min-w-0 items-center gap-2">
+            {content}
+          </span>
+        </Tooltip>
+      )}
+      {showCopyIcon && (
         <button
+          type="button"
           onClick={handleCopy}
-          className="opacity-0 group-hover/address:opacity-100 transition-opacity focus:opacity-100 focus:outline-none peer/copy"
-          tabIndex={0}
+          className="tg-touch-target inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           aria-label={`Copy address ${address}`}
           title={copied ? 'Copied!' : 'Copy address'}
         >
           {copyIcon}
         </button>
       )}
-    </>
-  )
-
-  return (
-    <Tooltip
-      title={
-        tooltip ||
-        (isShowingEns
-          ? `${address.slice(0, 10)}...${address.slice(-8)}`
-          : undefined)
-      }
-    >
-      {clickable ? (
-        <Link
-          className={baseClasses}
-          onClick={(e) => {
-            e.stopPropagation()
-            pushBreadcrumb()
-          }}
-          href={link === 'account' ? `/account/${address}` : '#'}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div className={baseClasses}>{content}</div>
-      )}
-    </Tooltip>
+    </span>
   )
 }
 

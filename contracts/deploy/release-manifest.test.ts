@@ -7,6 +7,7 @@ import test from 'node:test'
 import { SepoliaEnv } from './env'
 import { resolveDeploymentSelection } from './profiles'
 import {
+  CURRENT_SP1_VERSION,
   loadReleaseManifest,
   readBroadcastDeployments,
   releaseManifestToDeploymentSummary,
@@ -23,6 +24,28 @@ const SIGNER_BYTES32 = `0x${'55'.repeat(32)}` as `0x${string}`
 const WEIGHTED_BYTES32 = `0x${'77'.repeat(32)}` as `0x${string}`
 const COMPOSITION_BYTES32 = `0x${'88'.repeat(32)}` as `0x${string}`
 const CONTRIBUTIONS_BYTES32 = `0x${'99'.repeat(32)}` as `0x${string}`
+
+test('mainnet manifests require an explicit reader opt-in and the exact chain binding', () => {
+  const sepolia = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  const mainnet = { ...sepolia, chain: 'mainnet', chainId: 1 }
+  assert.throws(() => validateReleaseManifest(mainnet), /chain=sepolia/)
+  assert.equal(
+    validateReleaseManifest(mainnet, { expectedChain: 'mainnet' }).chainId,
+    1
+  )
+  assert.throws(
+    () => validateReleaseManifest(sepolia, { expectedChain: 'mainnet' }),
+    /chain=mainnet and chainId=1/
+  )
+  assert.throws(
+    () =>
+      validateReleaseManifest(
+        { ...mainnet, chainId: 11155111 },
+        { expectedChain: 'mainnet' }
+      ),
+    /chain=mainnet and chainId=1/
+  )
+})
 
 test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its status', () => {
   const manifest = loadReleaseManifest(MANIFEST)
@@ -50,6 +73,27 @@ test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its s
       loadReleaseManifest(MANIFEST, { requireComplete: true })
     )
   }
+})
+
+test('manifest validator accepts uniform current and historical SP1 releases', () => {
+  const historical = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  assert.doesNotThrow(() => validateReleaseManifest(historical))
+
+  const current = structuredClone(historical)
+  for (const program of Object.values<{ sp1Version: string }>(
+    current.programs
+  )) {
+    program.sp1Version = CURRENT_SP1_VERSION
+  }
+  assert.doesNotThrow(() => validateReleaseManifest(current))
+
+  const unsupported = structuredClone(current)
+  unsupported.programs.weighted.sp1Version = '6.7.0'
+  assert.throws(() => validateReleaseManifest(unsupported), /supported release/)
+
+  const mixed = structuredClone(current)
+  mixed.programs.weighted.sp1Version = '6.3.1'
+  assert.throws(() => validateReleaseManifest(mixed), /one SP1 toolchain/)
 })
 
 test('manifest validator rejects unknown fields and secret-bearing keys', () => {
@@ -97,6 +141,32 @@ test('manifest validator rejects half-recorded governed deployments', () => {
     () => validateReleaseManifest(withoutVerifier),
     /signerVerifier is required/
   )
+})
+
+test('manifest carries subnetwork infrastructure as an optional atomic pair', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  // Start from a manifest without the pair, whatever the tracked release records.
+  delete manifest.contracts.parentAuthorityModuleDeployer
+  delete manifest.contracts.subnetworkRegistry
+  manifest.contracts.parentAuthorityModuleDeployer = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  assert.throws(
+    () => validateReleaseManifest(manifest),
+    /parentAuthorityModuleDeployer and subnetworkRegistry must be recorded together/
+  )
+
+  manifest.contracts.subnetworkRegistry = {
+    address: ADDRESS_2,
+    block: 124,
+    txHash: TX_HASH_2,
+  }
+  const validated = validateReleaseManifest(manifest)
+  const summary = releaseManifestToDeploymentSummary(validated)
+  assert.equal(summary.governedFactory?.parent_authority_deployer, ADDRESS)
+  assert.equal(summary.governedFactory?.subnetwork_registry, ADDRESS_2)
 })
 
 test('manifest validator accepts, pairs, and rejects the fast factory generation', () => {
@@ -147,8 +217,19 @@ test('manifest validator accepts, pairs, and rejects the fast factory generation
 test('manifest validator pairs the weighted / compose / contributions fast generations', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
 
-  // The tracked Sepolia manifest records all three fast families; the summary must carry each
-  // one under its original family's shape so consumers treat the generations uniformly.
+  // Record all three fast families on top of the tracked manifest (which may carry none: the
+  // v0.1 generation deploys its factories at floor 1 directly). The summary must carry each one
+  // under its original family's shape so consumers treat the generations uniformly.
+  const fastRecord = (n: number) => ({
+    address: `0x${String(n).repeat(40)}`,
+    block: 200 + n,
+    txHash: `0x${String(n).repeat(64)}`,
+  })
+  manifest.contracts.weightedTrustgraphsFactoryFast = fastRecord(3)
+  manifest.contracts.governedWeightedTrustgraphsFactoryFast = fastRecord(4)
+  manifest.contracts.trustComposeFactoryFast = fastRecord(5)
+  manifest.contracts.governedTrustComposeFactoryFast = fastRecord(6)
+  manifest.contracts.contributionsFactoryFast = fastRecord(7)
   const validated = validateReleaseManifest(manifest)
   const summary = releaseManifestToDeploymentSummary(validated)
   assert.equal(
@@ -261,6 +342,8 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
     guestManifest,
     JSON.stringify({
       tag: 'v0.0.0-test',
+      guest_build: 'docker',
+      builder_image: fs.readFileSync('zk/sp1-builder-image.txt', 'utf8').trim(),
       commit: 'aa'.repeat(20),
       programs: [
         {
@@ -322,8 +405,10 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         'Instance Registry',
         'Proving Vault',
         'Trustgraphs Factory',
+        'Imported EAS Factory',
         'Signer ZK Verifier',
         'Governed Factory',
+        'Governed Imported EAS Factory',
         'Weighted ZK Verifier',
         'Weighted Factory',
         'Governed Weighted Factory',
@@ -345,9 +430,11 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.instanceRegistry.address !== null,
         contracts.provingVault.address !== null,
         contracts.trustgraphsFactory.address !== null,
+        contracts.importedTrustgraphsFactory?.address != null,
         contracts.signerVerifier.address !== null,
         contracts.governedTrustgraphsFactory.address !== null &&
           contracts.signerSyncModuleDeployer.address !== null,
+        contracts.governedImportedTrustgraphsFactory?.address != null,
         contracts.weightedVerifier.address !== null,
         contracts.weightedTrustgraphsFactory.address !== null,
         contracts.governedWeightedTrustgraphsFactory.address !== null,
@@ -357,10 +444,10 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.contributionsFactory.address !== null,
       ]
     )
-    assert.equal(env.deployContracts[9]?.sig, 'run(string,string)')
-    assert.equal(env.deployContracts[12]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[11]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[14]?.sig, 'run(string,string)')
     assert.equal(
-      env.deployContracts[13]?.sig,
+      env.deployContracts[15]?.sig,
       'run(string,string,string,string,string,uint64)'
     )
     assert.doesNotMatch(JSON.stringify(env.deployContracts), /hypercert|nostr/i)
@@ -382,6 +469,8 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
     guestManifest,
     JSON.stringify({
       tag: 'v0.0.0-test',
+      guest_build: 'docker',
+      builder_image: fs.readFileSync('zk/sp1-builder-image.txt', 'utf8').trim(),
       commit: 'aa'.repeat(20),
       programs: [
         { program: 'trust-graph', vkey: BYTES32, elf_sha256: '44'.repeat(32) },
@@ -449,6 +538,26 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
 
     Object.assign(process.env, base)
     assert.doesNotThrow(plan)
+
+    const released = JSON.parse(fs.readFileSync(guestManifest, 'utf8'))
+    const writeManifest = (value: unknown) =>
+      fs.writeFileSync(guestManifest, JSON.stringify(value))
+    writeManifest({ ...released, guest_build: 'local' })
+    assert.throws(plan, /pinned Docker image/)
+    writeManifest({
+      ...released,
+      programs: [...released.programs, released.programs[0]],
+    })
+    assert.throws(plan, /duplicate program/)
+    const withoutDigest = structuredClone(released)
+    delete withoutDigest.programs[0].elf_sha256
+    writeManifest(withoutDigest)
+    assert.throws(plan, /invalid vkey or ELF digest/)
+    const malformedKey = structuredClone(released)
+    malformedKey.programs[0].vkey = '0x1234'
+    writeManifest(malformedKey)
+    Object.assign(process.env, base, { SP1_PROGRAM_VKEY: '0x1234' })
+    assert.throws(plan, /invalid vkey or ELF digest/)
   } finally {
     process.env = previous
   }
@@ -568,4 +677,12 @@ test('broadcast receipts populate the consumer adapter without RPC access', () =
     ADDRESS
   )
   assert.equal(summary.contributionsFactory?.contributions_factory, ADDRESS)
+})
+
+test('CURRENT_SP1_VERSION is the sp1-sdk the prover pins', () => {
+  const cargo = fs.readFileSync('zk/prover/Cargo.toml', 'utf8')
+  const pin = cargo.match(
+    /^sp1-sdk\s*=\s*\{[^}]*version\s*=\s*"=([^"]+)"/m
+  )?.[1]
+  assert.equal(pin, CURRENT_SP1_VERSION)
 })

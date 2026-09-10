@@ -6,6 +6,8 @@ import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {OzMerkle} from "../merkle/OzMerkle.sol";
+import {SignerSelectionPolicy} from "./SignerSelectionPolicy.sol";
 
 interface ISignerSyncCheckpointSource {
     function checkpointParamsHash(uint256 checkpointId) external view returns (bytes32);
@@ -35,20 +37,26 @@ interface ISignerActivitySource {
 ///         and commits the resulting `signerSetRoot` + `targetThreshold`. The guest proves the
 ///         selection is the correct deterministic function of those inputs; this contract does the
 ///         owner-set *diff* on-chain against the Safe's real linked list (so `prevOwner` pointers
-///         and the `1 <= threshold <= ownerCount` invariant are always correct — the two things the
-///         old off-chain WAVS component got wrong). See SIGNER_SYNC_ZK_PLAN.md.
+///         and the `1 <= threshold <= ownerCount` invariant are always correct). See
+///         research/SIGNER_SYNC_ZK_PLAN.md.
 /// @dev The signer journal (frozen, reproduced by `pagerank-core::encode::signer_journal_encoded`):
 ///      `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
 ///                  bytes32 activityAcc, uint64 activityCount, uint64 activityBlock,
 ///                  bool wasInitialized, bytes32 currentSignerSetRoot, uint256 currentThreshold,
 ///                  bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
 ///      `instanceDomain = keccak256(abi.encode(address(this), block.chainid))` is REBUILT here
-///      rather than accepted as an argument (audit M-3), so an owner-rotation proof made for one
+///      rather than accepted as an argument, so an owner-rotation proof made for one
 ///      module cannot be replayed against a same-params module sharing the accumulator, nor against
 ///      a mirrored deployment on another chain.
 contract SignerSyncZkModule is Module {
     /// @notice Gnosis Safe OwnerManager linked-list sentinel.
     address internal constant SENTINEL = address(0x1);
+    uint32 public constant MAX_SIGNERS = SignerSelectionPolicy.MAX_SIGNERS;
+
+    /// @notice Maximum proving lag after the authenticated activity snapshot (~one day on L1).
+    /// @dev Selection is evaluated as of that immutable checkpoint. Subsequent votes do not
+    ///      invalidate work; a shorter inactivity policy also shortens this acceptance window.
+    uint64 public constant MAX_ACTIVITY_CHECKPOINT_AGE = 7_200;
 
     /*///////////////////////////////////////////////////////////////
                                 STATE
@@ -68,18 +76,6 @@ contract SignerSyncZkModule is Module {
     /// @notice The governed instance's authenticated direct-vote activity hash chain.
     ISignerActivitySource public activitySource;
 
-    /// @notice Governance's live PageRank params reference for status and coordinated rotations.
-    /// @dev Proofs bind `scoreSnapshot.checkpointParamsHash(checkpointId)` instead, so updating
-    ///      this reference while a proof is running cannot invalidate already-paid work.
-    bytes32 public paramsHash;
-
-    /// @notice Narrow authority over only the shared PageRank commitment.
-    /// @dev Begins as the module owner for backwards-compatible deployments, but can be handed to
-    ///      the same operational Safe/timelock that owns a trust-graph params controller without
-    ///      transferring the module's verifier, accumulator, or selection-policy authority.
-    address public paramsAuthority;
-    address public pendingParamsAuthority;
-
     /// @notice keccak256 of the selection parameters: `abi.encode(uint32 topN, uint32 minThreshold,
     ///         uint32 targetThresholdBps)`.
     bytes32 public selectionParamsHash;
@@ -88,6 +84,10 @@ contract SignerSyncZkModule is Module {
     /// @notice The last checkpoint id whose proof was applied (monotonic).
     uint256 public lastAppliedCheckpoint;
 
+    /// @notice Activity history cannot move backwards across accepted score checkpoints.
+    /// @dev Equal ids are allowed: an unchanged activity snapshot may serve a later score round.
+    uint256 public lastAppliedActivityCheckpoint;
+
     /// @notice Whether any checkpoint has been applied (distinguishes "none" from "checkpoint 0").
     bool public hasAppliedCheckpoint;
 
@@ -95,35 +95,30 @@ contract SignerSyncZkModule is Module {
     ///         proof gate are separate, observable actions; either one stops owner rotation.
     bool public paused;
 
-    bool private _initialized;
-
     /*///////////////////////////////////////////////////////////////
                             ERRORS / EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    error AlreadyInitialized();
+    error ProxyDeploymentUnsupported();
     error ZeroAddress();
     error StaleCheckpoint(uint256 submitted, uint256 lastApplied);
     error EmptySignerSet();
+    error InvalidSignerCount(uint256 count);
     error InvalidSigner(address signer);
     error SignersNotStrictlyAscending();
     error InvalidThreshold(uint256 threshold, uint256 ownerCount);
     error SafeCallFailed(bytes data);
     error OwnerNotFound(address owner);
-    error NotParamsAuthority(address caller);
-    error InvalidParamsAuthority(address authority);
     error UnpinnedCheckpoint(uint256 checkpointId);
     error SignerSyncPaused();
     error InvalidSelectionParams();
-    error ActivityCheckpointSuperseded();
+    error ActivityCheckpointRegression(uint256 submitted, uint256 lastApplied);
     error ActivityCheckpointStale(uint64 checkpointBlock, uint256 currentBlock);
+    error ActivityCheckpointInFuture(uint64 checkpointBlock, uint256 currentBlock);
     error AccumulatorRotationLocked(uint256 currentCheckpointCount, uint256 candidateCheckpointCount);
 
     event ZkVerifierUpdated(address indexed zkVerifier);
     event AccumulatorUpdated(address indexed accumulator);
-    event ParamsHashUpdated(bytes32 paramsHash);
-    event ParamsAuthorityTransferStarted(address indexed currentAuthority, address indexed pendingAuthority);
-    event ParamsAuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
     event SelectionParamsHashUpdated(bytes32 selectionParamsHash);
     event ActivitySourceUpdated(address indexed activitySource);
     event SignerSyncPausedUpdated(bool paused);
@@ -145,7 +140,6 @@ contract SignerSyncZkModule is Module {
     /// @param _zkVerifier The proof verifier.
     /// @param _accumulator The attestation accumulator producing checkpoints.
     /// @param _scoreSnapshot The score snapshot that pins params per checkpoint.
-    /// @param _paramsHash The initial live PageRank params reference exposed for governance status.
     /// @param _activitySource The governed instance's direct-vote activity source.
     constructor(
         address _owner,
@@ -155,98 +149,12 @@ contract SignerSyncZkModule is Module {
         IAttestationAccumulator _accumulator,
         ISignerSyncCheckpointSource _scoreSnapshot,
         ISignerActivitySource _activitySource,
-        bytes32 _paramsHash,
         uint32 _topN,
         uint32 _minThreshold,
         uint32 _targetThresholdBps,
         uint64 _maxInactiveBlocks,
         uint32 _minActivityWitnesses
     ) {
-        _init(
-            _owner,
-            _avatar,
-            _target,
-            _zkVerifier,
-            _accumulator,
-            _scoreSnapshot,
-            _activitySource,
-            _paramsHash,
-            _topN,
-            _minThreshold,
-            _targetThresholdBps,
-            _maxInactiveBlocks,
-            _minActivityWitnesses
-        );
-    }
-
-    /// @notice Factory (proxy) setup.
-    function setUp(bytes memory initializeParams) public override {
-        (
-            address _owner,
-            address _avatar,
-            address _target,
-            IZkVerifier _zkVerifier,
-            IAttestationAccumulator _accumulator,
-            ISignerSyncCheckpointSource _scoreSnapshot,
-            ISignerActivitySource _activitySource,
-            bytes32 _paramsHash,
-            uint32 _topN,
-            uint32 _minThreshold,
-            uint32 _targetThresholdBps,
-            uint64 _maxInactiveBlocks,
-            uint32 _minActivityWitnesses
-        ) = abi.decode(
-            initializeParams,
-            (
-                address,
-                address,
-                address,
-                IZkVerifier,
-                IAttestationAccumulator,
-                ISignerSyncCheckpointSource,
-                ISignerActivitySource,
-                bytes32,
-                uint32,
-                uint32,
-                uint32,
-                uint64,
-                uint32
-            )
-        );
-        _init(
-            _owner,
-            _avatar,
-            _target,
-            _zkVerifier,
-            _accumulator,
-            _scoreSnapshot,
-            _activitySource,
-            _paramsHash,
-            _topN,
-            _minThreshold,
-            _targetThresholdBps,
-            _maxInactiveBlocks,
-            _minActivityWitnesses
-        );
-    }
-
-    function _init(
-        address _owner,
-        address _avatar,
-        address _target,
-        IZkVerifier _zkVerifier,
-        IAttestationAccumulator _accumulator,
-        ISignerSyncCheckpointSource _scoreSnapshot,
-        ISignerActivitySource _activitySource,
-        bytes32 _paramsHash,
-        uint32 _topN,
-        uint32 _minThreshold,
-        uint32 _targetThresholdBps,
-        uint64 _maxInactiveBlocks,
-        uint32 _minActivityWitnesses
-    ) internal {
-        if (_initialized) revert AlreadyInitialized();
-        _initialized = true;
         if (
             _avatar == address(0) || _target == address(0) || address(_zkVerifier) == address(0)
                 || address(_accumulator) == address(0) || address(_scoreSnapshot) == address(0)
@@ -262,9 +170,13 @@ contract SignerSyncZkModule is Module {
         accumulator = _accumulator;
         scoreSnapshot = _scoreSnapshot;
         activitySource = _activitySource;
-        paramsHash = _paramsHash;
-        paramsAuthority = _owner;
         _setSelectionParams(_topN, _minThreshold, _targetThresholdBps, _maxInactiveBlocks, _minActivityWitnesses);
+    }
+
+    /// @notice Zodiac proxy-factory deployment is unsupported: the module is always deployed via
+    ///         `new` with its full configuration in the constructor.
+    function setUp(bytes memory) public pure override {
+        revert ProxyDeploymentUnsupported();
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -283,7 +195,7 @@ contract SignerSyncZkModule is Module {
     ///      The high-water state is explicitly cleared on the sole safe (both-empty) rotation path.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyOwner {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
-        if (_accumulator == accumulator) {
+        if (address(_accumulator) == address(accumulator)) {
             emit AccumulatorUpdated(address(_accumulator));
             return;
         }
@@ -294,32 +206,9 @@ contract SignerSyncZkModule is Module {
         }
         accumulator = _accumulator;
         lastAppliedCheckpoint = 0;
+        lastAppliedActivityCheckpoint = 0;
         hasAppliedCheckpoint = false;
         emit AccumulatorUpdated(address(_accumulator));
-    }
-
-    modifier onlyParamsAuthority() {
-        if (msg.sender != paramsAuthority) revert NotParamsAuthority(msg.sender);
-        _;
-    }
-
-    function transferParamsAuthority(address nextAuthority) external onlyOwner {
-        if (nextAuthority == address(0)) revert InvalidParamsAuthority(nextAuthority);
-        pendingParamsAuthority = nextAuthority;
-        emit ParamsAuthorityTransferStarted(paramsAuthority, nextAuthority);
-    }
-
-    function acceptParamsAuthority() external {
-        if (msg.sender != pendingParamsAuthority) revert NotParamsAuthority(msg.sender);
-        address previous = paramsAuthority;
-        paramsAuthority = msg.sender;
-        pendingParamsAuthority = address(0);
-        emit ParamsAuthorityTransferred(previous, msg.sender);
-    }
-
-    function setParamsHash(bytes32 _paramsHash) external onlyParamsAuthority {
-        paramsHash = _paramsHash;
-        emit ParamsHashUpdated(_paramsHash);
     }
 
     function setSelectionParams(
@@ -334,6 +223,7 @@ contract SignerSyncZkModule is Module {
 
     function setActivitySource(ISignerActivitySource activitySource_) external onlyOwner {
         if (address(activitySource_) == address(0)) revert ZeroAddress();
+        if (address(activitySource_) != address(activitySource)) lastAppliedActivityCheckpoint = 0;
         activitySource = activitySource_;
         emit ActivitySourceUpdated(address(activitySource_));
     }
@@ -352,7 +242,7 @@ contract SignerSyncZkModule is Module {
     ///         rotate the Safe's owner set + threshold to match. Permissionless.
     /// @param checkpointId The checkpoint whose inputs the proof consumes.
     /// @param signers The proven owner set, strictly ascending by address (canonical, unique).
-    /// @param targetThreshold The proven Safe threshold (1 <= targetThreshold <= signers.length).
+    /// @param targetThreshold The proven Safe threshold (2 <= targetThreshold <= signers.length).
     /// @param proof The verifier-specific proof blob.
     function submitSignerProof(
         uint256 checkpointId,
@@ -374,10 +264,15 @@ contract SignerSyncZkModule is Module {
 
         ISignerActivitySource.ActivityCheckpoint memory activity =
             activitySource.getActivityCheckpoint(activityCheckpointId);
-        if (activity.acc != activitySource.activityAccumulator() || activity.count != activitySource.activityCount()) {
-            revert ActivityCheckpointSuperseded();
+        if (activityCheckpointId < lastAppliedActivityCheckpoint) {
+            revert ActivityCheckpointRegression(activityCheckpointId, lastAppliedActivityCheckpoint);
         }
-        if (block.number > uint256(activity.blockNumber) + maxInactiveBlocks) {
+        if (activity.blockNumber > block.number) {
+            revert ActivityCheckpointInFuture(activity.blockNumber, block.number);
+        }
+        uint256 maximumAge =
+            maxInactiveBlocks < MAX_ACTIVITY_CHECKPOINT_AGE ? maxInactiveBlocks : MAX_ACTIVITY_CHECKPOINT_AGE;
+        if (block.number > uint256(activity.blockNumber) + maximumAge) {
             revert ActivityCheckpointStale(activity.blockNumber, block.number);
         }
 
@@ -387,13 +282,13 @@ contract SignerSyncZkModule is Module {
 
         // Validate the canonical form and recompute the set commitment the guest proved.
         bytes32 signerSetRoot = _validateAndRoot(signers);
-        if (targetThreshold < 1 || targetThreshold > signers.length) {
+        if (targetThreshold < 2 || targetThreshold > signers.length) {
             revert InvalidThreshold(targetThreshold, signers.length);
         }
 
         // Rebuild the signer journal digest from stored (governance-pinned) + submitted (proven)
         // fields; a mismatch on ANY field fails verification. The final word binds the proof to
-        // THIS module on THIS chain (audit M-3) — rebuilt, never submitted.
+        // THIS module on THIS chain — rebuilt, never submitted.
         bytes32 journalDigest = keccak256(
             abi.encode(
                 c.acc,
@@ -416,6 +311,7 @@ contract SignerSyncZkModule is Module {
         zkVerifier.verify(proof, journalDigest);
 
         lastAppliedCheckpoint = checkpointId;
+        lastAppliedActivityCheckpoint = activityCheckpointId;
         hasAppliedCheckpoint = true;
 
         _syncOwners(signers, targetThreshold);
@@ -497,6 +393,7 @@ contract SignerSyncZkModule is Module {
     function _validateAndRoot(address[] calldata signers) internal pure returns (bytes32) {
         uint256 n = signers.length;
         if (n == 0) revert EmptySignerSet();
+        if (n < 2 || n > MAX_SIGNERS) revert InvalidSignerCount(n);
         bytes32[] memory leaves = new bytes32[](n);
         address prev = address(0);
         for (uint256 i = 0; i < n; i++) {
@@ -506,7 +403,7 @@ contract SignerSyncZkModule is Module {
             prev = sgn;
             leaves[i] = keccak256(abi.encode(sgn));
         }
-        return _ozRoot(leaves);
+        return OzMerkle.root(leaves);
     }
 
     function _ownerSetRoot(address[] memory owners) internal pure returns (bytes32) {
@@ -514,7 +411,7 @@ contract SignerSyncZkModule is Module {
         for (uint256 i = 0; i < owners.length; i++) {
             leaves[i] = keccak256(abi.encode(owners[i]));
         }
-        return _ozRoot(leaves);
+        return OzMerkle.root(leaves);
     }
 
     function _setSelectionParams(
@@ -524,45 +421,15 @@ contract SignerSyncZkModule is Module {
         uint64 maxInactiveBlocks_,
         uint32 minActivityWitnesses
     ) internal {
-        if (
-            topN < 2 || minThreshold < 2 || minThreshold > topN || targetThresholdBps == 0
-                || targetThresholdBps > 10_000 || maxInactiveBlocks_ == 0 || minActivityWitnesses < 2
-                || minActivityWitnesses > topN
-        ) revert InvalidSelectionParams();
+        if (!SignerSelectionPolicy.isValid(
+                topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses
+            )) {
+            revert InvalidSelectionParams();
+        }
         selectionParamsHash =
             keccak256(abi.encode(topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses));
         maxInactiveBlocks = maxInactiveBlocks_;
         emit SelectionParamsHashUpdated(selectionParamsHash);
-    }
-
-    /// @dev Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).
-    ///      Byte-identical to `pagerank-core::merkle::seed_set_root` and `GoldenVectors._ozRoot`.
-    function _ozRoot(bytes32[] memory leaves) internal pure returns (bytes32) {
-        uint256 n = leaves.length;
-        if (n == 0) return bytes32(0);
-        // insertion sort (small n)
-        for (uint256 i = 1; i < n; i++) {
-            bytes32 key = leaves[i];
-            uint256 j = i;
-            while (j > 0 && leaves[j - 1] > key) {
-                leaves[j] = leaves[j - 1];
-                j--;
-            }
-            leaves[j] = key;
-        }
-        if (n == 1) return leaves[0];
-        uint256 size = 2 * n - 1;
-        bytes32[] memory tree = new bytes32[](size);
-        for (uint256 i = 0; i < n; i++) {
-            tree[size - 1 - i] = leaves[i];
-        }
-        for (uint256 i = n - 1; i > 0; i--) {
-            uint256 idx = i - 1;
-            bytes32 a = tree[2 * idx + 1];
-            bytes32 b = tree[2 * idx + 2];
-            tree[idx] = a <= b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
-        }
-        return tree[0];
     }
 
     /// @dev The Safe's current owners, in linked-list order.

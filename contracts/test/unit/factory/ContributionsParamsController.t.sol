@@ -34,7 +34,8 @@ contract ContributionsParamsControllerTest is Test {
             ContributionsParamsCodec.hash(initial),
             new MockAccumulator(),
             address(this),
-            address(this)
+            address(this),
+            ""
         );
         controller = new ContributionsParamsController(
             INSTANCE_ID, address(snapshot), EAS, registry, initial, OWNER, address(this)

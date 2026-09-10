@@ -1,0 +1,24 @@
+[package]
+name = "eas-offchain"
+description = "Strict canonical EAS off-chain v2 payload and typed-head verifier for Trustgraphs"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+alloy-primitives = { workspace = true, features = ["serde"] }
+zk-core = { path = "../zk-core" }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+serde = { workspace = true, features = ["derive"] }
+sha2 = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints.rust]
+deprecated = "allow"

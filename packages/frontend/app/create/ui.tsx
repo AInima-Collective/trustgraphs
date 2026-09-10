@@ -1,6 +1,13 @@
 'use client'
 
-import { ReactNode } from 'react'
+import {
+  Children,
+  Fragment,
+  ReactNode,
+  cloneElement,
+  isValidElement,
+  useId,
+} from 'react'
 
 import { Label } from '@/components/Label'
 import { cn } from '@/lib/utils'
@@ -14,7 +21,9 @@ export const StepHeader = ({
   lead?: ReactNode
 }) => (
   <div className="space-y-2">
-    <h2 className="text-lg">{title}</h2>
+    <h2 className="text-lg focus:outline-none" tabIndex={-1} data-step-heading>
+      {title}
+    </h2>
     {lead && <p className="text-sm text-muted-foreground max-w-2xl">{lead}</p>}
   </div>
 )
@@ -36,19 +45,59 @@ export const Field = ({
   htmlFor?: string
   children: ReactNode
   className?: string
-}) => (
-  <div className={cn('space-y-2', className)}>
-    <div className="flex flex-row items-baseline justify-between gap-3">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {optional && (
-        <span className="text-xs text-muted-foreground">optional</span>
+}) => {
+  const generatedId = useId()
+  const id = htmlFor || generatedId
+  const hintId = `${id}-hint`
+  const errorId = `${id}-error`
+  let associated = false
+  const connect = (nodes: ReactNode): ReactNode =>
+    Children.map(nodes, (child) => {
+      if (!isValidElement<Record<string, any>>(child)) return child
+      const isControl =
+        child.type !== Fragment &&
+        (typeof child.type !== 'string' ||
+          ['input', 'textarea', 'select'].includes(child.type))
+      if (isControl && !associated) {
+        associated = true
+        return cloneElement(child, {
+          id,
+          'aria-invalid': error ? true : undefined,
+          'aria-describedby':
+            [child.props['aria-describedby'], hint && hintId, error && errorId]
+              .filter(Boolean)
+              .join(' ') || undefined,
+        })
+      }
+      return child.props.children
+        ? cloneElement(child, {}, connect(child.props.children))
+        : child
+    })
+  return (
+    <div
+      className={cn('space-y-2', className)}
+      data-field-error={error ? true : undefined}
+    >
+      <div className="flex flex-row items-baseline justify-between gap-3">
+        <Label htmlFor={id}>{label}</Label>
+        {optional && (
+          <span className="text-xs text-muted-foreground">optional</span>
+        )}
+      </div>
+      {connect(children)}
+      {hint && (
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p id={errorId} role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
       )}
     </div>
-    {children}
-    {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    {error && <p className="text-xs text-destructive">{error}</p>}
-  </div>
-)
+  )
+}
 
 /** A quiet aside: consequences, warnings, and the things we are not pretending about. */
 export const Note = ({
@@ -108,19 +157,19 @@ export const PercentSetting = ({
   description: ReactNode
 }) => (
   <div className="space-y-2">
-    <div className="flex flex-row items-center justify-between gap-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <Label>{label}</Label>
-      <div className="flex flex-row items-center gap-2">
+      <div className="flex min-w-0 w-full flex-row items-center gap-2 sm:w-auto sm:shrink-0">
         <input
           type="range"
           min={min}
           max={max}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-40 sm:w-56 accent-primary cursor-pointer"
+          className="min-w-0 flex-1 sm:flex-none sm:w-56 accent-primary cursor-pointer"
           aria-label={label}
         />
-        <span className="text-sm tabular-nums w-12 text-right">
+        <span className="text-sm tabular-nums w-12 shrink-0 text-right">
           {value}
           {suffix}
         </span>

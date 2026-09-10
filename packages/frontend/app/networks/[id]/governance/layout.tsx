@@ -2,10 +2,17 @@ import { notFound } from 'next/navigation'
 import { ReactNode } from 'react'
 
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
+import { CompositionNetworkHeader } from '@/components/CompositionNetworkHeader'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
+import { compositionAsNetwork } from '@/lib/composition/network'
 import { getCompositionInstance } from '@/lib/composition.server'
+import {
+  CONTRIBUTIONS_FACTORY,
+  FAST_CONTRIBUTIONS_FACTORY,
+  PROVING_VAULT,
+} from '@/lib/config'
 
 import { CompositionGovernanceView } from '../../../compositions/[instanceId]/governance'
 
@@ -34,7 +41,26 @@ export default async function GovernanceLayout({
   if (!network) {
     const composition = await getCompositionInstance(id)
     if (composition.instance) {
-      return <CompositionGovernanceView instance={composition.instance} />
+      const compositionNetwork = compositionAsNetwork(composition.instance, {
+        ...(PROVING_VAULT ? { provingVault: PROVING_VAULT } : {}),
+        ...(FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY
+          ? {
+              contributionsFactory: (FAST_CONTRIBUTIONS_FACTORY ||
+                CONTRIBUTIONS_FACTORY) as `0x${string}`,
+            }
+          : {}),
+      })
+      if (!compositionNetwork.contracts.merkleGovModule) {
+        return <CompositionGovernanceView instance={composition.instance} />
+      }
+      return (
+        <NetworkProvider network={compositionNetwork}>
+          <div className="space-y-6">
+            <CompositionNetworkHeader instance={composition.instance} />
+            {children}
+          </div>
+        </NetworkProvider>
+      )
     }
     if (composition.error) {
       return <CatalogUnavailable reason={composition.error} networkId={id} />
