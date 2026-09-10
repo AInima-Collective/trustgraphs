@@ -41,7 +41,8 @@ for (const required of [
   "'/data': operatorState",
   "RAILWAY_RUN_UID: '0'",
   "FRONTEND_URL: 'https://trustgraphs.xyz'",
-  "PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v6'",
+  "PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v7'",
+  "PONDER_EAS_START_BLOCK_11155111: '11670854'",
   "PONDER_VIEWS_SCHEMA: 'trust-graph'",
   'ctx.shared.RPC_URL_11155111_0',
   // The indexer RPC list is pinned alchemy-first (as a resolved shared template) with the two
