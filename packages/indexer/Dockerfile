@@ -12,6 +12,8 @@ WORKDIR /app
 # Cache the dependency layer independently from source changes. The indexer deliberately keeps
 # dev dependencies: its production startup runs drizzle-kit migrations and TypeScript sources.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm-workspace.yaml declares patchedDependencies; the install fails without the patch files.
+COPY patches ./patches
 COPY packages/indexer/package.json packages/indexer/package.json
 COPY packages/eas-offchain-client/package.json packages/eas-offchain-client/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter trustgraphs-indexer...
@@ -29,6 +31,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/packages/indexer/node_modules ./packages/indexer/node_modules
 COPY --from=dependencies /app/packages/eas-offchain-client/node_modules ./packages/eas-offchain-client/node_modules
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
 COPY packages/indexer ./packages/indexer
 COPY packages/eas-offchain-client ./packages/eas-offchain-client
 COPY packages/frontend/lib ./packages/frontend/lib
