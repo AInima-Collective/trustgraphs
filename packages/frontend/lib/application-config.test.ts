@@ -77,6 +77,7 @@ const fixture = () => {
     RPC_URL_1_1: 'http://127.0.0.1:28545',
     PONDER_URL: 'http://127.0.0.1:16542',
     IPFS_GATEWAY_PUBLIC: 'http://127.0.0.1:18080/ipfs/',
+    FRONTEND_URL: 'http://127.0.0.1:13000/',
   }
   return {
     root,
@@ -111,6 +112,8 @@ test('mainnet generation and linking use chain 1 manifest and seed files only', 
       fs.readFileSync(path.join(f.app, 'config.mainnet.json'), 'utf8')
     )
     assert.equal(config.chain, 'mainnet')
+    // The canonical origin is the build's FRONTEND_URL, without a trailing slash.
+    assert.equal(config.siteUrl, 'http://127.0.0.1:13000')
     assert.equal(
       config.contracts.TrustgraphsFactory,
       f.manifest.contracts.trustgraphsFactory.address
@@ -129,12 +132,19 @@ test('mainnet generation and linking use chain 1 manifest and seed files only', 
   }
 })
 
-test('public config fails closed for missing manifest, wrong chain binding, or missing chain RPC', () => {
+test('public config fails closed for missing manifest, wrong chain binding, missing chain RPC, or missing site origin', () => {
   const f = fixture()
   try {
     const missingRpc = f.generate({ RPC_URL_1_1: '' })
     assert.notEqual(missingRpc.status, 0)
     assert.match(missingRpc.stderr, /RPC_URL_1_1 is required/)
+    const missingSite = f.generate({ FRONTEND_URL: '' })
+    assert.notEqual(missingSite.status, 0)
+    assert.match(missingSite.stderr, /FRONTEND_URL is required/)
+    const placeholderSite = f.generate({ FRONTEND_URL: 'https://example.com' })
+    assert.notEqual(placeholderSite.status, 0)
+    assert.match(placeholderSite.stderr, /example\.com placeholder/)
+    assert.equal(fs.existsSync(path.join(f.app, 'config.mainnet.json')), false)
     f.manifest.chainId = 11155111
     fs.writeFileSync(
       path.join(f.root, 'deployments/mainnet.json'),

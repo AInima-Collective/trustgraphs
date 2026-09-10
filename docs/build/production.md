@@ -1,4 +1,4 @@
-# Deploy to Sepolia
+# Deploy to a public chain
 
 A public Trustgraphs deployment combines contracts whose program identity must remain stable with
 indexing, proving, and publication services that must remain available. Treat it as a
@@ -6,14 +6,24 @@ security-sensitive release, not a copy of the local demo.
 
 ## Supported deployment profiles
 
-The repository exposes one supported public deployment target:
+The target is the only switch. `DEPLOY_TARGET` selects a row in `contracts/deploy/profiles.ts`
+(chain identity) and `contracts/deploy/public-chains.ts` (which optional families the generation
+ships and which policy defaults hold); `deployments/<target>.json` is that chain's public record,
+`config/networks.<target>.json` its seed catalog, `deployments/operator.<target>.toml` its proving
+policy, and the ignored `.env.<target>` its secrets. Adding a chain is one row in each table plus
+those files; nothing else in the tooling names a chain.
 
-| Target    | Current profile                                                                                                                                                                                                                                                                         |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sepolia` | Modern registry; verifiers for trust-graph, signer-sync, weighted-prior, trust-compose, and contributions; base and governed factories for trust-graph, weighted, and composition; a contributions factory; canonical Safe integration; signer-sync module deployer; and proving vault. |
+| Target    | Profile                                                                                                                                                                                                                                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sepolia` | Ethereum Sepolia (11155111). Modern registry; verifiers for trust-graph, signer-sync, weighted-prior, trust-compose, and contributions; base and governed factories for trust-graph, imported EAS, weighted, and composition; a contributions factory; canonical Safe integration; signer-sync module deployer; proving vault. |
+| `mainnet` | Ethereum mainnet (1). The same plan without the imported-EAS factory pair (a recorded generation-1 decision; it can be added later with `--continue-existing`). The admin is a Safe. `deployments/mainnet.json` is `planned` until the first broadcast finalizes it.                                                     |
 
-The `mainnet` target is intentionally disabled because the repository has no authorized Ethereum
-mainnet deployment profile.
+Both chains end every plan with two role handoffs (`contracts/script/HandoffAccessControl.s.sol`):
+the proving vault's admin and fee-setter roles, and the subnetwork registry's admin role, move
+from the deployer to `INSTANCE_REGISTRY_ADMIN` in one broadcast each, and the script asserts from
+chain state that the deployer holds neither. The only grants left for the admin are the factories'
+`REGISTRAR_ROLE` on the instance registry; the deploy writes them as a Safe Transaction Builder
+batch to `.docker/admin-grants.<target>.json` and prints the equivalent `cast` commands.
 
 ## Before deployment
 
@@ -30,15 +40,31 @@ Never deploy a verifier with a key derived from a different guest build.
 
 ## Deploy the contracts
 
-Choose an implemented target explicitly. The current Sepolia deployment is additive: run its
-read-only release preflight, continue from the tracked live manifest, then assert the on-chain end
-state:
+Choose a target explicitly. The Sepolia deployment is additive: run its read-only release
+preflight, continue from the tracked live manifest, then assert the on-chain end state:
 
 ```bash
 pnpm deploy:sepolia:preflight
 pnpm deploy:sepolia:continue
 pnpm deploy:sepolia:postcheck
 ```
+
+The first mainnet deployment is a fresh broadcast against the planned manifest, from a clean
+checkout of the release tag with that release's `guest-manifest.json` beside it:
+
+```bash
+pnpm deploy:mainnet:preflight
+pnpm deploy:contracts --stage production --chain mainnet --dry-run
+pnpm deploy:mainnet:contracts
+pnpm deploy:mainnet:postcheck
+pnpm verify:contracts --chain mainnet
+```
+
+The mainnet preflight is the Sepolia one with the chain swapped: it checks the release identity,
+refuses scratch receipts before a fresh deploy, requires `ALLOW_MAINNET_EPOCH_FLOOR=true` for a
+floor under a day of blocks (the testnet opt-in is ignored on chain 1 and vice versa), confirms
+code at every canonical external, and reads the SP1 gateway route. After the admin Safe executes
+the grant batch, rerun the postcheck: it asserts the role graph, including both handoffs.
 
 The deployment code validates profile-specific environment variables before sending transactions.
 Inspect every simulated call and receipt. Preserve contract addresses, deployment blocks, source
@@ -65,7 +91,7 @@ and published output files before relying on the deployment.
 ### Sepolia service package
 
 Railway is the selected host for the first public testnet. Its project definition and deployment
-runbook are in [Run the Sepolia services on Railway](./railway.md). The Compose package below
+runbook are in [Run the services on Railway](./railway.md). The Compose package below
 remains the portable reference implementation and local recovery-drill path.
 
 `docker-compose.prod.yml` is the production package, not a developer convenience stack. The
@@ -139,9 +165,12 @@ After the frontend is deployed, exercise its clean-browser, read-only launch sur
 a funded wallet:
 
 ```bash
-SEPOLIA_FRONTEND_URL=https://testnet.example.org \
-  pnpm --filter trustgraphs-frontend smoke:sepolia
+FRONTEND_URL=https://testnet.example.org \
+  pnpm --filter trustgraphs-frontend smoke:public
 ```
+
+The smoke reads the chain from the deployed site's generated config, so the same command runs
+against the mainnet site with its `FRONTEND_URL`.
 
 This checks the standard, weighted, and composition creation entries backed by the tracked
 factories. It does not submit a transaction; the clean-wallet creation remains a separate release
@@ -151,9 +180,9 @@ On a preview deployment where transport 0 is deliberately pointed at an unreacha
 the same smoke command can prove the browser actually continues through transport 1:
 
 ```bash
-SEPOLIA_FRONTEND_URL=https://preview.testnet.example.org \
-SEPOLIA_EXPECT_RPC_FAILOVER=true \
-  pnpm --filter trustgraphs-frontend smoke:sepolia
+FRONTEND_URL=https://preview.testnet.example.org \
+EXPECT_RPC_FAILOVER=true \
+  pnpm --filter trustgraphs-frontend smoke:public
 ```
 
 The assertion requires a 5xx response from `id=0` followed by a 200 response from `id=1`; do not

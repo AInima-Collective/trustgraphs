@@ -400,7 +400,7 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
     assert.deepEqual(
       env.deployContracts.map(({ name }) => name),
       [
-        'Schema Registrar (canonical Sepolia EAS)',
+        'Schema Registrar (canonical EAS)',
         'Trust-graph ZK Verifier',
         'Instance Registry',
         'Proving Vault',
@@ -416,6 +416,8 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         'Trust Compose Factory',
         'Governed Compose Factory',
         'Contributions Factory',
+        'Hand off Proving Vault',
+        'Hand off Subnetwork Registry',
       ]
     )
     const continuation = {
@@ -442,6 +444,8 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
         contracts.trustComposeFactory.address !== null,
         contracts.governedTrustComposeFactory.address !== null,
         contracts.contributionsFactory.address !== null,
+        contracts.provingVault.address !== null,
+        contracts.subnetworkRegistry?.address != null,
       ]
     )
     assert.equal(env.deployContracts[11]?.sig, 'run(string,string)')
@@ -450,6 +454,8 @@ test('Sepolia plan deploys every factory-backed hosted program and reuses canoni
       env.deployContracts[15]?.sig,
       'run(string,string,string,string,string,uint64)'
     )
+    assert.equal(env.deployContracts[16]?.sig, 'run(string,string,string)')
+    assert.equal(env.deployContracts[17]?.sig, 'run(string,string,string)')
     assert.doesNotMatch(JSON.stringify(env.deployContracts), /hypercert|nostr/i)
   } finally {
     process.env = previous

@@ -13,8 +13,9 @@ pnpm --filter trustgraphs-indexer typecheck
 ```
 
 Copy [`.env.example`](./.env.example) to `.env.local` when running commands directly. The package
-links the selected root `config/networks.<environment>.json` before starting; local development
-normally uses the generated `config/networks.development.json`.
+links the selected root `config/networks.<target>.json` before starting (`DEPLOY_TARGET` picks
+the row in `scripts/deployment-profile.mjs`); local development uses the generated
+`config/networks.development.json`.
 
 The frontend is the sibling [`frontend`](../frontend/) package. Keep shared public data contracts
 explicit, and update both consumers when an indexed schema changes.

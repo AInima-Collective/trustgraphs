@@ -13,8 +13,8 @@ contract Common is Script {
 
     uint256 internal constant ANVIL_DEFAULT_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
 
-    /// @dev The least epoch floor that could be deliberate on a real chain: roughly a day of blocks.
-    ///      Mainnet's intended value is ~30 days (216000).
+    /// @dev The least epoch floor that could be deliberate on a real chain without an explicit
+    ///      opt-in: roughly a day of blocks.
     uint64 internal constant DELIBERATE_EPOCH_FLOOR = 7200;
 
     // Scripts never supply a deployer fallback. The caller must opt in to the
@@ -43,17 +43,20 @@ contract Common is Script {
     /// @dev The floor is IMMUTABLE and it is what bounds hosted proving cost per instance, so a dev
     ///      default must not reach a real chain. `contracts/deploy/env.ts` hardcodes 1 block for local
     ///      anvil and the stage defaults to `development`, which makes "unset env + real RPC" a
-    ///      one-typo path to a permissionless factory whose floor is one block. A public testnet may
-    ///      opt in to a lower floor for fast-cadence showcase factories, explicitly, per deploy, with
-    ///      `ALLOW_TESTNET_EPOCH_FLOOR=true`. Ethereum mainnet never can.
+    ///      one-typo path to a permissionless factory whose floor is one block. A public chain may
+    ///      opt in to a lower floor for fast-cadence factories, explicitly, per deploy, and the
+    ///      opt-in is spelled per chain so a testnet overlay copied to mainnet carries nothing:
+    ///      `ALLOW_TESTNET_EPOCH_FLOOR=true` on a testnet, `ALLOW_MAINNET_EPOCH_FLOOR=true` on
+    ///      Ethereum mainnet (a recorded decision, 2026-09-10: the operator's cadence and budget
+    ///      policy is the cost control there, not the factory floor).
     function _requireDeliberateEpochFloor(uint64 epochFloor, string memory script) internal view {
         if (block.chainid == 31337 || epochFloor >= DELIBERATE_EPOCH_FLOOR) return;
-        bool testnetOptIn = block.chainid != 1 && _allowsTestnetEpochFloor();
+        bool optIn = block.chainid == 1 ? _allowsMainnetEpochFloor() : _allowsTestnetEpochFloor();
         require(
-            testnetOptIn,
+            optIn,
             string.concat(
                 script,
-                ": epochFloor too low for a non-dev chain (>= ~1 day of blocks, or ALLOW_TESTNET_EPOCH_FLOOR=true on a testnet)"
+                ": epochFloor too low for a non-dev chain (>= ~1 day of blocks, or ALLOW_TESTNET_EPOCH_FLOOR=true on a testnet, ALLOW_MAINNET_EPOCH_FLOOR=true on mainnet)"
             )
         );
     }
@@ -64,8 +67,13 @@ contract Common is Script {
         return vm.envOr("EXPECTED_CHAIN_ID", vm.envOr("CHAIN_ID", uint256(0)));
     }
 
-    /// @dev The opt-in is read from the environment of the deploy run. Virtual for the same reason.
+    /// @dev The opt-ins are read from the environment of the deploy run. Virtual for the same reason.
     function _allowsTestnetEpochFloor() internal view virtual returns (bool) {
         return vm.envOr("ALLOW_TESTNET_EPOCH_FLOOR", false);
+    }
+
+    /// @dev Honoured only when `block.chainid == 1`; a testnet cannot borrow it and vice versa.
+    function _allowsMainnetEpochFloor() internal view virtual returns (bool) {
+        return vm.envOr("ALLOW_MAINNET_EPOCH_FLOOR", false);
     }
 }

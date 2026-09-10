@@ -58,6 +58,20 @@ export const VISIBLE_HYPERCERTS_NETWORKS = HYPERCERTS_NETWORKS.filter(
 // because a round only renders meaningfully with its indexed claims anyway.
 
 export const CHAIN = CONFIG.chain
+// The canonical site origin: `FRONTEND_URL` at generation time (`scripts/generate-config.ts`).
+// The same app serves testnet.trustgraphs.xyz and trustgraphs.xyz, so every place that names the
+// site (metadataBase and OpenGraph, the sitemap and robots, WalletConnect metadata, analytics)
+// reads it from here rather than spelling out a host. Public generation fails closed without it;
+// the fallback only covers a development config generated before the field existed.
+const configuredSiteUrl = (CONFIG as { siteUrl?: string }).siteUrl
+if (!configuredSiteUrl && CHAIN !== 'local') {
+  throw new Error(
+    'config.json has no siteUrl; regenerate the frontend configuration'
+  )
+}
+export const SITE_URL: string = configuredSiteUrl || 'http://127.0.0.1:3000'
+/** The site's hostname: the Plausible domain, and the gate on session recording. */
+export const SITE_HOSTNAME = new URL(SITE_URL).hostname
 export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
 // The chain's public EAS singleton, typed for direct use in wagmi/viem calls.

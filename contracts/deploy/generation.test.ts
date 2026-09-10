@@ -92,8 +92,12 @@ test('replacement rejects incomplete or mismatched guest identities and unsafe n
   duplicate.programs[1] = duplicate.programs[0]!
   assert.throws(() => planGeneration(active, duplicate, commit), /unique valid/)
   assert.equal(
-    generationManifestPath('v0.1.0-rc.1'),
+    generationManifestPath('v0.1.0-rc.1', 'sepolia'),
     'deployments/generations/v0.1.0-rc.1/sepolia.json'
+  )
+  assert.equal(
+    generationManifestPath('v0.1.0-rc.1', 'mainnet'),
+    'deployments/generations/v0.1.0-rc.1/mainnet.json'
   )
   for (const name of [
     '',
@@ -103,7 +107,10 @@ test('replacement rejects incomplete or mismatched guest identities and unsafe n
     'x;echo',
     'a'.repeat(81),
   ]) {
-    assert.throws(() => generationManifestPath(name), /Generation name/)
+    assert.throws(
+      () => generationManifestPath(name, 'sepolia'),
+      /Generation name/
+    )
   }
 })
 
@@ -149,7 +156,10 @@ test('begin preserves the active manifest, archives provenance, and refuses stal
   )
   assert.deepEqual(
     JSON.parse(
-      fs.readFileSync(path.join(root, generationManifestPath('v0.1.0')), 'utf8')
+      fs.readFileSync(
+        path.join(root, generationManifestPath('v0.1.0', 'sepolia')),
+        'utf8'
+      )
     ),
     plan
   )
@@ -257,6 +267,11 @@ test('all replacement steps resolve fresh dependencies and finalize only complet
         `${step.name} reused old ${arg}`
       )
     }
+    // The two role handoffs at the end deploy nothing and write no artifact.
+    if (index >= files.length) {
+      assert.match(step.name, /^Hand off/)
+      continue
+    }
     const [file, field] = files[index]!
     const artifact: Record<string, string> = { [field!]: nextAddress() }
     const vkeyIndex = (
@@ -284,7 +299,7 @@ test('all replacement steps resolve fresh dependencies and finalize only complet
   assert.deepEqual(deployed.instances, [])
   assert.equal(
     env.profile.releaseManifestFile,
-    generationManifestPath('v0.1.0')
+    generationManifestPath('v0.1.0', 'sepolia')
   )
   const missing = structuredClone(deployed)
   missing.contracts.importedTrustgraphsFactory = {

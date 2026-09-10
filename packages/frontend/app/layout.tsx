@@ -10,6 +10,7 @@ import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { Providers } from '@/components/providers'
 import { getCatalog } from '@/lib/catalog.server'
+import { SITE_URL } from '@/lib/config'
 import { SOCIAL_CARD_IMAGE } from '@/lib/metadata'
 
 // Two families ship, and that is the whole type system. PaperMono carries
@@ -44,8 +45,12 @@ const DESCRIPTION =
 // outlived the mark they were drawn from. The social image is explicit because
 // crawlers cache its URL; `pnpm run brand:assets` writes that content-specific
 // public path along with Next's file-convention images.
+//
+// The origin is the deployment's, not a constant: the same app is served at
+// testnet.trustgraphs.xyz and trustgraphs.xyz, and each must resolve its own
+// relative metadata URLs and name itself in `og:url`.
 export const metadata: Metadata = {
-  metadataBase: new URL('https://trustgraphs.xyz'),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'Trustgraphs',
     template: '%s | trustgraphs',
@@ -54,7 +59,7 @@ export const metadata: Metadata = {
   applicationName: 'Trustgraphs',
   openGraph: {
     type: 'website',
-    url: 'https://trustgraphs.xyz',
+    url: SITE_URL,
     siteName: 'Trustgraphs',
     title: 'Trustgraphs',
     description: DESCRIPTION,

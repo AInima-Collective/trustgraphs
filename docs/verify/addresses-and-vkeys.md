@@ -6,9 +6,11 @@ against the chain.
 
 ## Deployment manifests
 
-Chain-specific manifests live under `deployments/`. A usable release manifest records the chain
-ID, contract addresses, deployment blocks, transaction hashes, source revision, program
-verification keys, and relevant external dependencies.
+Chain-specific manifests live under `deployments/`: `sepolia.json` for Ethereum Sepolia and
+`mainnet.json` for Ethereum mainnet. A usable release manifest records the chain ID, contract
+addresses, deployment blocks, transaction hashes, source revision, program verification keys, and
+relevant external dependencies. Every reader binds itself to one chain and rejects the other
+chain's file, so a Sepolia address can never be read as a mainnet one.
 
 A manifest marked as planned, or one with missing project addresses, is not a deployment record.
 RPC URLs, private keys, and service credentials do not belong in these files.

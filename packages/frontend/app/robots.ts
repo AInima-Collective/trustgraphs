@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next'
 
+import { SITE_URL } from '@/lib/config'
+
 /**
  * robots.txt.
  *
@@ -21,6 +23,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/api/'],
     },
-    sitemap: 'https://trustgraphs.xyz/sitemap.xml',
+    sitemap: `${SITE_URL}/sitemap.xml`,
   }
 }

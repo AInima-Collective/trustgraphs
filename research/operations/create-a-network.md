@@ -288,8 +288,9 @@ governance-safety proof. At least three founders is the operating precondition b
 default; a one-founder network is visibly founder-controlled and should not hold shared funds.
 
 `epochLength` is the other visible choice: how often scores are recounted and reproven. Shorter
-epochs mean fresher scores and more proving spend; the factory's `EPOCH_FLOOR` (roughly 30 days of
-blocks on mainnet, one block on a devnet) is the shortest cadence hosted proving commits to.
+epochs mean fresher scores and more proving spend; the factory's `EPOCH_FLOOR` is the shortest
+cadence a creator may pick (one block on a devnet and, by the 2026-09-10 decision, on mainnet too;
+the hosted operator's own cadence and budget policy bounds what it subsidises).
 
 Parameters are not forever: the admin (your Safe, on a governed network) can rotate them later
 through the typed params controller, inside the same validation envelope. See
@@ -592,8 +593,11 @@ reading and **errors** if the file names a different instance.
 This section is for the platform operator standing up a chain, not for a community creating a
 network: a creator only ever sends §1's one transaction.
 
-`EPOCH_FLOOR` is an immutable chosen per chain: roughly 30 days of blocks on mainnet (what hosted
-proving commits to), one block on a devnet so a local proving loop is never waiting on the schedule.
+`EPOCH_FLOOR` is an immutable chosen per chain. The scripts refuse a floor under ~1 day of blocks
+on a real chain unless that chain's own opt-in is set (`ALLOW_TESTNET_EPOCH_FLOOR` on a testnet,
+`ALLOW_MAINNET_EPOCH_FLOOR` on mainnet); one block on a devnet so a local proving loop is never
+waiting on the schedule, and one block on mainnet by the 2026-09-10 decision, with the operator's
+cadence and budget policy as the cost control.
 
 ```bash
 forge script contracts/script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry --sig 'run(string,string)' '' '' …

@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useState } from 'react'
 
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
+import { applicationEnvironmentLabel } from '@/lib/application-chains'
+import { CHAIN } from '@/lib/config'
 import { cn } from '@/lib/utils'
 
 import { BrandMark } from './BrandMark'
@@ -31,6 +33,17 @@ import { ThemeToggle } from './ThemeToggle'
  * rather than a word that fell off the wordmark. Below `sm` the wallet button
  * collapses to an icon, which is what buys the tag its room at 320px: brand
  * cluster about 176px, controls 92px, against a 304px row.
+ *
+ * THE TESTNET TAG IS A SECOND STAMP, ON ONE DEPLOYMENT ONLY. The same app is
+ * served at testnet.trustgraphs.xyz and trustgraphs.xyz, and the alpha tag is
+ * true of both: it is a statement about the software. "testnet" is a statement
+ * about the chain, so it is gated on the build's target and appears only on
+ * the Sepolia site; mainnet gets no chip, because "mainnet" is the default a
+ * visitor assumes. It is the same stamp as the alpha tag, drawn the same way,
+ * and it carries the full environment label as its title. On the testnet site
+ * it costs about 60px of the 320px row, which the wordmark yields by
+ * truncating; the chain a visitor is about to transact on outranks the last
+ * three letters of the name.
  *
  * THE NAV RAISES ITSELF WHILE THE MENU IS OPEN. The scrim is a fixed layer
  * inside the nav and the row is a positioned layer above it; the nav becomes
@@ -77,6 +90,14 @@ export const Nav = () => {
         <span className="tg-label ml-2 shrink-0 border border-border px-1.5 py-1 leading-none">
           alpha
         </span>
+        {CHAIN === 'sepolia' && (
+          <span
+            className="tg-label ml-1.5 shrink-0 border border-border px-1.5 py-1 leading-none"
+            title={applicationEnvironmentLabel(CHAIN)}
+          >
+            testnet
+          </span>
+        )}
 
         {/* `h-11` overrides the button's default `h-9`. Every control in the
          * nav is a touch target on a tablet, and 36px is under the 44px floor

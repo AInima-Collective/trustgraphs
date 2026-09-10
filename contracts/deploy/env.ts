@@ -2,10 +2,15 @@ import fs from 'fs'
 import path from 'path'
 
 import { Command } from 'commander'
-import type { Hex } from 'viem'
+import { type Hex, encodeFunctionData, keccak256, toBytes } from 'viem'
 
 import { CHAIN_PROFILES, resolveDeploymentSelection } from './profiles'
 import { generationManifestPath, planGeneration } from './generation'
+import {
+  DELIBERATE_EPOCH_FLOOR,
+  PUBLIC_CHAIN_PLANS,
+  type PublicChainTarget,
+} from './public-chains'
 import {
   type DeploymentRecord,
   type ReleaseManifest,
@@ -290,9 +295,8 @@ abstract class EnvBase implements IEnv {
         if (stage !== 'production') break
         return new SepoliaEnv(overrides)
       case 'mainnet':
-        throw new Error(
-          'Ethereum mainnet has a typed profile but no authorized deploy plan yet; complete Sepolia first'
-        )
+        if (stage !== 'production') break
+        return new MainnetEnv(overrides)
     }
 
     throw new Error(`Invalid deployment selection: ${stage}/${target}`)
@@ -1072,29 +1076,58 @@ export class DevEnv extends EnvBase {
  * archive selection cannot be invented by a generic chain bootstrap. Hypercerts remains outside
  * the hosted operator's explicit scope fence.
  */
-export class SepoliaEnv extends EnvBase {
-  readonly releaseBase: ReleaseManifest
+/**
+ * One AccessControl grant the registry admin has to make after the broadcast, collected so the
+ * whole set can be handed to a Safe as one Transaction Builder batch rather than typed in.
+ */
+type AdminGrant = {
+  label: string
+  contract: string
+  role: string
+  account: string
+}
 
-  constructor({
-    rpcUrl,
-    ipfsGateway = 'https://gateway.pinata.cloud/ipfs/',
-    newGeneration,
-  }: EnvOverrides) {
+/**
+ * The release plan for a public chain: the same ordered steps on every chain, parameterised by
+ * `CHAIN_PROFILES[target]` (identity) and `PUBLIC_CHAIN_PLANS[target]` (which optional families
+ * ship and which policy defaults hold). Nothing in here names a chain; adding one is a row in
+ * each table plus a seed `deployments/<target>.json`.
+ */
+export class PublicChainEnv extends EnvBase {
+  readonly releaseBase: ReleaseManifest
+  readonly target: PublicChainTarget
+
+  constructor(
+    target: PublicChainTarget,
+    {
+      rpcUrl,
+      ipfsGateway = 'https://gateway.pinata.cloud/ipfs/',
+      newGeneration,
+    }: EnvOverrides
+  ) {
+    const profile = CHAIN_PROFILES[target]
+    const plan = PUBLIC_CHAIN_PLANS[target]
+    const activeManifestFile = profile.releaseManifestFile
+    if (!activeManifestFile) {
+      throw new Error(`${profile.name} has no release manifest file`)
+    }
     if (!rpcUrl) {
       throw new Error(
-        'Sepolia RPC URL is required (--rpc-url, RPC_URL, or PONDER_RPC_URL_11155111)'
+        `${profile.name} RPC URL is required (--rpc-url, RPC_URL, or ${profile.rpcEnv})`
       )
     }
     let parsedRpc: URL
     try {
       parsedRpc = new URL(rpcUrl)
     } catch {
-      throw new Error('Sepolia RPC URL must be an absolute http(s) URL')
+      throw new Error(`${profile.name} RPC URL must be an absolute http(s) URL`)
     }
     if (!['http:', 'https:'].includes(parsedRpc.protocol)) {
-      throw new Error('Sepolia RPC URL must use http or https')
+      throw new Error(`${profile.name} RPC URL must use http or https`)
     }
-    const activeManifest = loadReleaseManifest('deployments/sepolia.json')
+    const activeManifest = loadReleaseManifest(activeManifestFile, {
+      expectedChain: target,
+    })
     if (newGeneration) requireReleaseVkeys()
     const manifest = newGeneration
       ? planGeneration(
@@ -1131,10 +1164,19 @@ export class SepoliaEnv extends EnvBase {
     const programDelay = (name: string): string => {
       const value = process.env[name] || '86400'
       if (!/^[1-9][0-9]*$/.test(value) || BigInt(value) < 86_400n) {
-        throw new Error(`${name} must be at least 86400 seconds on Sepolia`)
+        throw new Error(
+          `${name} must be at least 86400 seconds on ${profile.name}`
+        )
       }
       return value
     }
+    const adminAddress = () =>
+      requiredAddress(
+        'INSTANCE_REGISTRY_ADMIN',
+        process.env.INSTANCE_REGISTRY_ADMIN
+      )
+    // Grants only the registry admin can make, collected as the steps print them.
+    const adminGrants: AdminGrant[] = []
     const artifactAddresses: Partial<
       Record<keyof ReleaseManifest['contracts'], [string, string]>
     > = {
@@ -1150,6 +1192,7 @@ export class SepoliaEnv extends EnvBase {
       weightedTrustgraphsFactory: ['weighted_factory', 'weighted_factory'],
       compositionVerifier: ['zk_verifier_composition', 'zk_verifier'],
       trustComposeFactory: ['trust_compose_factory', 'trust_compose_factory'],
+      subnetworkRegistry: ['governed_factory', 'subnetwork_registry'],
     }
     const existingAddress = (
       key: keyof ReleaseManifest['contracts']
@@ -1176,6 +1219,14 @@ export class SepoliaEnv extends EnvBase {
         ) ||
         '<InstanceRegistry>'
       const admin = process.env.INSTANCE_REGISTRY_ADMIN || '<registry admin>'
+      if (factory.startsWith('0x') && registry.startsWith('0x')) {
+        adminGrants.push({
+          label: `${label}: REGISTRAR_ROLE on InstanceRegistry`,
+          contract: registry,
+          role: 'REGISTRAR_ROLE',
+          account: factory,
+        })
+      }
       console.log(
         [
           '',
@@ -1203,15 +1254,17 @@ export class SepoliaEnv extends EnvBase {
         'USDC',
         process.env.USDC || manifest.external.usdc
       )
-      // Sepolia's Chainlink ETH/USD feed is slower and less regular than mainnet's, so the
-      // off-devnet default in DeployProvingVault (5400s = a mainnet hourly heartbeat plus 50%
-      // grace) is too tight here. Measured over 15.5h of round history on 2026-08-23: mean gap
-      // 2929s, worst gap 3696s, and the live answer was already 3348s old when sampled. 5400
-      // would leave under half an hour of headroom, so one skipped heartbeat silently drops the
-      // proving fee to zero. 7200 is roughly twice the observed worst gap. The failure is benign
-      // either way (a stale answer pays no fee and still lands the root), but on the tighter
-      // window a rehearsal would read zero fees often enough to look like a bug.
-      const feedMaxStaleness = process.env.FEED_MAX_STALENESS || '7200'
+      // Per chain, from the plan table. Sepolia's Chainlink ETH/USD feed is slower and less
+      // regular than mainnet's, so the off-devnet default in DeployProvingVault (5400s = a mainnet
+      // hourly heartbeat plus 50% grace) is too tight there. Measured over 15.5h of round history
+      // on 2026-08-23: mean gap 2929s, worst gap 3696s, and the live answer was already 3348s old
+      // when sampled. 5400 would leave under half an hour of headroom, so one skipped heartbeat
+      // silently drops the proving fee to zero. 7200 is roughly twice the observed worst gap. The
+      // failure is benign either way (a stale answer pays no fee and still lands the root), but on
+      // the tighter window a rehearsal would read zero fees often enough to look like a bug.
+      // Mainnet keeps the script default.
+      const feedMaxStaleness =
+        process.env.FEED_MAX_STALENESS || plan.feedMaxStaleness
       return {
         ETH_USD_FEED: feed,
         USDC: usdc,
@@ -1222,25 +1275,25 @@ export class SepoliaEnv extends EnvBase {
     super({
       stage: 'production',
       profile: {
-        ...CHAIN_PROFILES.sepolia,
+        ...profile,
         releaseManifestFile: newGeneration
-          ? generationManifestPath(newGeneration)
-          : CHAIN_PROFILES.sepolia.releaseManifestFile,
+          ? generationManifestPath(newGeneration, target)
+          : activeManifestFile,
       },
       rpcUrl,
       registry: process.env.SERVICE_REGISTRY_URL || '',
       serviceName: 'trust-graph',
-      triggerChain: 'evm:11155111',
-      submitChain: 'evm:11155111',
+      triggerChain: `evm:${profile.chainId}`,
+      submitChain: `evm:${profile.chainId}`,
       ipfs: {
         pinApi: 'https://uploads.pinata.cloud/v3/files',
         gateway: ipfsGateway,
       },
-      networksConfigFile: 'config/networks.sepolia.json',
+      networksConfigFile: `config/networks.${target}.json`,
       validateDeployment: () => {
         if (newGeneration && process.env.SKIP_PROVING_VAULT === 'true') {
           throw new Error(
-            'A new hosted Sepolia generation requires its own ProvingVault'
+            `A new hosted ${profile.name} generation requires its own ProvingVault`
           )
         }
         requireReleaseCommit()
@@ -1252,18 +1305,27 @@ export class SepoliaEnv extends EnvBase {
         requireProgramVkey('SP1_WEIGHTED_PROGRAM_VKEY', 'trust-graph-weighted')
         requireProgramVkey('SP1_COMPOSITION_PROGRAM_VKEY', 'trust-compose')
         requireProgramVkey('CONTRIBUTIONS_PROGRAM_VKEY', 'contributions')
-        requiredAddress(
-          'INSTANCE_REGISTRY_ADMIN',
-          process.env.INSTANCE_REGISTRY_ADMIN
-        )
-        requireProdUint64('FACTORY_EPOCH_FLOOR')
+        adminAddress()
+        // The factory scripts refuse a floor under ~1 day of blocks on a real chain unless the
+        // chain's own opt-in is set. Attempt 2 of v0.1.0 (2026-09-09) broadcast four contracts
+        // before step 5 hit that guard; this catches it at zero transactions, and in a dry run.
+        const floor = BigInt(requireProdUint64('FACTORY_EPOCH_FLOOR'))
+        if (
+          floor < DELIBERATE_EPOCH_FLOOR &&
+          process.env[plan.epochFloorOptIn] !== 'true'
+        ) {
+          throw new Error(
+            `FACTORY_EPOCH_FLOOR=${floor} is below ${DELIBERATE_EPOCH_FLOOR} blocks; the factory ` +
+              `scripts refuse it on ${profile.name} unless ${plan.epochFloorOptIn}=true is set deliberately`
+          )
+        }
         programDelay('WEIGHTED_PRIOR_ACTIVATION_DELAY')
         programDelay('COMPOSE_POLICY_ACTIVATION_DELAY')
         if (process.env.SKIP_PROVING_VAULT !== 'true') vaultEnvironment()
       },
       deployContracts: [
         {
-          name: 'Schema Registrar (canonical Sepolia EAS)',
+          name: 'Schema Registrar (canonical EAS)',
           script: 'contracts/script/DeployEAS.s.sol:DeployEAS',
           sig: 'run(string,string)',
           args: () => [manifest.external.eas, manifest.external.schemaRegistry],
@@ -1306,57 +1368,9 @@ export class SepoliaEnv extends EnvBase {
             skipExisting('provingVault')(ctx) ||
             process.env.SKIP_PROVING_VAULT === 'true',
           // `DeployProvingVault` hardcodes the DEPLOYER as both DEFAULT_ADMIN_ROLE and
-          // FEE_SETTER_ROLE, and takes no admin argument to point elsewhere. On a local anvil
-          // that is invisible. Here it would leave a key generated for one afternoon holding the
-          // vault's fee authority for the life of the deployment, which is the opposite of the
-          // custody shape this run exists to rehearse. Narrow — the whole privileged surface is
-          // setFeePerRootUsd and setGasParams, and nothing there moves funds — but wrong, and
-          // wrong in the direction that gets copied to mainnet if nobody says it out loud.
-          //
-          // Nothing in here may throw: see the factory's postRun for why.
-          postRun: () => {
-            const vault =
-              readJsonIfFileExists<Record<string, string>>(
-                '.docker/proving_vault_deploy.json'
-              )?.proving_vault ?? '<ProvingVault>'
-            const admin = process.env.INSTANCE_REGISTRY_ADMIN ?? '<the admin>'
-            console.log(
-              [
-                '',
-                'The vault is under the DEPLOYER, not the admin. Hand it over before you stop.',
-                '',
-                `  cast send ${vault} 'grantRole(bytes32,address)' \\`,
-                `    0x${'0'.repeat(64)} ${admin} \\`,
-                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
-                `  cast send ${vault} 'grantRole(bytes32,address)' \\`,
-                `    $(cast keccak 'FEE_SETTER_ROLE') ${admin} \\`,
-                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
-                '',
-                'The zero bytes32 above is DEFAULT_ADMIN_ROLE and is not a placeholder: OpenZeppelin',
-                'defines it as 0x00, not as the keccak of its name, which is the one role hash you',
-                'cannot derive the way every other one here is derived.',
-                '',
-                'Then, last, the deployer drops its own. Renounce takes the account as an argument',
-                'and it must be the caller, which is the deployer:',
-                '',
-                `  cast send ${vault} 'renounceRole(bytes32,address)' \\`,
-                `    0x${'0'.repeat(64)} <deployer address> \\`,
-                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
-                `  cast send ${vault} 'renounceRole(bytes32,address)' \\`,
-                `    $(cast keccak 'FEE_SETTER_ROLE') <deployer address> \\`,
-                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
-                '',
-                'Confirm before moving on. Grant first, renounce second: reversed, the vault has',
-                'no admin at all and the roles can never be granted again.',
-                '',
-                `  cast call ${vault} 'hasRole(bytes32,address)(bool)' \\`,
-                `    $(cast keccak 'FEE_SETTER_ROLE') ${admin} --rpc-url "$RPC_URL"   # -> true`,
-                `  cast call ${vault} 'hasRole(bytes32,address)(bool)' \\`,
-                '    $(cast keccak \'FEE_SETTER_ROLE\') <deployer> --rpc-url "$RPC_URL"  # -> false',
-                '',
-              ].join('\n')
-            )
-          },
+          // FEE_SETTER_ROLE because it prices the fee schedule in the same run. The plan's
+          // penultimate step, `Hand off Proving Vault`, moves both roles to the admin and proves
+          // the deployer holds neither; nothing is left for a human to remember.
         },
         {
           name: 'Trustgraphs Factory',
@@ -1409,6 +1423,14 @@ export class SepoliaEnv extends EnvBase {
                 '.docker/factory_deploy.json'
               )?.factory ?? '<TrustgraphsFactory>'
             const admin = process.env.INSTANCE_REGISTRY_ADMIN ?? '<the admin>'
+            if (factory.startsWith('0x') && registry.startsWith('0x')) {
+              adminGrants.push({
+                label: 'TrustgraphsFactory: REGISTRAR_ROLE on InstanceRegistry',
+                contract: registry,
+                role: 'REGISTRAR_ROLE',
+                account: factory,
+              })
+            }
             console.log(
               [
                 '',
@@ -1453,8 +1475,9 @@ export class SepoliaEnv extends EnvBase {
               : existingAddress('provingVault'),
           ],
           skip: (ctx) =>
-            continuing(ctx) &&
-            manifest.contracts.importedTrustgraphsFactory?.address != null,
+            !plan.importedEasFamily ||
+            (continuing(ctx) &&
+              manifest.contracts.importedTrustgraphsFactory?.address != null),
           postRun: registrarGrant(
             'ImportedTrustgraphsFactory',
             '.docker/imported_factory_deploy.json',
@@ -1505,9 +1528,10 @@ export class SepoliaEnv extends EnvBase {
             existingAddress('governedTrustgraphsFactory'),
           ],
           skip: (ctx) =>
-            continuing(ctx) &&
-            manifest.contracts.governedImportedTrustgraphsFactory?.address !=
-              null,
+            !plan.importedEasFamily ||
+            (continuing(ctx) &&
+              manifest.contracts.governedImportedTrustgraphsFactory?.address !=
+                null),
         },
         {
           name: 'Weighted ZK Verifier',
@@ -1638,9 +1662,70 @@ export class SepoliaEnv extends EnvBase {
             'contributions_factory'
           ),
         },
+        // The two contracts the deployer administers during the run and must not keep. The vault
+        // priced its fee schedule with the deployer's FEE_SETTER_ROLE; the subnetwork registry
+        // took REGISTRAR_ROLE grants for the governed weighted and compose wrappers with the
+        // deployer's DEFAULT_ADMIN_ROLE. Both hand over in one broadcast each, with the script
+        // asserting the end state from chain rather than trusting the send.
+        {
+          name: 'Hand off Proving Vault',
+          script:
+            'contracts/script/HandoffAccessControl.s.sol:HandoffAccessControl',
+          sig: 'run(string,string,string)',
+          args: () => [
+            existingAddress('provingVault'),
+            adminAddress(),
+            'DEFAULT_ADMIN_ROLE,FEE_SETTER_ROLE',
+          ],
+          skip: (ctx) =>
+            skipExisting('provingVault')(ctx) ||
+            process.env.SKIP_PROVING_VAULT === 'true',
+        },
+        {
+          name: 'Hand off Subnetwork Registry',
+          script:
+            'contracts/script/HandoffAccessControl.s.sol:HandoffAccessControl',
+          sig: 'run(string,string,string)',
+          args: () => [
+            existingAddress('subnetworkRegistry'),
+            adminAddress(),
+            'DEFAULT_ADMIN_ROLE',
+          ],
+          skip: (ctx) =>
+            continuing(ctx) &&
+            manifest.contracts.subnetworkRegistry?.address != null,
+        },
       ],
+      // The grants only the registry admin can make, as one Safe Transaction Builder batch. Not a
+      // secret and not a manifest: it is scratch output next to the other receipts. Never throws;
+      // the manifest write that follows must not be lost to a formatting error here.
+      postDeployContracts: () => {
+        if (adminGrants.length === 0) return
+        try {
+          const file = `.docker/admin-grants.${target}.json`
+          fs.writeFileSync(
+            file,
+            `${JSON.stringify(safeTransactionBatch(profile.chainId, adminGrants), null, 2)}\n`
+          )
+          console.log(
+            [
+              '',
+              `${adminGrants.length} grant(s) remain for the registry admin. They are written as a Safe`,
+              `Transaction Builder batch to ${file}; import it in the Safe app, or send them one by one:`,
+              ...adminGrants.map(
+                (grant) =>
+                  `  ${grant.label}: grantRole(${grant.role}, ${grant.account}) on ${grant.contract}`
+              ),
+              '',
+            ].join('\n')
+          )
+        } catch (error) {
+          console.log(`Could not write the admin grant batch: ${String(error)}`)
+        }
+      },
     })
     this.releaseBase = manifest
+    this.target = target
   }
 
   generateReleaseManifest(ctx?: ProgramContext): object {
@@ -1919,6 +2004,13 @@ export class SepoliaEnv extends EnvBase {
         base.contracts.contributionsFactory
       ),
     }
+    if (!PUBLIC_CHAIN_PLANS[this.target].importedEasFamily) {
+      // Not part of this chain's generation: absent, not null, so a reader cannot mistake "never
+      // deployed here" for "deployed and half recorded".
+      delete (contracts as Partial<typeof contracts>).importedTrustgraphsFactory
+      delete (contracts as Partial<typeof contracts>)
+        .governedImportedTrustgraphsFactory
+    }
     const blocks = Object.values(contracts)
       .map((record) => record.block)
       .filter((block): block is number => block !== null)
@@ -1972,7 +2064,10 @@ export class SepoliaEnv extends EnvBase {
         },
       },
     }
-    return validateReleaseManifest(manifest, { requireComplete: true })
+    return validateReleaseManifest(manifest, {
+      requireComplete: true,
+      expectedChain: this.target,
+    })
   }
 
   async uploadToIpfs(file: string, apiKey?: string): Promise<string> {
@@ -2005,6 +2100,72 @@ export class SepoliaEnv extends EnvBase {
   }
 }
 
+export class SepoliaEnv extends PublicChainEnv {
+  constructor(overrides: EnvOverrides = {}) {
+    super('sepolia', overrides)
+  }
+}
+
+export class MainnetEnv extends PublicChainEnv {
+  constructor(overrides: EnvOverrides = {}) {
+    super('mainnet', overrides)
+  }
+}
+
+const GRANT_ROLE_ABI = [
+  {
+    type: 'function',
+    name: 'grantRole',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'role', type: 'bytes32', internalType: 'bytes32' },
+      { name: 'account', type: 'address', internalType: 'address' },
+    ],
+    outputs: [],
+  },
+] as const
+
+/** OpenZeppelin's DEFAULT_ADMIN_ROLE is the zero hash, not the keccak of its name. */
+const roleHash = (role: string): Hex =>
+  role === 'DEFAULT_ADMIN_ROLE'
+    ? `0x${'0'.repeat(64)}`
+    : keccak256(toBytes(role))
+
+/**
+ * The Safe Transaction Builder's batch format, so a multisig admin imports the grants instead
+ * of retyping them. `data` is included as well for anyone sending them another way.
+ */
+export const safeTransactionBatch = (chainId: number, grants: AdminGrant[]) => ({
+  version: '1.0',
+  chainId: String(chainId),
+  createdAt: Date.now(),
+  meta: {
+    name: 'Trustgraphs registry admin grants',
+    description: grants.map((grant) => grant.label).join('; '),
+    txBuilderVersion: '1.17.1',
+    createdFromSafeAddress: '',
+    createdFromOwnerAddress: '',
+  },
+  transactions: grants.map((grant) => ({
+    to: grant.contract,
+    value: '0',
+    data: encodeFunctionData({
+      abi: GRANT_ROLE_ABI,
+      functionName: 'grantRole',
+      args: [roleHash(grant.role), grant.account as Hex],
+    }),
+    contractMethod: {
+      inputs: GRANT_ROLE_ABI[0].inputs.map((input) => ({ ...input })),
+      name: 'grantRole',
+      payable: false,
+    },
+    contractInputsValues: {
+      role: roleHash(grant.role),
+      account: grant.account,
+    },
+  })),
+})
+
 /**
  * Default option values.
  */
@@ -2027,12 +2188,12 @@ export const initProgram = (program: Command): ProgramContext => {
     target: options.chain || process.env.DEPLOY_TARGET,
   })
   if (options.newGeneration !== undefined) {
-    if (selection.target !== 'sepolia' || options.continueExisting) {
+    if (selection.target === 'local' || options.continueExisting) {
       throw new Error(
-        '--new-generation requires Sepolia and cannot be combined with --continue-existing'
+        '--new-generation requires a public chain target and cannot be combined with --continue-existing'
       )
     }
-    generationManifestPath(options.newGeneration)
+    generationManifestPath(options.newGeneration, selection.target)
   }
   options.env = selection.envName
   options.stage = selection.stage

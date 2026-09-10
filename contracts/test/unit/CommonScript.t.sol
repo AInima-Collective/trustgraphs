@@ -22,6 +22,7 @@ contract EnvHarness is Common {
 contract CommonHarness is Common {
     uint256 private _expectedChain;
     bool private _allowTestnetEpochFloor;
+    bool private _allowMainnetEpochFloor;
 
     function setContext(uint256 privateKey, uint256 expectedChainId) external {
         _privateKey = privateKey;
@@ -30,6 +31,10 @@ contract CommonHarness is Common {
 
     function setAllowTestnetEpochFloor(bool allow) external {
         _allowTestnetEpochFloor = allow;
+    }
+
+    function setAllowMainnetEpochFloor(bool allow) external {
+        _allowMainnetEpochFloor = allow;
     }
 
     function startAndStop() external {
@@ -48,13 +53,17 @@ contract CommonHarness is Common {
     function _allowsTestnetEpochFloor() internal view override returns (bool) {
         return _allowTestnetEpochFloor;
     }
+
+    function _allowsMainnetEpochFloor() internal view override returns (bool) {
+        return _allowMainnetEpochFloor;
+    }
 }
 
 contract CommonScriptTest is Test {
     uint256 private constant SAFE_TEST_KEY = 0xA11CE;
     uint256 private constant ANVIL_DEFAULT_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
     bytes private constant LOW_FLOOR_REVERT = bytes(
-        "Harness: epochFloor too low for a non-dev chain (>= ~1 day of blocks, or ALLOW_TESTNET_EPOCH_FLOOR=true on a testnet)"
+        "Harness: epochFloor too low for a non-dev chain (>= ~1 day of blocks, or ALLOW_TESTNET_EPOCH_FLOOR=true on a testnet, ALLOW_MAINNET_EPOCH_FLOOR=true on mainnet)"
     );
 
     function testBroadcastRequiresExplicitFundedKey() public {
@@ -132,13 +141,28 @@ contract CommonScriptTest is Test {
         harness.requireDeliberateEpochFloor(1);
     }
 
-    function testMainnetNeverAcceptsLowEpochFloor() public {
+    function testMainnetIgnoresTheTestnetOptIn() public {
         vm.chainId(1);
         CommonHarness harness = new CommonHarness();
         harness.setAllowTestnetEpochFloor(true);
         harness.requireDeliberateEpochFloor(7200);
         vm.expectRevert(LOW_FLOOR_REVERT);
         harness.requireDeliberateEpochFloor(7199);
+    }
+
+    function testMainnetCanOptIntoLowEpochFloorExplicitly() public {
+        vm.chainId(1);
+        CommonHarness harness = new CommonHarness();
+        harness.setAllowMainnetEpochFloor(true);
+        harness.requireDeliberateEpochFloor(1);
+    }
+
+    function testTestnetIgnoresTheMainnetOptIn() public {
+        vm.chainId(11155111);
+        CommonHarness harness = new CommonHarness();
+        harness.setAllowMainnetEpochFloor(true);
+        vm.expectRevert(LOW_FLOOR_REVERT);
+        harness.requireDeliberateEpochFloor(1);
     }
 
     /// The one test that reads the opt-in from the real environment, sequentially, as above.
@@ -148,6 +172,13 @@ contract CommonScriptTest is Test {
         vm.setEnv("ALLOW_TESTNET_EPOCH_FLOOR", "true");
         harness.requireDeliberateEpochFloor(1);
         vm.setEnv("ALLOW_TESTNET_EPOCH_FLOOR", "false");
+        vm.expectRevert(LOW_FLOOR_REVERT);
+        harness.requireDeliberateEpochFloor(1);
+
+        vm.chainId(1);
+        vm.setEnv("ALLOW_MAINNET_EPOCH_FLOOR", "true");
+        harness.requireDeliberateEpochFloor(1);
+        vm.setEnv("ALLOW_MAINNET_EPOCH_FLOOR", "false");
         vm.expectRevert(LOW_FLOOR_REVERT);
         harness.requireDeliberateEpochFloor(1);
     }

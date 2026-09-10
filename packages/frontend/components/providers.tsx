@@ -8,6 +8,7 @@ import { WagmiProvider } from 'wagmi'
 
 import { CatalogProvider } from '@/contexts/CatalogContext'
 import { type Catalog } from '@/lib/catalog'
+import { SITE_HOSTNAME } from '@/lib/config'
 import { ponderClient } from '@/lib/ponder'
 import { makeQueryClient } from '@/lib/query'
 import { makeWagmiConfig } from '@/lib/wagmi'
@@ -26,12 +27,14 @@ import { WalletConnectionProvider } from './WalletConnectionProvider'
  * all, on a page with no account, no wallet and nothing to record. An effect
  * runs after paint, in the browser only, and can be skipped where it makes no
  * sense: a preview deploy is not a session worth recording, and a developer's
- * localhost certainly is not.
+ * localhost certainly is not. The gate is the deployment's own hostname
+ * (`FRONTEND_URL`), so a `*.vercel.app` preview of either site stays out and
+ * the testnet and mainnet sites each record under their own name.
  */
 function useClarity() {
   React.useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return
-    if (window.location.hostname !== 'trustgraphs.xyz') return
+    if (window.location.hostname !== SITE_HOSTNAME) return
     let cancelled = false
     import('@microsoft/clarity').then((mod) => {
       if (!cancelled) mod.default.init('tjxevwhvhb')
@@ -69,7 +72,7 @@ export function Providers({
   const [wagmiConfig] = React.useState(makeWagmiConfig)
 
   return (
-    <PlausibleProvider domain="trustgraphs.xyz" taggedEvents trackOutboundLinks>
+    <PlausibleProvider domain={SITE_HOSTNAME} taggedEvents trackOutboundLinks>
       {/* Dark is the default, not a preference we infer: the trustgraphs ramp is
        * designed against the near-black canvas and the graph is tuned for it.
        * enableSystem would hand first-time visitors the light theme roughly

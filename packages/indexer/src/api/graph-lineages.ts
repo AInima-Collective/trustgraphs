@@ -142,8 +142,8 @@ const loadIndexState = async () => {
   }
 }
 
+/** Every public chain reads `PONDER_RPC_URL_<chainId>`; only the local Anvil has fallbacks. */
 const rpcUrlFor = (chainId: string) => {
-  if (chainId === '11155111') return process.env.PONDER_RPC_URL_11155111
   if (chainId === '31337') {
     return (
       process.env.PONDER_RPC_URL_31337 ??
@@ -152,7 +152,8 @@ const rpcUrlFor = (chainId: string) => {
       'http://127.0.0.1:8545'
     )
   }
-  return undefined
+  if (!/^[1-9]\d*$/.test(chainId)) return undefined
+  return process.env[`PONDER_RPC_URL_${chainId}`]
 }
 const clients = new Map<string, ReturnType<typeof createPublicClient>>()
 const clientFor = (chainId: string) => {

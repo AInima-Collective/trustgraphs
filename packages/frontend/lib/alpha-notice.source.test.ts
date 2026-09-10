@@ -26,6 +26,25 @@ test('the nav carries an alpha tag beside the home link, not inside it', () => {
   assert.match(nav, /<span className="tg-label[^"]*\bshrink-0\b[^"]*">\s*alpha/)
 })
 
+test('the testnet tag follows the alpha tag and only on the Sepolia target', () => {
+  // The alpha tag is unconditional: it is true of every deployment.
+  assert.match(
+    nav,
+    /<\/Link>\s*<span className="tg-label[^"]*">\s*alpha\s*<\/span>/
+  )
+  // The testnet tag is the next sibling and is gated on the build target,
+  // not on anything the browser can see.
+  assert.match(nav, /import \{ CHAIN \} from '@\/lib\/config'/)
+  assert.match(
+    nav,
+    /alpha\s*<\/span>\s*\{CHAIN === 'sepolia' && \(\s*<span\s+className="tg-label[^"]*\bshrink-0\b[^"]*"\s+title=\{applicationEnvironmentLabel\(CHAIN\)\}\s*>\s*testnet\s*<\/span>\s*\)\}/
+  )
+  // Sepolia is the only target that gets a chip; mainnet is the default a
+  // visitor assumes and local is never public.
+  assert.equal((nav.match(/CHAIN === '/g) ?? []).length, 1)
+  assert.doesNotMatch(nav, /\bmainnet\s*<\/span>/)
+})
+
 test('the caveat says what the software is and what not to do with it', () => {
   assert.match(notice, /role="note"/)
   assert.match(notice, /aria-label="Alpha software"/)

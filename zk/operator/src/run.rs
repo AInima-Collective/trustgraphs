@@ -2047,6 +2047,43 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         assert!(error.to_string().contains("ELF sha256"), "{error:#}");
     }
 
+    #[test]
+    fn every_embedded_guest_is_pinned_by_the_release_manifest() {
+        // The manifest reader and this binary's guest table must name the same programs, or a
+        // guest could ship unverified against the release it claims to implement.
+        assert_eq!(supported(), BTreeSet::from(crate::config::RELEASE_MANIFEST_PROGRAMS));
+
+        // A manifest that pins every program is checked program by program: drift in any one of
+        // them, not only trust-graph or signer, refuses startup.
+        let expected: BTreeMap<_, _> = supported()
+            .into_iter()
+            .enumerate()
+            .map(|(i, program)| {
+                let byte = 0x10 + i as u8;
+                let identity = ReleaseProgramIdentity {
+                    vkey: B256::from([byte; 32]),
+                    elf_sha256: format!("{byte:02x}").repeat(32),
+                };
+                (program, identity)
+            })
+            .collect();
+        let embedded: BTreeMap<_, _> = expected
+            .iter()
+            .map(|(program, identity)| (*program, (identity.vkey, identity.elf_sha256.clone())))
+            .collect();
+        verify_release_guest_identities(&expected, &embedded).unwrap();
+
+        let mut drifted = embedded.clone();
+        drifted.get_mut(&Program::Weighted).unwrap().0 = B256::from([0xee; 32]);
+        let error = verify_release_guest_identities(&expected, &drifted).unwrap_err();
+        assert!(error.to_string().contains("trust-graph-weighted guest vkey"), "{error:#}");
+
+        let mut missing = embedded;
+        missing.remove(&Program::NostrWorkspace);
+        let error = verify_release_guest_identities(&expected, &missing).unwrap_err();
+        assert!(error.to_string().contains("does not embed"), "{error:#}");
+    }
+
     /// M-6 regression: an underpaying vault is REJECTED, not accepted. The pre-fix `.min(1)`
     /// turned a $500 quote into a `minPayoutUsd` of 1.
     #[test]

@@ -35,6 +35,7 @@ import {
   weightedPriorParamsControllerAbi,
   weightedTrustgraphsFactoryAbi,
 } from './abis/weightedPrior'
+import { resolveDeploymentProfile } from './scripts/deployment-profile.mjs'
 import {
   loadReleaseManifest,
   releaseManifestToDeploymentSummary,
@@ -119,43 +120,33 @@ loadTargetEnvironment({
   higherPriorityFiles: [path.join(__dirname, '.env.local')],
 })
 
-const deploymentStage =
-  process.env.DEPLOY_STAGE?.trim().toLowerCase() ?? 'development'
-const deploymentTarget =
-  process.env.DEPLOY_TARGET?.trim().toLowerCase() ?? 'local'
-if (!['development', 'production'].includes(deploymentStage)) {
-  throw new Error('DEPLOY_STAGE must be development or production')
-}
-if (!['local', 'sepolia'].includes(deploymentTarget)) {
-  throw new Error('DEPLOY_TARGET must be local or sepolia')
-}
-if ((deploymentStage === 'development') !== (deploymentTarget === 'local')) {
-  throw new Error(
-    `Invalid deployment profile ${deploymentStage}/${deploymentTarget}`
-  )
-}
-
-export const IS_PRODUCTION = deploymentStage === 'production'
-const IS_SEPOLIA = deploymentTarget === 'sepolia'
-const IS_LOCAL = deploymentTarget === 'local'
-const CORE_CHAIN = IS_SEPOLIA ? 'sepolia' : 'local'
-const releaseManifest = IS_SEPOLIA
-  ? loadReleaseManifest(
-      path.join(__dirname, '../../deployments/sepolia.json'),
-      {
-        requireComplete: true,
-      }
-    )
+/**
+ * The target is the only switch. `scripts/deployment-profile.mjs` owns the chain table (local,
+ * sepolia, mainnet) and validates the stage/target pairing plus the release manifest; everything
+ * below derives from the selected row, so a further chain is one more row there plus its
+ * `deployments/<target>.json` and `config/networks.<target>.json`, never an edit here.
+ */
+const deploymentProfile = resolveDeploymentProfile(
+  process.env,
+  path.join(__dirname, '../..')
+)
+export const IS_PRODUCTION = deploymentProfile.stage === 'production'
+const IS_PUBLIC = deploymentProfile.production
+const IS_LOCAL = !IS_PUBLIC
+const TARGET = deploymentProfile.target
+/** The Ponder chain name. The single configured chain is keyed by the target name. */
+const CORE_CHAIN = TARGET
+const CHAIN_ID = deploymentProfile.chainId
+const releaseManifest = deploymentProfile.production
+  ? loadReleaseManifest(deploymentProfile.deploymentFile, {
+      requireComplete: true,
+      expectedChain: deploymentProfile.target,
+    })
   : undefined
 const deploymentSummary = (
   releaseManifest
     ? releaseManifestToDeploymentSummary(releaseManifest)
-    : JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, '../../.docker/deployment_summary.json'),
-          'utf8'
-        )
-      )
+    : JSON.parse(fs.readFileSync(deploymentProfile.deploymentFile, 'utf8'))
 ) as DeploymentSummary
 
 const requiredEnv = (name: string): string => {
@@ -232,17 +223,29 @@ const LOCAL_WS_URL =
 // indexer starts (gov/safe) use 'latest' and need no start block.
 const DEV_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK', 1)
 
-const SEPOLIA_START_BLOCK = blockNumberEnv(
-  'PONDER_START_BLOCK_11155111',
-  releaseManifest?.firstDeploymentBlock ?? 0
-)
-const CORE_START_BLOCK = IS_SEPOLIA ? SEPOLIA_START_BLOCK : DEV_START_BLOCK
-// Legacy schemas predate Trustgraphs. Starting at the core deployment block would make the pending
-// set look complete while silently omitting their history, so EAS owns an explicit genesis-capable
-// cursor. Fork/local operators can raise the local start with the ordinary PONDER_START_BLOCK.
-const EAS_START_BLOCK = IS_SEPOLIA
-  ? blockNumberEnv('PONDER_EAS_START_BLOCK_11155111', 0)
+// Public targets start every root source at the generation's first deployment block unless the
+// operator pins PONDER_START_BLOCK_<chainId> explicitly.
+const CORE_START_BLOCK = IS_PUBLIC
+  ? blockNumberEnv(
+      deploymentProfile.startBlockEnv,
+      deploymentProfile.defaultStartBlock
+    )
   : DEV_START_BLOCK
+// The canonical EAS contract and Schema Registry predate Trustgraphs, so their sources own a
+// separate cursor, PONDER_EAS_START_BLOCK_<chainId>. It DEFAULTS to the first deployment block:
+// a crawl from genesis costs one eth_getLogs call per 10-block window per source (~11.7M blocks on
+// Sepolia, which exhausted the metered primary's monthly quota on 2026-09-10; ~23M blocks on
+// mainnet). Starting at the deployment block makes the "start from existing attestations" preview
+// see only canonical attestations made after it. Widening the crawl (down to 0 for complete
+// imported-schema previews) is a deliberate, budgeted per-deploy choice, never a default.
+// Fork/local operators raise the local start with the ordinary PONDER_START_BLOCK instead.
+const EAS_START_BLOCK = IS_PUBLIC
+  ? blockNumberEnv(
+      `PONDER_EAS_START_BLOCK_${CHAIN_ID}`,
+      deploymentProfile.defaultStartBlock
+    )
+  : DEV_START_BLOCK
+const PUBLIC_WS_URL = process.env[deploymentProfile.wsEnv]?.trim()
 
 /**
  * ERC-8004 is a local research fixture. Public deployment profiles do not accept an arbitrary
@@ -338,7 +341,6 @@ const PARENT_AUTHORITY_DEPLOYER = deploymentSummary.governedFactory
   ?.parent_authority_deployer as Hex | undefined
 const SUBNETWORK_REGISTRY = deploymentSummary.governedFactory
   ?.subnetwork_registry as Hex | undefined
-const CHAIN_ID = IS_SEPOLIA ? 11155111 : 31337
 const EAS_ADDRESS = deploymentSummary.eas?.eas as Hex | undefined
 const SCHEMA_REGISTRY_ADDRESS = deploymentSummary.eas?.schema_registry as
   | Hex
@@ -634,22 +636,24 @@ const programFundDistributors = FACTORY_DISCOVERY
 export default createConfig({
   ordering: 'multichain',
   chains: {
-    ...(!IS_PRODUCTION
+    ...(IS_LOCAL
       ? {
-          local: {
-            id: 31337,
+          [CORE_CHAIN]: {
+            id: CHAIN_ID,
             rpc: LOCAL_RPC_URL,
             ws: LOCAL_WS_URL,
           },
         }
       : {
-          sepolia: {
-            id: 11155111,
+          // The single production chain, keyed by the target name so every source's
+          // `chain: CORE_CHAIN` resolves without this file naming a chain.
+          [CORE_CHAIN]: {
+            id: CHAIN_ID,
             // Ponder treats an RPC array as an ordered, health-aware backend pool. Operators
             // keep the private primary separate from a comma/newline-delimited failover list.
             rpc: rpcUrlsEnv(
-              'PONDER_RPC_URL_11155111',
-              'PONDER_RPC_URLS_11155111'
+              deploymentProfile.rpcEnv,
+              `PONDER_RPC_URLS_${CHAIN_ID}`
             ),
             // Provider limits vary dramatically: the current free primary accepts only ten
             // blocks, while the verified public fallback accepts the full deployment range.
@@ -657,12 +661,10 @@ export default createConfig({
             // discovers request-rate limits dynamically; its old maxRequestsPerSecond option is
             // deprecated and ignored, so do not imply it offers a hard throttle.
             ethGetLogsBlockRange: positiveIntegerEnv(
-              'PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111',
+              `PONDER_ETH_GET_LOGS_BLOCK_RANGE_${CHAIN_ID}`,
               10
             ),
-            ...(process.env.PONDER_WS_URL_11155111
-              ? { ws: process.env.PONDER_WS_URL_11155111 }
-              : {}),
+            ...(PUBLIC_WS_URL ? { ws: PUBLIC_WS_URL } : {}),
           },
         }),
   },

@@ -777,9 +777,38 @@ impl Config {
         anyhow::ensure!(manifest.version == 1, "release manifest version must be 1");
         anyhow::ensure!(manifest.status == "deployed", "release manifest is not finalized");
         anyhow::ensure!(manifest.stage == "production", "release manifest stage is not production");
+        // The manifest is bound to the chain this profile names, never the other way round: a
+        // profile without `chain_id` cannot say which chain it serves, so a copied testnet record
+        // would silently choose one. Both ids and both names go in every refusal so whoever reads
+        // it knows which side to fix.
+        let configured = self.chain_id.with_context(|| {
+            format!(
+                "release_manifest requires `chain_id`: the manifest {} records chain {:?} ({}) \
+                 and the profile must name the same chain before the manifest is trusted",
+                path.display(),
+                manifest.chain,
+                manifest.chain_id
+            )
+        })?;
         anyhow::ensure!(
-            manifest.chain == "sepolia" && manifest.chain_id == 11_155_111,
-            "release manifest is not bound to Ethereum Sepolia (11155111)"
+            configured == manifest.chain_id,
+            "operator chain_id {configured}{} conflicts with release manifest chainId {} (chain {:?})",
+            canonical_chain_name(configured).map(|name| format!(" ({name})")).unwrap_or_default(),
+            manifest.chain_id,
+            manifest.chain
+        );
+        let expected_name = canonical_chain_name(configured).with_context(|| {
+            format!(
+                "operator chain_id {configured} has no release-manifest binding (1 = mainnet, \
+                 11155111 = sepolia); the manifest records chain {:?} ({})",
+                manifest.chain, manifest.chain_id
+            )
+        })?;
+        anyhow::ensure!(
+            manifest.chain == expected_name,
+            "release manifest chain {:?} is not the canonical name {expected_name:?} for the \
+             configured chain_id {configured}",
+            manifest.chain
         );
         anyhow::ensure!(
             manifest.deployment_commit.as_deref().is_some_and(|value| is_hex(value, 40, false)),
@@ -790,37 +819,39 @@ impl Config {
             "release manifest firstDeploymentBlock is missing"
         );
         self.release_programs.clear();
-        for (program, label, identity) in [
-            (Program::Trustgraphs, "trust-graph", manifest.programs.trust_graph),
-            (Program::Signer, "signer", manifest.programs.signer),
-        ] {
+        // Every guest this binary embeds is pinned by the manifest that records it. The two the
+        // daemon cannot run without are required; the others are checked whenever the manifest
+        // records them and skipped only when it records nothing. Half an identity is a release
+        // error, not an optional program.
+        for program in RELEASE_MANIFEST_PROGRAMS {
+            let Some((label, identity, required)) = manifest.programs.entry(program) else {
+                continue;
+            };
+            let (elf_sha256, vkey) = match (&identity.elf_sha256, &identity.vkey) {
+                (Some(elf_sha256), Some(vkey)) => (elf_sha256, vkey),
+                (None, None) if !required => continue,
+                (None, None) => {
+                    anyhow::bail!("release manifest {label} guest identity is missing")
+                }
+                _ => anyhow::bail!(
+                    "release manifest {label} records only one of elfSha256 and vkey; a guest \
+                     identity is both or neither"
+                ),
+            };
             anyhow::ensure!(
-                is_hex(&identity.elf_sha256, 64, true),
-                "release manifest {label} ELF digest is missing or invalid"
+                is_hex(elf_sha256, 64, true),
+                "release manifest {label} ELF digest is invalid"
             );
-            anyhow::ensure!(
-                is_hex(&identity.vkey, 64, true),
-                "release manifest {label} vkey is missing or invalid"
-            );
+            anyhow::ensure!(is_hex(vkey, 64, true), "release manifest {label} vkey is invalid");
             self.release_programs.insert(
                 program,
                 ReleaseProgramIdentity {
-                    elf_sha256: identity.elf_sha256.trim_start_matches("0x").to_ascii_lowercase(),
-                    vkey: identity
-                        .vkey
+                    elf_sha256: elf_sha256.trim_start_matches("0x").to_ascii_lowercase(),
+                    vkey: vkey
                         .parse()
                         .with_context(|| format!("parse release manifest {label} vkey"))?,
                 },
             );
-        }
-
-        match self.chain_id {
-            Some(configured) => anyhow::ensure!(
-                configured == manifest.chain_id,
-                "operator chain_id {configured} conflicts with release manifest chainId {}",
-                manifest.chain_id
-            ),
-            None => self.chain_id = Some(manifest.chain_id),
         }
 
         let registry = manifest.contracts.instance_registry.required("instanceRegistry")?;
@@ -1064,18 +1095,68 @@ struct OperatorReleaseInstance {
     instance_id: B256,
 }
 
+/// The programs a release manifest pins for this daemon, which is every program it embeds a
+/// guest for (`run::supported()`, held equal by a test there). Hypercerts is recorded in the
+/// manifest but the operator carries no hypercerts guest, so it is not read.
+pub const RELEASE_MANIFEST_PROGRAMS: [Program; 6] = [
+    Program::Trustgraphs,
+    Program::Contributions,
+    Program::Weighted,
+    Program::Composition,
+    Program::NostrWorkspace,
+    Program::Signer,
+];
+
+/// The canonical `chain` name a release manifest must carry for a chain id. A manifest for any
+/// other id is refused by number, so a record can never be pointed at a chain it was not
+/// deployed to by editing one field.
+pub fn canonical_chain_name(chain_id: u64) -> Option<&'static str> {
+    match chain_id {
+        1 => Some("mainnet"),
+        11_155_111 => Some("sepolia"),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct OperatorReleasePrograms {
     #[serde(rename = "trustGraph")]
     trust_graph: OperatorReleaseProgram,
     signer: OperatorReleaseProgram,
+    #[serde(default)]
+    contributions: OperatorReleaseProgram,
+    #[serde(default)]
+    weighted: OperatorReleaseProgram,
+    #[serde(default)]
+    composition: OperatorReleaseProgram,
+    #[serde(default, rename = "nostrWorkspace")]
+    nostr_workspace: OperatorReleaseProgram,
 }
 
-#[derive(Debug, Deserialize)]
+impl OperatorReleasePrograms {
+    /// The manifest key, the recorded entry, and whether the daemon refuses to run without it.
+    /// `None` is a program the operator does not embed.
+    fn entry(&self, program: Program) -> Option<(&'static str, &OperatorReleaseProgram, bool)> {
+        Some(match program {
+            Program::Trustgraphs => ("trustGraph", &self.trust_graph, true),
+            Program::Contributions => ("contributions", &self.contributions, false),
+            Program::Weighted => ("weighted", &self.weighted, false),
+            Program::Composition => ("composition", &self.composition, false),
+            Program::NostrWorkspace => ("nostrWorkspace", &self.nostr_workspace, false),
+            Program::Signer => ("signer", &self.signer, true),
+            Program::Hypercerts => return None,
+        })
+    }
+}
+
+/// One program's recorded guest identity. Both fields are nullable in the release schema: a
+/// program the release does not ship records null for both.
+#[derive(Debug, Default, Deserialize)]
 struct OperatorReleaseProgram {
-    #[serde(rename = "elfSha256")]
-    elf_sha256: String,
-    vkey: String,
+    #[serde(default, rename = "elfSha256")]
+    elf_sha256: Option<String>,
+    #[serde(default)]
+    vkey: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1274,12 +1355,13 @@ impl Ipfs {
 mod validate_tests {
     use super::{
         resolve_env_reference, CapabilityProfile, Config, LogFormat, ReleaseProgramIdentity,
-        OPERATOR_CYCLE_LIMIT,
+        OPERATOR_CYCLE_LIMIT, RELEASE_MANIFEST_PROGRAMS,
     };
     use alloy_primitives::{Address, B256};
     use operator_core::types::Program;
+    use serde_json::json;
     use std::collections::BTreeSet;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn parse(toml_src: &str) -> Result<Config, String> {
         let cfg: Config = toml::from_str(toml_src).map_err(|e| e.to_string())?;
@@ -1365,7 +1447,7 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         std::fs::write(
             &config_path,
             "rpc = \"https://rpc.invalid\"\nrelease_manifest = \"sepolia.json\"\n\
-             [curated]\nsingle_release_instance = true\n",
+             chain_id = 11155111\n[curated]\nsingle_release_instance = true\n",
         )
         .unwrap();
 
@@ -1386,36 +1468,151 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
             cfg.release_program_identities()[&Program::Signer],
             ReleaseProgramIdentity { elf_sha256: "66".repeat(32), vkey: B256::from([0x77; 32]) }
         );
+        assert_eq!(
+            cfg.release_program_identities().len(),
+            2,
+            "programs the manifest does not record are not pinned"
+        );
+
+        // The binding runs from the profile to the manifest, never the reverse: without a
+        // configured chain the manifest is not allowed to choose one.
+        std::fs::write(
+            &config_path,
+            "rpc = \"https://rpc.invalid\"\nrelease_manifest = \"sepolia.json\"\n",
+        )
+        .unwrap();
+        let error = Config::load(&config_path).unwrap_err().to_string();
+        assert!(error.contains("release_manifest requires `chain_id`"), "{error}");
+        assert!(error.contains("\"sepolia\" (11155111)"), "{error}");
 
         std::fs::remove_dir_all(directory).unwrap();
     }
 
+    fn repository() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn tracked_manifest(chain: &str) -> serde_json::Value {
+        serde_json::from_str(
+            &std::fs::read_to_string(repository().join(format!("deployments/{chain}.json")))
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// The tracked profile for `chain`, rewritten the way the container sees it: endpoint
+    /// secrets resolved, the volume replaced by `directory`, and `manifest` written beside it
+    /// under the name the profile expects.
+    fn tracked_profile(chain: &str, directory: &Path, manifest: &serde_json::Value) -> PathBuf {
+        std::fs::write(
+            directory.join(format!("{chain}.json")),
+            serde_json::to_vec_pretty(manifest).unwrap(),
+        )
+        .unwrap();
+        let profile = std::fs::read_to_string(
+            repository().join(format!("deployments/operator.{chain}.toml")),
+        )
+        .unwrap()
+        .replace("env:RPC_URL", "https://rpc.invalid")
+        .replace("env:IPFS_PIN_API", "https://uploads.pinata.cloud/v3/files")
+        .replace("env:IPFS_GATEWAY", "https://gateway.invalid/ipfs/")
+        .replace("env:OPERATOR_ALERT_WEBHOOK", "https://alerts.invalid")
+        .replace("\"/data", &format!("\"{}", directory.display()));
+        let config_path = directory.join(format!("operator.{chain}.toml"));
+        std::fs::write(&config_path, profile).unwrap();
+        config_path
+    }
+
+    /// A minimal profile naming `chain_id` (or nothing) and pointing at `manifest`.
+    fn bound_profile(
+        directory: &Path,
+        manifest: &serde_json::Value,
+        chain_id: Option<u64>,
+    ) -> Result<Config, String> {
+        std::fs::write(directory.join("release.json"), serde_json::to_vec(manifest).unwrap())
+            .unwrap();
+        let mut body =
+            String::from("rpc = \"https://rpc.invalid\"\nrelease_manifest = \"release.json\"\n");
+        if let Some(chain_id) = chain_id {
+            body.push_str(&format!("chain_id = {chain_id}\n"));
+        }
+        let config_path = directory.join("operator.toml");
+        std::fs::write(&config_path, body).unwrap();
+        Config::load(&config_path).map_err(|e| e.to_string())
+    }
+
+    /// `deployments/mainnet.json` as it will read once the contracts are deployed and the
+    /// showcase network is recorded: the tracked record with its null coordinates filled. Once
+    /// the tracked file is itself `deployed` it is used as is.
+    fn deployed_mainnet_manifest() -> serde_json::Value {
+        let mut manifest = tracked_manifest("mainnet");
+        assert_eq!(manifest["chain"], "mainnet");
+        assert_eq!(manifest["chainId"], 1);
+        if manifest["status"] == "deployed" {
+            return manifest;
+        }
+        manifest["status"] = json!("deployed");
+        manifest["deploymentCommit"] = json!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        manifest["firstDeploymentBlock"] = json!(23_400_000);
+        manifest["contracts"]["instanceRegistry"] = json!({
+            "address": "0x1111111111111111111111111111111111111111",
+            "block": 23_400_002,
+            "txHash": "0x2222222222222222222222222222222222222222222222222222222222222222"
+        });
+        manifest["contracts"]["provingVault"] = json!({
+            "address": "0x3333333333333333333333333333333333333333",
+            "block": 23_400_010,
+            "txHash": "0x4444444444444444444444444444444444444444444444444444444444444444"
+        });
+        manifest["instances"] = json!([{
+            "instanceId": "0x5555555555555555555555555555555555555555555555555555555555555555"
+        }]);
+        manifest
+    }
+
+    /// Every guest the daemon embeds is pinned to exactly what the manifest records.
+    fn assert_pinned_programs(cfg: &Config, manifest: &serde_json::Value) {
+        let identities = cfg.release_program_identities();
+        assert_eq!(
+            identities.keys().copied().collect::<BTreeSet<_>>(),
+            BTreeSet::from(RELEASE_MANIFEST_PROGRAMS)
+        );
+        for (program, key) in [
+            (Program::Trustgraphs, "trustGraph"),
+            (Program::Contributions, "contributions"),
+            (Program::Weighted, "weighted"),
+            (Program::Composition, "composition"),
+            (Program::NostrWorkspace, "nostrWorkspace"),
+            (Program::Signer, "signer"),
+        ] {
+            let recorded = &manifest["programs"][key];
+            assert_eq!(
+                identities[&program].vkey,
+                recorded["vkey"].as_str().unwrap().parse::<B256>().unwrap(),
+                "{key} vkey"
+            );
+            assert_eq!(
+                identities[&program].elf_sha256,
+                recorded["elfSha256"]
+                    .as_str()
+                    .unwrap()
+                    .trim_start_matches("0x")
+                    .to_ascii_lowercase(),
+                "{key} ELF digest"
+            );
+        }
+    }
+
     #[test]
     fn tracked_sepolia_profile_subsidizes_exactly_the_recorded_showcase_instance() {
-        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let directory = std::env::temp_dir()
-            .join(format!("trustgraphs-operator-sepolia-profile-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
-        std::fs::copy(repository.join("deployments/sepolia.json"), directory.join("sepolia.json"))
-            .unwrap();
-        let profile = std::fs::read_to_string(repository.join("deployments/operator.sepolia.toml"))
-            .unwrap()
-            .replace("env:RPC_URL", "https://rpc.invalid")
-            .replace("env:IPFS_PIN_API", "https://uploads.pinata.cloud/v3/files")
-            .replace("env:IPFS_GATEWAY", "https://gateway.invalid/ipfs/")
-            .replace("env:OPERATOR_ALERT_WEBHOOK", "https://alerts.invalid")
-            .replace("\"/data", &format!("\"{}", directory.display()));
-        let config_path = directory.join("operator.sepolia.toml");
-        std::fs::write(&config_path, profile).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let manifest = tracked_manifest("sepolia");
+        let config_path = tracked_profile("sepolia", directory.path(), &manifest);
 
         // The tracked manifest has two honest states, exactly like the release-manifest test on
         // the deploy side: before the browser-created showcase network is recorded (`instances`
         // empty) the profile must fail closed, and after it is recorded the profile must fund
         // exactly that instance. Anything else recorded is a release error, not a config state.
-        let manifest: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(repository.join("deployments/sepolia.json")).unwrap(),
-        )
-        .unwrap();
         let recorded = manifest["instances"].as_array().map_or(0, Vec::len);
         match recorded {
             0 => {
@@ -1427,12 +1624,120 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
                     manifest["instances"][0]["instanceId"].as_str().unwrap().parse().unwrap();
                 let cfg = Config::load(&config_path).unwrap();
                 assert_eq!(cfg.curated.instances, vec![expected]);
+                assert_eq!(cfg.chain_id, Some(11_155_111));
+                assert_pinned_programs(&cfg, &manifest);
             }
             n => panic!(
                 "the subsidized profile tracks at most one showcase instance, manifest records {n}"
             ),
         }
-        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn tracked_mainnet_profile_binds_chain_1_and_refuses_the_planned_record() {
+        let directory = tempfile::tempdir().unwrap();
+        let tracked = tracked_manifest("mainnet");
+        if tracked["status"] == "planned" {
+            // The record as committed before deployment: null coordinates. The loader refuses it
+            // outright rather than start a daemon that would find no registry.
+            let config_path = tracked_profile("mainnet", directory.path(), &tracked);
+            let error = Config::load(&config_path).unwrap_err().to_string();
+            assert!(error.contains("not finalized"), "{error}");
+        }
+
+        let deployed = deployed_mainnet_manifest();
+        let config_path = tracked_profile("mainnet", directory.path(), &deployed);
+        let profile = std::fs::read_to_string(&config_path).unwrap();
+        let placeholder = "recipient = \"0x0000000000000000000000000000000000000000\"";
+        if profile.contains(placeholder) {
+            // The committed profile carries a placeholder payee; the loader must refuse it until
+            // a real submitter address replaces it.
+            let error = Config::load(&config_path).unwrap_err().to_string();
+            assert!(error.contains("recipient"), "{error}");
+            let payee = "recipient = \"0xf6161E3c1e83EF8297690153120462633570B8D1\"";
+            std::fs::write(&config_path, profile.replace(placeholder, payee)).unwrap();
+        }
+
+        let cfg = Config::load(&config_path).unwrap();
+        assert_eq!(cfg.chain_id, Some(1));
+        assert_eq!(cfg.release_manifest.as_deref(), Some(Path::new("mainnet.json")));
+        let registry = &deployed["contracts"]["instanceRegistry"];
+        assert_eq!(cfg.registry, registry["address"].as_str().unwrap().parse::<Address>().unwrap());
+        assert_eq!(cfg.registry_from_block, registry["block"].as_u64().unwrap());
+        let vault = deployed["contracts"]["provingVault"]["address"].as_str().unwrap();
+        assert_eq!(cfg.paid.vault, Some(vault.parse::<Address>().unwrap()));
+        let showcase = deployed["instances"][0]["instanceId"].as_str().unwrap();
+        assert_eq!(cfg.curated.instances, vec![showcase.parse::<B256>().unwrap()]);
+        // The mainnet deltas the Sepolia profile annotates.
+        assert_eq!(cfg.finality.confirmations, 64);
+        assert_eq!(cfg.signer_sync.confirmations, 64);
+        assert_eq!(cfg.cadence.subsidy_min_blocks, 300);
+        assert_eq!(cfg.gas.max_basefee_gwei, 30);
+        assert_eq!(cfg.budget.per_instance_usd_per_day, 5);
+        assert_eq!(cfg.budget.global_usd_per_day, 20);
+        assert_eq!(cfg.ipfs.required_successes(), 1);
+        assert_eq!(cfg.ops.alert_webhook.as_deref(), Some("https://alerts.invalid"));
+        assert_pinned_programs(&cfg, &deployed);
+    }
+
+    #[test]
+    fn a_release_manifest_is_refused_under_another_chains_id() {
+        // Both directions, and both ids and both names in each refusal: whoever reads it must be
+        // able to tell which side is wrong.
+        let directory = tempfile::tempdir().unwrap();
+        let error = bound_profile(directory.path(), &deployed_mainnet_manifest(), Some(11_155_111))
+            .unwrap_err();
+        assert!(error.contains("chain_id 11155111 (sepolia)"), "{error}");
+        assert!(error.contains("chainId 1 (chain \"mainnet\")"), "{error}");
+
+        let error =
+            bound_profile(directory.path(), &tracked_manifest("sepolia"), Some(1)).unwrap_err();
+        assert!(error.contains("chain_id 1 (mainnet)"), "{error}");
+        assert!(error.contains("chainId 11155111 (chain \"sepolia\")"), "{error}");
+    }
+
+    #[test]
+    fn a_release_manifest_for_an_unknown_chain_is_refused_by_number() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut foreign = deployed_mainnet_manifest();
+        foreign["chain"] = json!("holesky");
+        foreign["chainId"] = json!(17_000);
+        let error = bound_profile(directory.path(), &foreign, Some(17_000)).unwrap_err();
+        assert!(error.contains("chain_id 17000 has no release-manifest binding"), "{error}");
+        assert!(error.contains("\"holesky\" (17000)"), "{error}");
+
+        // A known id under the wrong name is a tampered record, not a typo to forgive.
+        let mut mislabeled = deployed_mainnet_manifest();
+        mislabeled["chain"] = json!("sepolia");
+        let error = bound_profile(directory.path(), &mislabeled, Some(1)).unwrap_err();
+        assert!(error.contains("\"sepolia\" is not the canonical name \"mainnet\""), "{error}");
+        assert!(error.contains("chain_id 1"), "{error}");
+    }
+
+    #[test]
+    fn a_half_recorded_guest_identity_is_a_release_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let unshipped = json!({ "sp1Version": "6.6.0", "vkey": null, "elfSha256": null });
+
+        let mut without_composition = deployed_mainnet_manifest();
+        without_composition["programs"]["composition"] = unshipped.clone();
+        let cfg = bound_profile(directory.path(), &without_composition, Some(1)).unwrap();
+        assert!(
+            !cfg.release_program_identities().contains_key(&Program::Composition),
+            "a program the release does not ship is not pinned"
+        );
+        assert_eq!(cfg.release_program_identities().len(), 5);
+
+        let mut half = deployed_mainnet_manifest();
+        half["programs"]["weighted"]["vkey"] = json!(null);
+        let error = bound_profile(directory.path(), &half, Some(1)).unwrap_err();
+        assert!(error.contains("weighted records only one of elfSha256 and vkey"), "{error}");
+
+        // The two programs the daemon cannot run without may not be left unrecorded.
+        let mut without_core = deployed_mainnet_manifest();
+        without_core["programs"]["trustGraph"] = unshipped;
+        let error = bound_profile(directory.path(), &without_core, Some(1)).unwrap_err();
+        assert!(error.contains("trustGraph guest identity is missing"), "{error}");
     }
 
     #[test]

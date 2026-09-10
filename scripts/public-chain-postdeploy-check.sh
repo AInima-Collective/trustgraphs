@@ -10,33 +10,42 @@
 # Run it after the broadcast, again after the registrar grant, and again after the vault
 # handoff. The checks that are meant to fail before those steps say so.
 #
-# Usage:  bash scripts/sepolia-postdeploy-check.sh [--manifest PATH]
+# Usage:  bash scripts/public-chain-postdeploy-check.sh <sepolia|mainnet> [--manifest PATH]
 # Exit code is the number of failed checks.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+usage() { echo 'Usage: public-chain-postdeploy-check.sh <sepolia|mainnet> [--manifest PATH]' >&2; exit 1; }
+[ "$#" -ge 1 ] || usage
+TARGET=$1; shift
+case "$TARGET" in
+  sepolia) EXPECTED_CHAIN_ID=11155111 ;;
+  mainnet) EXPECTED_CHAIN_ID=1 ;;
+  *) usage ;;
+esac
+
 if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
-  exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
+  exec node scripts/run-with-target-env.cjs "$TARGET" bash "$0" "$TARGET" "$@"
 fi
 
-MANIFEST=deployments/sepolia.json
+MANIFEST=deployments/$TARGET.json
 if [ "$#" -gt 0 ]; then
   if [ "$#" -ne 2 ] || [ "$1" != '--manifest' ]; then
-    echo 'Usage: sepolia-postdeploy-check.sh [--manifest PATH]' >&2
-    exit 1
+    usage
   fi
   MANIFEST=$2
 fi
-if ! jq -e '.status == "deployed" and .chain == "sepolia" and .chainId == 11155111' "$MANIFEST" >/dev/null; then
-  echo 'Postcheck requires a deployed Sepolia manifest' >&2
+if ! jq -e --arg chain "$TARGET" --argjson id "$EXPECTED_CHAIN_ID" \
+    '.status == "deployed" and .chain == $chain and .chainId == $id' "$MANIFEST" >/dev/null; then
+  echo "Postcheck requires a deployed $TARGET manifest (chainId $EXPECTED_CHAIN_ID)" >&2
   exit 1
 fi
 R=--rpc-url
 U="${RPC_URL:-}"
 GUEST_MANIFEST="${GUEST_MANIFEST:-guest-manifest.json}"
-if [ -z "$U" ] || [ "$(cast chain-id --rpc-url "$U" 2>/dev/null)" != '11155111' ]; then
-  echo 'Postcheck requires an RPC_URL connected to Sepolia (11155111)' >&2
+if [ -z "$U" ] || [ "$(cast chain-id --rpc-url "$U" 2>/dev/null)" != "$EXPECTED_CHAIN_ID" ]; then
+  echo "Postcheck requires an RPC_URL connected to $TARGET ($EXPECTED_CHAIN_ID)" >&2
   exit 1
 fi
 
@@ -73,6 +82,8 @@ COMPOSITION_FACTORY=$(addr trustComposeFactory)
 GOVERNED_COMPOSITION_FACTORY=$(addr governedTrustComposeFactory)
 CONTRIBUTIONS_VERIFIER=$(addr contributionsVerifier)
 CONTRIBUTIONS_FACTORY=$(addr contributionsFactory)
+SUBNETWORK_REGISTRY=$(addr subnetworkRegistry)
+# The admin is an address, never a key: a Safe on mainnet, an EOA on the testnet.
 ADMIN="${INSTANCE_REGISTRY_ADMIN:-}"
 DEPLOYER=$(cast wallet address --private-key "${FUNDED_KEY:-}" 2>/dev/null || echo unknown)
 
@@ -106,7 +117,7 @@ same "$GW" "$(ext sp1Gateway)" && ok "verifier delegates to the canonical SP1 ga
 echo "=== the signer verifier and governed wrapper pin the released signer guest ==="
 SPVK=$(call "$SIGNER_VERIFIER" "programVKey()(bytes32)")
 same "$SPVK" "${SP1_SIGNER_PROGRAM_VKEY:-}" && ok "signer verifier pins SP1_SIGNER_PROGRAM_VKEY" \
-  || bad "signer verifier pins $SPVK, .env.sepolia says ${SP1_SIGNER_PROGRAM_VKEY:-unset}"
+  || bad "signer verifier pins $SPVK, .env.$TARGET says ${SP1_SIGNER_PROGRAM_VKEY:-unset}"
 SGW=$(call "$SIGNER_VERIFIER" "gateway()(address)")
 same "$SGW" "$(ext sp1Gateway)" && ok "signer verifier delegates to the canonical SP1 gateway" \
   || bad "signer verifier delegates to $SGW, expected $(ext sp1Gateway)"
@@ -245,14 +256,14 @@ for pair in "weighted:$WEIGHTED_FACTORY" "composition:$COMPOSITION_FACTORY" \
     || bad "$label factory HOLDS OPERATOR_ROLE and can rewrite registry rows"
 done
 RA=$(cast call "$REGISTRY" "hasRole(bytes32,address)(bool)" "$DEFAULT_ADMIN_ROLE" "$ADMIN" $R "$U" 2>/dev/null)
-[ "$RA" = "true" ] && ok "registry admin is the admin EOA" || bad "admin EOA does not hold registry DEFAULT_ADMIN_ROLE"
+[ "$RA" = "true" ] && ok "registry admin is the configured admin" || bad "the admin does not hold registry DEFAULT_ADMIN_ROLE"
 
-echo "=== who controls vault fees (step 4 of the deploy) ==="
-# `DeployProvingVault` hardcodes the deployer as admin and fee setter and the plan has no handoff,
-# so left alone a key made for one afternoon holds fee authority forever. Grant before renounce:
+echo "=== who controls vault fees (handed off by the plan's penultimate step) ==="
+# `DeployProvingVault` hardcodes the deployer as admin and fee setter because it prices the fee
+# schedule in the same run; `HandoffAccessControl` then moves both roles. Grant before renounce:
 # reversed, the vault has no admin and can never be given one.
-for pair in "admin EOA:DEFAULT_ADMIN:$ADMIN:$DEFAULT_ADMIN_ROLE:true" \
-            "admin EOA:FEE_SETTER:$ADMIN:$FEE_SETTER_ROLE:true" \
+for pair in "admin:DEFAULT_ADMIN:$ADMIN:$DEFAULT_ADMIN_ROLE:true" \
+            "admin:FEE_SETTER:$ADMIN:$FEE_SETTER_ROLE:true" \
             "deployer:DEFAULT_ADMIN:$DEPLOYER:$DEFAULT_ADMIN_ROLE:false" \
             "deployer:FEE_SETTER:$DEPLOYER:$FEE_SETTER_ROLE:false"; do
   IFS=':' read -r who role account hash want <<EOF2
@@ -262,6 +273,29 @@ EOF2
   if [ "$got" = "$want" ]; then ok "$who holds ${role}_ROLE: $got"
   else bad "$who ${role}_ROLE is $got, must be $want"; fi
 done
+
+echo "=== who administers the subnetwork registry (handed off by the plan's last step) ==="
+# The governed weighted and compose wrappers took REGISTRAR_ROLE grants here with the deployer's
+# admin role during the run. Afterwards the admin holds it and the deployer holds nothing.
+if [ -z "$SUBNETWORK_REGISTRY" ]; then
+  note "manifest records no subnetworkRegistry; skipping"
+else
+  for pair in "admin:$ADMIN:true" "deployer:$DEPLOYER:false"; do
+    IFS=':' read -r who account want <<EOF2
+$pair
+EOF2
+    got=$(cast call "$SUBNETWORK_REGISTRY" "hasRole(bytes32,address)(bool)" "$DEFAULT_ADMIN_ROLE" "$account" $R "$U" 2>/dev/null)
+    if [ "$got" = "$want" ]; then ok "$who holds subnetwork registry DEFAULT_ADMIN_ROLE: $got"
+    else bad "$who subnetwork registry DEFAULT_ADMIN_ROLE is $got, must be $want"; fi
+  done
+  for pair in "governedTrustgraphsFactory:$GOVERNED_FACTORY" "governedWeightedTrustgraphsFactory:$GOVERNED_WEIGHTED_FACTORY" \
+              "governedTrustComposeFactory:$GOVERNED_COMPOSITION_FACTORY"; do
+    label=${pair%%:*}; wrapper=${pair##*:}
+    [ -n "$wrapper" ] || continue
+    got=$(cast call "$SUBNETWORK_REGISTRY" "hasRole(bytes32,address)(bool)" "$REGISTRAR_ROLE" "$wrapper" $R "$U" 2>/dev/null)
+    [ "$got" = "true" ] && ok "$label holds subnetwork REGISTRAR_ROLE" || bad "$label does NOT hold subnetwork REGISTRAR_ROLE"
+  done
+fi
 
 echo "=== networks created so far ==="
 COUNT=$(cast call "$REGISTRY" "instanceCount()(uint256)" $R "$U" 2>/dev/null | tr -d ' ')

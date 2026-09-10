@@ -22,9 +22,10 @@ test('graph lineage APIs are mounted, bounded, and canonically confirm active st
   assert.match(api, /functionName: 'endorsementStatus'/)
   assert.match(api, /functionName: 'configurationLive'/)
   assert.match(api, /return 'verification-unavailable'/)
-  assert.match(api, /chainId === '11155111'/)
-  assert.match(api, /PONDER_RPC_URL_11155111/)
-  assert.doesNotMatch(api, /PONDER_RPC_URL_10\b/)
+  // The RPC lookup is generic over the chain id: no public chain is named in this module.
+  assert.match(api, /PONDER_RPC_URL_\$\{chainId\}/)
+  assert.match(api, /chainId === '31337'/)
+  assert.doesNotMatch(api, /11155111|PONDER_RPC_URL_1\b|PONDER_RPC_URL_10\b/)
   assert.match(api, /eq\(graphEndorsement\.kind, 2\)/)
   assert.match(api, /previousEpochOnly: true/)
   assert.match(api, /advisoryOnly: true/)

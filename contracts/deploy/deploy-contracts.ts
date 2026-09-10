@@ -8,23 +8,27 @@
  */
 
 import fs from 'fs'
+import path from 'path'
 
 import chalk from 'chalk'
 import { Command } from 'commander'
 
 import { DEPLOYMENT_SUMMARY_FILE } from './constants'
-import { initProgram, SepoliaEnv } from './env'
+import { initProgram, PublicChainEnv } from './env'
 import { assertReleaseCheckout } from '../../scripts/release-checkout.cjs'
 import {
   assertGenerationComplete,
   beginGeneration,
   generationManifestPath,
 } from './generation'
+import { CHAIN_PROFILES } from './profiles'
+import { isPublicChainTarget } from './public-chains'
 import {
   type ReleaseManifest,
   loadReleaseManifest,
   validateReleaseManifest,
 } from './release-manifest'
+import type { ChainProfile } from './types'
 import { execFull } from './utils'
 
 const program = new Command('deploy-contracts')
@@ -35,7 +39,7 @@ const program = new Command('deploy-contracts')
   )
   .option(
     '--chain <target>',
-    'Chain target: local or sepolia (default: $DEPLOY_TARGET)'
+    'Chain target: local, sepolia or mainnet (default: $DEPLOY_TARGET)'
   )
   .option(
     // Don't pass FUNDED_KEY as default here so it does not appear in the help
@@ -53,11 +57,11 @@ const program = new Command('deploy-contracts')
   )
   .option(
     '--continue-existing',
-    'Sepolia only: verify and preserve the five live contracts, then deploy only missing additive steps'
+    'Public chains only: verify and preserve the five live contracts, then deploy only missing additive steps'
   )
   .option(
     '--new-generation <name>',
-    'Sepolia only: deploy replacements into deployments/generations/<name>/sepolia.json; preserve the active deployment'
+    'Public chains only: deploy replacements into deployments/generations/<name>/<chain>.json; preserve the active deployment'
   )
 
 const ANVIL_DEFAULT_KEY =
@@ -79,7 +83,7 @@ const requireFundedKey = (value: unknown, publicChain: boolean): string => {
   return value
 }
 
-const SEPOLIA_CORE_CONTRACTS = [
+const PUBLIC_CORE_CONTRACTS = [
   'schemaRegistrar',
   'rootVerifier',
   'instanceRegistry',
@@ -87,7 +91,12 @@ const SEPOLIA_CORE_CONTRACTS = [
   'trustgraphsFactory',
 ] as const
 
-const rpc = async (url: string, method: string, params: unknown[] = []) => {
+const rpc = async (
+  url: string,
+  method: string,
+  params: unknown[] = [],
+  chainName = 'Public chain'
+) => {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -95,41 +104,51 @@ const rpc = async (url: string, method: string, params: unknown[] = []) => {
     signal: AbortSignal.timeout(10_000),
   })
   if (!response.ok)
-    throw new Error(`Sepolia RPC returned HTTP ${response.status}`)
+    throw new Error(`${chainName} RPC returned HTTP ${response.status}`)
   const body = (await response.json()) as {
     result?: string
     error?: { message?: string }
   }
   if (body.error) {
     throw new Error(
-      `Sepolia RPC ${method} failed: ${body.error.message || 'unknown error'}`
+      `${chainName} RPC ${method} failed: ${body.error.message || 'unknown error'}`
     )
   }
   return body.result
 }
 
-const verifySepoliaContinuation = async (
+const verifyContinuation = async (
   manifest: ReleaseManifest,
-  rpcUrl: string
+  rpcUrl: string,
+  profile: ChainProfile
 ) => {
   if (manifest.status !== 'deployed') {
-    throw new Error('--continue-existing requires a deployed Sepolia manifest')
+    throw new Error(
+      `--continue-existing requires a deployed ${profile.name} manifest`
+    )
   }
-  const chainId = await rpc(rpcUrl, 'eth_chainId')
+  const chainId = await rpc(rpcUrl, 'eth_chainId', [], profile.name)
   if (chainId === undefined || Number(BigInt(chainId)) !== manifest.chainId) {
     throw new Error(
       `Continuation RPC is chain ${chainId ?? 'unknown'}, expected ${manifest.chainId}`
     )
   }
-  for (const key of SEPOLIA_CORE_CONTRACTS) {
+  for (const key of PUBLIC_CORE_CONTRACTS) {
     const address = manifest.contracts[key].address
     if (!address) {
-      throw new Error(`Sepolia manifest has no live ${key} address to preserve`)
+      throw new Error(
+        `${profile.name} manifest has no live ${key} address to preserve`
+      )
     }
-    const code = await rpc(rpcUrl, 'eth_getCode', [address, 'latest'])
+    const code = await rpc(
+      rpcUrl,
+      'eth_getCode',
+      [address, 'latest'],
+      profile.name
+    )
     if (!code || code === '0x' || code === '0x0') {
       throw new Error(
-        `Sepolia continuation refused: manifest ${key} has no code at ${address}`
+        `${profile.name} continuation refused: manifest ${key} has no code at ${address}`
       )
     }
   }
@@ -137,14 +156,15 @@ const verifySepoliaContinuation = async (
 
 const assertCoreUnchanged = (
   before: ReleaseManifest,
-  after: ReleaseManifest
+  after: ReleaseManifest,
+  profile: ChainProfile
 ) => {
-  for (const key of SEPOLIA_CORE_CONTRACTS) {
+  for (const key of PUBLIC_CORE_CONTRACTS) {
     const previous = before.contracts[key].address?.toLowerCase()
     const next = after.contracts[key].address?.toLowerCase()
     if (previous !== next) {
       throw new Error(
-        `Sepolia continuation changed ${key} from ${previous} to ${next}; refusing to overwrite the manifest`
+        `${profile.name} continuation changed ${key} from ${previous} to ${next}; refusing to overwrite the manifest`
       )
     }
   }
@@ -160,34 +180,44 @@ const main = async () => {
   await env.validateDeployment?.()
   if (env.profile.public) assertReleaseCheckout(process.env.DEPLOYMENT_COMMIT)
 
-  const sepoliaManifest =
-    env.profile.target === 'sepolia'
-      ? loadReleaseManifest('deployments/sepolia.json', {
+  // The tracked manifest for the chain, independent of any generation candidate the env may be
+  // writing to. `env.profile.releaseManifestFile` is the candidate path during --new-generation.
+  const target = env.profile.target
+  const publicTarget = isPublicChainTarget(target) ? target : undefined
+  const activeManifestFile = publicTarget
+    ? CHAIN_PROFILES[publicTarget].releaseManifestFile
+    : undefined
+  const activeManifest =
+    publicTarget && activeManifestFile
+      ? loadReleaseManifest(activeManifestFile, {
           requireComplete: Boolean(continueExisting),
+          expectedChain: publicTarget,
         })
       : undefined
-  if (continueExisting && env.profile.target !== 'sepolia') {
-    throw new Error('--continue-existing is only valid for Sepolia')
+  if (continueExisting && !publicTarget) {
+    throw new Error('--continue-existing is only valid for a public chain')
   }
   if (
-    sepoliaManifest?.status === 'deployed' &&
+    activeManifest?.status === 'deployed' &&
     !continueExisting &&
     !newGeneration
   ) {
     throw new Error(
-      'Sepolia already has a deployed manifest. Use --new-generation <name> for replacements or pnpm deploy:sepolia:continue for missing additive steps.'
+      `${env.profile.name} already has a deployed manifest. Use --new-generation <name> for replacements or pnpm deploy:${target}:continue for missing additive steps.`
     )
   }
-  if (continueExisting && sepoliaManifest) {
-    await verifySepoliaContinuation(sepoliaManifest, env.rpcUrl)
+  if (continueExisting && activeManifest) {
+    await verifyContinuation(activeManifest, env.rpcUrl, env.profile)
   }
-  const activeBytes = newGeneration
-    ? fs.readFileSync('deployments/sepolia.json', 'utf8')
-    : undefined
+  const activeBytes =
+    newGeneration && activeManifestFile
+      ? fs.readFileSync(activeManifestFile, 'utf8')
+      : undefined
   if (
     newGeneration &&
+    publicTarget &&
     fs.existsSync(
-      generationManifestPath(newGeneration).replace(/\/sepolia\.json$/, '')
+      path.dirname(generationManifestPath(newGeneration, publicTarget))
     )
   ) {
     throw new Error(
@@ -209,7 +239,7 @@ const main = async () => {
     }
     if (newGeneration)
       console.log(
-        `Candidate output: ${env.profile.releaseManifestFile}; active deployments/sepolia.json is preserved.`
+        `Candidate output: ${env.profile.releaseManifestFile}; active ${activeManifestFile} is preserved.`
       )
     console.log(
       continueExisting
@@ -220,10 +250,12 @@ const main = async () => {
   }
 
   const privateKey = requireFundedKey(fundedKey, env.profile.public)
-  if (newGeneration && env instanceof SepoliaEnv) {
-    const chain = await rpc(env.rpcUrl, 'eth_chainId')
-    if (!chain || BigInt(chain) !== 11155111n)
-      throw new Error('New generation RPC must be Sepolia (11155111)')
+  if (newGeneration && env instanceof PublicChainEnv) {
+    const chain = await rpc(env.rpcUrl, 'eth_chainId', [], env.profile.name)
+    if (!chain || BigInt(chain) !== BigInt(env.profile.chainId))
+      throw new Error(
+        `New generation RPC must be ${env.profile.name} (${env.profile.chainId})`
+      )
     beginGeneration(
       newGeneration,
       env.releaseBase,
@@ -286,16 +318,16 @@ const main = async () => {
   if (releaseManifestFile && env.generateReleaseManifest) {
     const generatedManifest = validateReleaseManifest(
       env.generateReleaseManifest(context),
-      { requireComplete: true }
+      { requireComplete: true, expectedChain: publicTarget }
     )
-    if (continueExisting && sepoliaManifest) {
-      assertCoreUnchanged(sepoliaManifest, generatedManifest)
+    if (continueExisting && activeManifest) {
+      assertCoreUnchanged(activeManifest, generatedManifest, env.profile)
     }
-    if (newGeneration && env instanceof SepoliaEnv) {
+    if (newGeneration && env instanceof PublicChainEnv && activeManifestFile) {
       assertGenerationComplete(env.releaseBase, generatedManifest)
-      if (fs.readFileSync('deployments/sepolia.json', 'utf8') !== activeBytes) {
+      if (fs.readFileSync(activeManifestFile, 'utf8') !== activeBytes) {
         throw new Error(
-          'Active Sepolia manifest changed during deployment; preserve receipts and reconcile before finalizing'
+          `Active ${env.profile.name} manifest changed during deployment; preserve receipts and reconcile before finalizing`
         )
       }
     }

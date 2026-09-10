@@ -5,11 +5,28 @@ import type { Hex } from 'viem'
 
 import { DeploymentStage } from './types'
 
-type PublicReleaseChain = 'sepolia' | 'mainnet'
+export type PublicReleaseChain = 'sepolia' | 'mainnet'
+export const PUBLIC_RELEASE_CHAIN_IDS: Record<PublicReleaseChain, number> = {
+  sepolia: 11155111,
+  mainnet: 1,
+}
 type ReleaseManifestOptions = {
   requireComplete?: boolean
-  /** Existing deployment tooling stays Sepolia-bound unless a reader explicitly opts in. */
+  /** A reader is bound to one chain; Sepolia unless it explicitly opts into another. */
   expectedChain?: PublicReleaseChain
+}
+
+/**
+ * The chain a manifest claims, for readers that are chain-agnostic by design (a generation is
+ * planned from whichever active manifest it is given). Everything else names its chain up front
+ * and lets `validateReleaseManifest` reject a manifest from the wrong one.
+ */
+export const releaseChainOf = (value: unknown): PublicReleaseChain => {
+  const chain = (value as { chain?: unknown } | null)?.chain
+  if (chain !== 'sepolia' && chain !== 'mainnet') {
+    throw new Error('manifest.chain must be sepolia or mainnet')
+  }
+  return chain
 }
 
 export type DeploymentRecord = {
@@ -241,7 +258,7 @@ export const validateReleaseManifest = (
   if (value.stage !== 'production') {
     throw new Error('public release manifest stage must be production')
   }
-  const expectedChainId = expectedChain === 'mainnet' ? 1 : 11155111
+  const expectedChainId = PUBLIC_RELEASE_CHAIN_IDS[expectedChain]
   if (value.chain !== expectedChain || value.chainId !== expectedChainId) {
     throw new Error(
       `${expectedChain === 'sepolia' ? 'Sepolia' : 'Ethereum mainnet'} manifest must bind chain=${expectedChain} and chainId=${expectedChainId}`
