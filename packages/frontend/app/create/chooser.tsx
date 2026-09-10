@@ -24,7 +24,15 @@ const WEIGHTED_PATH_AVAILABLE = publicFactoryAvailable(WEIGHTED_FACTORY)
 const COMPOSITION_PATH_AVAILABLE = publicFactoryAvailable(
   TRUST_COMPOSE_CONFIG?.factory
 )
+/**
+ * Temporarily hidden (2026-09-10). The Sepolia indexer bounds its canonical EAS crawl to the
+ * v0.1 generation's first block (see docs/build/railway.md), so a schema preview would show
+ * almost no history and imports would miss it. Flip this back once the crawl is widened. The
+ * /create/imported route itself stays reachable for anyone who needs it meanwhile.
+ */
+const IMPORTED_PATH_HIDDEN = true
 const IMPORTED_PATH_AVAILABLE =
+  !IMPORTED_PATH_HIDDEN &&
   publicFactoryAvailable(IMPORTED_FACTORY_CONFIG?.factory) &&
   publicFactoryAvailable(IMPORTED_FACTORY_CONFIG?.governedFactory)
 
