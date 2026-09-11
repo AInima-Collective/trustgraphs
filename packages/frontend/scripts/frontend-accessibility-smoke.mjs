@@ -133,6 +133,15 @@ try {
   )
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'Restore draft', exact: true }).click()
+  // Restoring hands focus to the step heading on the next animation frame.
+  // Wait for that handoff before editing: clearing a field is an in-page
+  // focus() followed by a separate Delete keypress, and a focus move landing
+  // between the two leaves that field, and therefore the draft, intact.
+  await page.waitForFunction(
+    () =>
+      /^H[1-6]$/.test(document.activeElement?.tagName ?? '') &&
+      /what is this network/i.test(document.activeElement.textContent)
+  )
   for (const [id, value] of Object.entries(draftFields))
     assert.equal(await page.locator(`#${id}`).inputValue(), value)
   assert.equal(metadataRequestCount, 0, 'Restoring does not publish metadata')
