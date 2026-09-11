@@ -1,8 +1,8 @@
 # Production operator policy for the public Ethereum mainnet app.
-# Operator image: filled in at release time. Mainnet runs a new operator image because the
-# config loader changed (chain binding, every-guest identity check); the guests and vkeys are the
-# v0.1.1 program table, unchanged, and mainnet.json records them. Record the digest here:
-# ghcr.io/ainima-collective/trustgraphs-operator@sha256:<filled in at release time>
+# Release image v0.1.3 (release run 34542450144, commit 5902d7e): the config loader binds the
+# manifest to chain_id and pins every embedded guest; the guests and vkeys are the v0.1.1 program
+# table, unchanged, and mainnet.json records them.
+# ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092
 #
 # Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
 # operator at startup and never enter its public status response. The transaction and Succinct
@@ -55,9 +55,10 @@ groth16 = true
 timeout_s = 3600
 
 [budget]
-# Sized to the epoch: the 600k-gas submit is about $1.50 at 1 gwei and about $15 at 10 gwei.
-# Succinct cycles are priced through cents_per_billion_cycles; eth_usd books on-chain gas burn
-# into the same ledger. Replace eth_usd with the price at launch.
+# Sized to the epoch. The first submitProof of an instance measured 1,010,079 gas on the mainnet-
+# fork rehearsal (2026-09-10): about $2.50 at 1 gwei and about $25 at 10 gwei; later submits are
+# cheaper (warm slots). Succinct cycles are priced through cents_per_billion_cycles; eth_usd books
+# on-chain gas burn into the same ledger. Replace eth_usd with the price at launch.
 per_instance_usd_per_day = 5
 global_usd_per_day = 20
 global_alert_percent = 80

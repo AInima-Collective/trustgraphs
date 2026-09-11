@@ -11,8 +11,8 @@ service credential.
 
 The active Sepolia generation (release `v0.1.1`, contracts) starts at block
 11,670,854 and records release commit `6d3e272eef46ee9e06ab7caedb03fa733594c4ce`. The
-operator image comes from release `v0.1.2` (same guests and vkeys; the only change is the operator's
-Pinata publication request). The previous generation's manifest is archived as
+operator image comes from release `v0.1.3` (same guests and vkeys; the operator changes since
+v0.1.1 are the Pinata publication request and the chain-bound manifest loader). The previous generation's manifest is archived as
 [`deployments/generations/v0.1.1/previous-sepolia.json`](../../deployments/generations/v0.1.1/previous-sepolia.json);
 its addresses remain historical evidence and were not migrated.
 
