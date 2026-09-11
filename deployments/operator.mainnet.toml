@@ -55,9 +55,10 @@ groth16 = true
 timeout_s = 3600
 
 [budget]
-# Sized to the epoch: the 600k-gas submit is about $1.50 at 1 gwei and about $15 at 10 gwei.
-# Succinct cycles are priced through cents_per_billion_cycles; eth_usd books on-chain gas burn
-# into the same ledger. Replace eth_usd with the price at launch.
+# Sized to the epoch. The first submitProof of an instance measured 1,010,079 gas on the mainnet-
+# fork rehearsal (2026-09-10): about $2.50 at 1 gwei and about $25 at 10 gwei; later submits are
+# cheaper (warm slots). Succinct cycles are priced through cents_per_billion_cycles; eth_usd books
+# on-chain gas burn into the same ledger. Replace eth_usd with the price at launch.
 per_instance_usd_per_day = 5
 global_usd_per_day = 20
 global_alert_percent = 80
