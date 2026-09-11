@@ -314,9 +314,21 @@ opt-in, one-day delays).
 | `pnpm deploy:mainnet:postcheck` | 65 passed, 0 failed |
 | gas | 76,092,233 over 49 transactions |
 
-Not yet rehearsed: a governed network created through the frontend on the fork, and a real
-Groth16 proof submitted through the gateway (needs a decision to spend Succinct credit). The fork
-manifest and receipts are kept as session evidence; the tracked seed was restored to `planned`.
+Proof leg, same day, on the same fork: a trust-graph instance created through the deployed
+factory (`CreateDevInstances`), six vouches from the trusted seeds folded into the accumulator,
+checkpoint 0 frozen, the input set reconstructed and self-checked against the accumulator, the
+guest executed and byte-asserted against native (1,236,125 cycles), a Groth16 proof bought from
+the Succinct network (request `0xa93687e7…`), the score blob pinned with the proven CID, and
+`submitProof` accepted by the deployed `SP1JournalVerifier` through the real gateway: root
+`0xdea00da2…` applied, `hasAppliedCheckpoint() == true`. The first submit cost 1,010,079 gas.
+Not rehearsed: creation through the frontend (the fork's chain id is 1, which the public build
+serves only from a deployed manifest) and a governed instance; both are exercised on Sepolia
+already. The fork manifest and receipts are kept as session evidence; the tracked seed was
+restored to `planned`.
+
+Found and fixed on the way: `taskfile/instances.sh` never built the prover with the `network`
+feature, so its documented `SP1_PROVER=network` mode failed at the guest step with a bare
+"guest execute failed"; it now adds the feature and keeps the step's stderr.
 
 ## 7. Cost sketch
 
