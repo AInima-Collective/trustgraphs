@@ -82,6 +82,9 @@ export function trustgraphsProject(
     healthcheck: '/health',
     healthcheckTimeout: 600,
     replicas: { [target.region.indexer]: 1 },
+    ...(target.apiDomain === undefined
+      ? {}
+      : { domains: [{ domain: target.apiDomain, port: 65421 }] }),
     env: {
       RAILWAY_DOCKERFILE_PATH: indexerDockerfile,
       PORT: '65421',

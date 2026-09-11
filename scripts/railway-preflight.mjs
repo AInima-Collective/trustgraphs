@@ -82,7 +82,7 @@ assert.deepEqual(
       'https://sepolia.gateway.tenderly.co',
     ],
     operatorRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
-    frontendUrl: 'https://trustgraphs.xyz',
+    frontendUrl: 'https://testnet.trustgraphs.xyz',
     shared: {
       rpcPrimary: 'RPC_URL_11155111_0',
       ipfsGateway: 'IPFS_GATEWAY',
