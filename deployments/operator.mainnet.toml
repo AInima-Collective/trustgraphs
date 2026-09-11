@@ -1,8 +1,8 @@
 # Production operator policy for the public Ethereum mainnet app.
-# Operator image: filled in at release time. Mainnet runs a new operator image because the
-# config loader changed (chain binding, every-guest identity check); the guests and vkeys are the
-# v0.1.1 program table, unchanged, and mainnet.json records them. Record the digest here:
-# ghcr.io/ainima-collective/trustgraphs-operator@sha256:<filled in at release time>
+# Release image v0.1.3 (release run 34542450144, commit 5902d7e): the config loader binds the
+# manifest to chain_id and pins every embedded guest; the guests and vkeys are the v0.1.1 program
+# table, unchanged, and mainnet.json records them.
+# ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092
 #
 # Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
 # operator at startup and never enter its public status response. The transaction and Succinct

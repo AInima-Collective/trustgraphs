@@ -330,6 +330,15 @@ Found and fixed on the way: `taskfile/instances.sh` never built the prover with 
 feature, so its documented `SP1_PROVER=network` mode failed at the guest step with a bare
 "guest execute failed"; it now adds the feature and keeps the step's stderr.
 
+## 6c. Phase 4 status (2026-09-10): release v0.1.3
+
+Tagged on the merge commit of the phase-2 work (`5902d7e`); release run 34542450144 passed every
+gate (two cold guest builds agreeing, Solidity, Rust, the seven parity jobs, the real-proof jobs,
+image publication and the anonymous re-derivation of the embedded vkeys). The published program
+table is byte-identical to v0.1.1 and to `deployments/mainnet.json`. The multi-arch operator image
+is `ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092`, attested; both chains' Railway operator
+services build from that one digest.
+
 ## 7. Cost sketch
 
 | Item | Estimate |

@@ -8,7 +8,7 @@
 # service variable of that name as a build argument. The profile's `release_manifest` is a path
 # relative to the config file (zk/operator/src/config.rs, `Config::load`), so the manifest is
 # copied beside it under its own name and `release_manifest = "<target>.json"` resolves.
-FROM ghcr.io/ainima-collective/trustgraphs-operator@sha256:d37fad30f3007a1f0f515ffec1f8a1542248296d71b796705146f086e94f22e6
+FROM ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092
 
 ARG DEPLOY_TARGET=sepolia
 COPY --chown=10001:10001 deployments/operator.${DEPLOY_TARGET}.toml /etc/trustgraph/operator.toml
