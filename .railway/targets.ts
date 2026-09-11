@@ -40,7 +40,13 @@ export interface RailwayTarget {
   rpcFallbacks: readonly string[]
   // RPC_URL for the operator. See the eth_getLogs note on that variable in lib/project.ts.
   operatorRpcUrl: string
+  // The public frontend origin: what the indexer pings for cache revalidation.
   frontendUrl: string
+  // The indexer's custom domain (the frontend's PONDER_URL), so it stops depending on a generated
+  // Railway hostname. Railway IaC cannot register a custom domain: add it on the indexer service in
+  // the dashboard, point the DNS record at the target Railway shows, then record it here so the
+  // plan stays a no-op. Absent until that has happened.
+  apiDomain?: string
   // Names of the Railway shared variables the row reads. The values live only in Railway, sealed.
   shared: {
     rpcPrimary: string
@@ -124,8 +130,9 @@ const sepolia: RailwayTarget = {
     'https://sepolia.gateway.tenderly.co',
   ],
   operatorRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
-  // Stays on the apex until the testnet move flips it to https://testnet.trustgraphs.xyz.
-  frontendUrl: 'https://trustgraphs.xyz',
+  // The testnet move (2026-09-10): the Sepolia app lives on the testnet subdomain.
+  frontendUrl: 'https://testnet.trustgraphs.xyz',
+  // apiDomain: 'api.testnet.trustgraphs.xyz' once registered in the dashboard (testnet move, step 6).
   shared: {
     rpcPrimary: 'RPC_URL_11155111_0',
     ipfsGateway: 'IPFS_GATEWAY',
@@ -167,6 +174,7 @@ const mainnet: RailwayTarget = {
   // operator's registry scan can never fit, and publicnode answers the full-range scan.
   operatorRpcUrl: 'https://ethereum-rpc.publicnode.com',
   frontendUrl: 'https://trustgraphs.xyz',
+  // apiDomain: 'api.trustgraphs.xyz' once registered in the dashboard (phase 7).
   shared: {
     rpcPrimary: 'RPC_URL_1_0',
     ipfsGateway: 'IPFS_GATEWAY',

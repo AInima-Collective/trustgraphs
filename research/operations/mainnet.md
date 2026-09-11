@@ -339,6 +339,69 @@ table is byte-identical to v0.1.1 and to `deployments/mainnet.json`. The multi-a
 is `ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092`, attested; both chains' Railway operator
 services build from that one digest.
 
+## 6d. Phase 5 runbook: the testnet move (decisions taken 2026-09-10)
+
+Shape: the existing Vercel project (root directory `packages/frontend`, files outside the root
+included) becomes the testnet project; a fresh Vercel project takes `trustgraphs.xyz` at cutover.
+This avoids re-entering the Sepolia secrets. Until cutover the existing project serves both the
+apex and `testnet.trustgraphs.xyz`.
+
+### You, in Vercel (existing project)
+
+1. Rename the project to `trustgraphs-testnet` (Settings, General). Cosmetic.
+2. Environment variables, Production scope. Add or change exactly these; leave the rest as they are:
+
+   | Variable | Value |
+   | --- | --- |
+   | `FRONTEND_URL` | `https://testnet.trustgraphs.xyz` (new; public builds now refuse to build without it) |
+   | `IPFS_PIN_ALLOWED_ORIGINS` | `https://trustgraphs.xyz` (keeps the apex allowed for the pin route until cutover; remove at cutover) |
+   | `FEATURED_NETWORK_ID` | `0xe4470bdbbd69691686ecd6dec72fdf5c8caea136bf18f0a0214b6cf93c491ee3` if not already set |
+   | `PONDER_URL` | stays `https://indexer-production-97a3.up.railway.app` for now; becomes `https://api.testnet.trustgraphs.xyz` once step 6 verifies |
+
+   Sanity-check the rest exists: `DEPLOY_STAGE=production`, `DEPLOY_TARGET=sepolia`,
+   `RPC_URL_11155111_0`, `RPC_URL_11155111_1` (two providers), `RPC_URL_1` (ENS reads),
+   `IPFS_GATEWAY_PUBLIC` ending in `/ipfs/`, `IPFS_PIN_API_KEY`.
+3. Domains: add `testnet.trustgraphs.xyz`. Vercel shows the record to create (a CNAME to
+   `cname.vercel-dns.com`, or an A record if it prefers). Keep `trustgraphs.xyz` and `www` on this
+   project until cutover.
+
+### You, at GoDaddy
+
+4. Add the record Vercel asked for: `testnet` CNAME `cname.vercel-dns.com` (TTL 600). Leave the
+   apex A record and the `www` CNAME alone.
+5. Later, for the API domain (step 6): `api.testnet` CNAME to the target Railway shows.
+
+### Railway (after step 4 resolves)
+
+6. Custom domains cannot be registered from the IaC file, so: in the Railway dashboard, project
+   `trustgraphs-sepolia`, service `indexer`, Settings, Networking, add the custom domain
+   `api.testnet.trustgraphs.xyz` on port 65421. Railway shows the CNAME target; add it at GoDaddy
+   (step 5). Once Railway marks it verified, tell me: I record it in `.railway/targets.ts` so the
+   plan stays a no-op, apply the `FRONTEND_URL` flip to `https://testnet.trustgraphs.xyz` (it
+   only drives cache revalidation pings), and confirm `/ready` on the new hostname.
+7. Redeploy the testnet Vercel project (a no-op commit or "Redeploy" in the dashboard) so the
+   build picks up `FRONTEND_URL`, then:
+
+   ```bash
+   FRONTEND_URL=https://testnet.trustgraphs.xyz pnpm --filter trustgraphs-frontend smoke:public
+   ```
+
+   Expected: the standard, weighted and composition creation entries are present, the `testnet`
+   chip shows beside `alpha`, and the sitemap and robots point at the testnet host.
+
+### You, for mainnet (can happen in parallel)
+
+8. Create the admin Safe on Ethereum mainnet in the Safe app (app.safe.global, network Ethereum)
+   with the signers and threshold you want, then give me its address. I verify on-chain that it is
+   a Safe proxy at the canonical 1.3.0 or 1.4.1 singleton before it goes into `.env.mainnet`.
+9. Create a mainnet app on the existing Alchemy account. Its URL becomes `RPC_URL_1_0` on the
+   Railway mainnet project (shared, sealed) and `RPC_URL_1_0` on the mainnet Vercel project; the
+   independent second upstream for the frontend (`RPC_URL_1_1`) can be `https://ethereum-rpc.publicnode.com`.
+10. Generate three fresh keys and fund two: the deployer (about 1.2 ETH covers three times the
+    80M-gas budget at 5 gwei; anything unspent comes back to you) and the submitter (0.1 ETH is
+    plenty to start); the Succinct requester key needs PROVE credit on the Succinct network. Keep
+    all three off any machine the Sepolia keys touched.
+
 ## 7. Cost sketch
 
 | Item | Estimate |
