@@ -9,12 +9,17 @@
 
 | Surface            | Testnet (Sepolia, 11155111)                | Mainnet (1)                                   |
 | ------------------ | ------------------------------------------ | --------------------------------------------- |
-| Frontend           | `testnet.trustgraphs.xyz` on Vercel        | `trustgraphs.xyz` on Vercel                   |
+| Frontend           | local run only (`DEPLOY_TARGET=sepolia`)   | `trustgraphs.xyz` on Vercel                   |
 | Indexer + operator | Railway project `trustgraphs-sepolia`      | Railway project `trustgraphs-mainnet`         |
-| Public API         | `api.testnet.trustgraphs.xyz` (indexer)    | `api.trustgraphs.xyz` (indexer)               |
+| Public API         | generated Railway hostname (indexer)       | `api.trustgraphs.xyz` (indexer)               |
 | Contracts          | `deployments/sepolia.json` (live, v0.1.1)  | `deployments/mainnet.json` (new)              |
 | Programs           | everything the release carries             | trust-graph, weighted, composition, contributions, signer-sync; governance and subnetworks |
 | Not on mainnet     |                                            | hypercerts, Nostr workspace, strict off-chain EAS lane, imported-EAS factories, sponsored relay |
+
+> **Scope change 2026-09-14 (D7).** There is no public testnet host. Sepolia is exercised by running
+> the frontend locally against the Sepolia Railway indexer, the existing Vercel project is repointed
+> to mainnet in place at cutover, and the Sepolia Railway project is kept through the mainnet launch
+> and then decommissioned. Phase 5 is gone; section 6d records what it replaced.
 
 Both deployments come from the same release artifacts. Mainnet deploys the guest set already
 proven on Sepolia (release `v0.1.1` guests, identical vkeys in `v0.1.2`), so no guest changes and
@@ -27,7 +32,7 @@ today spells "sepolia" where it should read the selected target.
 network, Railway project `reasonable-purpose` in Jake's personal workspace (Postgres in us-west2,
 indexer in us-west2, operator plus its journal volume in us-east4), the indexer at
 `indexer-production-97a3.up.railway.app` and `/ready` returning 200. The Vercel frontend serving
-Sepolia is what `trustgraphs.xyz` resolves to now. `testnet.trustgraphs.xyz` has no DNS record.
+Sepolia is what `trustgraphs.xyz` resolves to now.
 DNS for the zone is at GoDaddy, with A/CNAME records pointing at Vercel.
 
 **Mainnet is fenced off deliberately, in four places, each small:**
@@ -176,9 +181,9 @@ Mainnet-specific choices:
   first deploy, as on Sepolia.
 - **Region.** Everything in one region (us-west2). The Sepolia split is a historical accident the
   IaC comments already describe.
-- **Domains.** Custom domains on the indexer services (`api.trustgraphs.xyz`,
-  `api.testnet.trustgraphs.xyz`) so the frontends' `PONDER_URL` stops depending on a generated
-  Railway hostname.
+- **Domains.** A custom domain on the mainnet indexer (`api.trustgraphs.xyz`) so the frontend's
+  `PONDER_URL` stops depending on a generated Railway hostname. The Sepolia indexer keeps its
+  generated hostname (D7).
 - **Workspace and spend.** Railway usage limits are workspace-wide. A testnet overrun tripping a
   hard limit would also stop the mainnet operator. Section 5 asks where mainnet should live.
 - **Postgres** stays a rebuildable store (chain plus IPFS gateway are the sources of truth). The
@@ -186,19 +191,20 @@ Mainnet-specific choices:
 
 ### 4.5 Frontend and Vercel
 
-Two Vercel projects from the same repository and the same root directory, differing only in
-environment variables. `DEPLOY_TARGET` is the whole switch; with `VERCEL=1` the generator reads
-process env and needs no `.env.<target>` file.
+One Vercel project (root directory `packages/frontend`), repointed from Sepolia to mainnet at
+cutover by changing its production environment (D7). `DEPLOY_TARGET` is the whole switch; with
+`VERCEL=1` the generator reads process env and needs no `.env.<target>` file. The Sepolia column
+below is the project as it runs today and, after cutover, the local `.env.local` for testnet runs.
 
-| Variable | testnet project | mainnet project |
+| Variable | Sepolia (today / local) | mainnet (after cutover) |
 | --- | --- | --- |
 | `DEPLOY_STAGE` / `DEPLOY_TARGET` | `production` / `sepolia` | `production` / `mainnet` |
 | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | two independent Sepolia upstreams | not set |
 | `RPC_URL_1` | mainnet upstream, ENS reads only | not needed (app chain is the ENS chain) |
 | `RPC_URL_1_0`, `RPC_URL_1_1` | not set | two independent mainnet upstreams |
-| `PONDER_URL` | `https://api.testnet.trustgraphs.xyz` | `https://api.trustgraphs.xyz` |
+| `PONDER_URL` | `https://indexer-production-97a3.up.railway.app` | `https://api.trustgraphs.xyz` |
 | `IPFS_GATEWAY_PUBLIC` | gateway ending in `/ipfs/` | same or separate |
-| `FRONTEND_URL` | `https://testnet.trustgraphs.xyz` | `https://trustgraphs.xyz` |
+| `FRONTEND_URL` | `https://trustgraphs.xyz` today; `http://127.0.0.1:3000` locally | `https://trustgraphs.xyz` |
 | `IPFS_PIN_API_KEY`, quotas | Pinata token | Pinata token (separate key) |
 | `FEATURED_NETWORK_ID` | Sepolia showcase instance id | mainnet showcase instance id, set after creation |
 | `NEXT_PUBLIC_EAS_RELAY_ENABLED` | as today | unset (off) |
@@ -237,11 +243,11 @@ relay and the relay/gateway lists are env flags left unset on mainnet.
 | D4 | **Hosting accounts.** Mainnet Railway project in the personal workspace or a new AInima team workspace; Vercel team for the two projects. | **Decided 2026-09-10: both Railway projects stay in the personal workspace; the Vercel projects stay where the current one is.** Consequence: set the workspace usage alert and hard limit for the combined spend of both projects, and treat a hard-limit shutdown as a mainnet incident, since it stops the mainnet operator too. | Usage hard limits are workspace-wide. |
 | D5 | **Second IPFS publication target** for the operator (`min_success = 2`). | Yes: Pinata plus one independently operated pinning service or a kubo node. | The production guide requires two independent targets before relying on a root; Sepolia runs one by recorded exception. |
 | D6 | **Keys.** Deployer (hot, funded, renounces at the end), submitter (gas only, rotatable), Succinct requester (`NETWORK_PRIVATE_KEY`, PROVE credit), and the admin Safe signers. | Four distinct keys; none reused from Sepolia. | The Succinct key lives in the operator container. |
+| D7 | **Public testnet host.** Whether Sepolia gets its own public frontend (`testnet.trustgraphs.xyz`) and API domain. | **Decided 2026-09-14: no.** The Vercel account is on the Hobby plan and a second public site is not worth its upkeep; Sepolia is tested by running the frontend locally with `DEPLOY_TARGET=sepolia` against the Sepolia Railway indexer's generated hostname. The existing Vercel project is repointed to mainnet in place at cutover (one project, one domain). The Sepolia Railway project stays up through the mainnet launch as the rehearsal environment and is decommissioned afterwards. | Removes phase 5 (Vercel domain, two GoDaddy records, a Railway custom domain, a second Vercel project) and reduces the cutover to an environment change plus a redeploy. |
 
 Open questions that are not blocking: whether `OPERATOR_STATUS_URL` should be wired (the operator is
 on Railway private networking, so the frontend on Vercel cannot reach it; Sepolia leaves it off and
-the route reports `available: false`), and whether Plausible should track the testnet host as a
-separate site.
+the route reports `available: false`).
 
 ## 6. Sequence
 
@@ -261,11 +267,10 @@ Each phase has a gate. Nothing in a later phase starts until the gate holds.
 4. **Release `v0.1.3`.** Tag the merged branch; the release workflow rebuilds guests (program
    table must equal `v0.1.1`), publishes the operator image and `guest-manifest.json`.
    `DEPLOYMENT_COMMIT` is that SHA. Gate: guest table unchanged, image verified by the workflow.
-5. **Testnet move.** Create the second Vercel project (or repoint the existing one), add
-   `testnet.trustgraphs.xyz` and `api.testnet.trustgraphs.xyz` records at GoDaddy, set the Sepolia
-   `FRONTEND_URL`, pin origins and Plausible to the testnet host, redeploy the Sepolia indexer with
-   the new `FRONTEND_URL`. Gate: `smoke:public` passes on `testnet.trustgraphs.xyz`;
-   `trustgraphs.xyz` is free to move.
+5. **Testnet move.** Removed on 2026-09-14 (D7). The only surviving piece is rolling the Sepolia
+   operator onto the `v0.1.3` image (a manual "Deploy" of the latest `main` commit in the Railway
+   dashboard) so the release image runs in production before mainnet does. Gate: the Sepolia
+   operator reports healthy on `v0.1.3`.
 6. **Mainnet contracts.** Fund the deployer (preflight requires three times the gas budget at the
    current base fee), `deploy:mainnet:preflight`, broadcast from a clean checkout of the tag,
    then the admin Safe executes: four `REGISTRAR_ROLE` grants, vault admin and fee-setter
@@ -278,8 +283,15 @@ Each phase has a gate. Nothing in a later phase starts until the gate holds.
    instance in the manifest, restart the operator, watch the first checkpoint, proof, submission
    and published score blob, and verify the root on-chain. Gate: first real root accepted;
    restart drill from `docs/build/railway.md` section 7 passes.
-8. **Cutover.** Point `trustgraphs.xyz` at the mainnet Vercel project, set `FEATURED_NETWORK_ID`,
-   `smoke:public` against production, one-week soak with daily log and budget review.
+8. **Cutover.** Repoint the existing Vercel project to mainnet in place: change its production
+   environment to the mainnet column of section 4.5 (`DEPLOY_TARGET=mainnet`, `RPC_URL_1_0/1`,
+   `PONDER_URL`, `FEATURED_NETWORK_ID`, `IPFS_PIN_ALLOWED_ORIGINS` unset, the Sepolia upstreams
+   removed), redeploy, `smoke:public` against `https://trustgraphs.xyz`. The Sepolia indexer's
+   `FRONTEND_URL` (its revalidation-ping target) then points at the mainnet app, which ignores
+   unknown network ids; leave it until step 9. One-week soak with daily log and budget review.
+9. **Decommission Sepolia.** After the soak: delete the Sepolia Railway project (Postgres, indexer,
+   operator and its journal volume) and remove its row from `.railway/targets.ts` and the preflight
+   fixture. Local testnet runs need a local Ponder from then on.
 
 ## 6a. Phase 2 status (2026-09-10)
 
@@ -295,7 +307,7 @@ Implemented on branch `feat/mainnet-profile`, uncommitted at the time of writing
 | Railway (project-name switch, `targets.ts`, shared builder) | `pnpm railway:check` passes; `railway config plan` against the live Sepolia project: already up to date |
 
 The Railway dashboard rename to `trustgraphs-sepolia` was done on 2026-09-10 and the alias
-removed. Still outside the branch: the second Vercel project, DNS records, and every secret.
+removed. Still outside the branch: the Vercel environment and every secret.
 
 ## 6b. Phase 3 status (2026-09-10): contracts leg rehearsed on a mainnet fork
 
@@ -339,55 +351,14 @@ table is byte-identical to v0.1.1 and to `deployments/mainnet.json`. The multi-a
 is `ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092`, attested; both chains' Railway operator
 services build from that one digest.
 
-## 6d. Phase 5 runbook: the testnet move (decisions taken 2026-09-10)
+## 6d. Phase 5 runbook (superseded 2026-09-14)
 
-Shape: the existing Vercel project (root directory `packages/frontend`, files outside the root
-included) becomes the testnet project; a fresh Vercel project takes `trustgraphs.xyz` at cutover.
-This avoids re-entering the Sepolia secrets. Until cutover the existing project serves both the
-apex and `testnet.trustgraphs.xyz`.
-
-### You, in Vercel (existing project)
-
-1. Rename the project to `trustgraphs-testnet` (Settings, General). Cosmetic.
-2. Environment variables, Production scope. Add or change exactly these; leave the rest as they are:
-
-   | Variable | Value |
-   | --- | --- |
-   | `FRONTEND_URL` | `https://testnet.trustgraphs.xyz` (new; public builds now refuse to build without it) |
-   | `IPFS_PIN_ALLOWED_ORIGINS` | `https://trustgraphs.xyz` (keeps the apex allowed for the pin route until cutover; remove at cutover) |
-   | `FEATURED_NETWORK_ID` | `0xe4470bdbbd69691686ecd6dec72fdf5c8caea136bf18f0a0214b6cf93c491ee3` if not already set |
-   | `PONDER_URL` | stays `https://indexer-production-97a3.up.railway.app` for now; becomes `https://api.testnet.trustgraphs.xyz` once step 6 verifies |
-
-   Sanity-check the rest exists: `DEPLOY_STAGE=production`, `DEPLOY_TARGET=sepolia`,
-   `RPC_URL_11155111_0`, `RPC_URL_11155111_1` (two providers), `RPC_URL_1` (ENS reads),
-   `IPFS_GATEWAY_PUBLIC` ending in `/ipfs/`, `IPFS_PIN_API_KEY`.
-3. Domains: add `testnet.trustgraphs.xyz`. Vercel shows the record to create (a CNAME to
-   `cname.vercel-dns.com`, or an A record if it prefers). Keep `trustgraphs.xyz` and `www` on this
-   project until cutover.
-
-### You, at GoDaddy
-
-4. Add the record Vercel asked for: `testnet` CNAME `cname.vercel-dns.com` (TTL 600). Leave the
-   apex A record and the `www` CNAME alone.
-5. Later, for the API domain (step 6): `api.testnet` CNAME to the target Railway shows.
-
-### Railway (after step 4 resolves)
-
-6. Custom domains cannot be registered from the IaC file, so: in the Railway dashboard, project
-   `trustgraphs-sepolia`, service `indexer`, Settings, Networking, add the custom domain
-   `api.testnet.trustgraphs.xyz` on port 65421. Railway shows the CNAME target; add it at GoDaddy
-   (step 5). Once Railway marks it verified, tell me: I record it in `.railway/targets.ts` so the
-   plan stays a no-op, apply the `FRONTEND_URL` flip to `https://testnet.trustgraphs.xyz` (it
-   only drives cache revalidation pings), and confirm `/ready` on the new hostname.
-7. Redeploy the testnet Vercel project (a no-op commit or "Redeploy" in the dashboard) so the
-   build picks up `FRONTEND_URL`, then:
-
-   ```bash
-   FRONTEND_URL=https://testnet.trustgraphs.xyz pnpm --filter trustgraphs-frontend smoke:public
-   ```
-
-   Expected: the standard, weighted and composition creation entries are present, the `testnet`
-   chip shows beside `alpha`, and the sitemap and robots point at the testnet host.
+The testnet-move runbook that lived here (rename the Vercel project, add `testnet.trustgraphs.xyz`
+and `api.testnet.trustgraphs.xyz`, a GoDaddy CNAME each, a Railway custom domain on the Sepolia
+indexer, then `smoke:public` on the testnet host) was dropped under D7 before any of it was
+executed: no Vercel domain, DNS record or Railway domain was created. Its history is in git.
+What remains of phase 5 is the one-click `v0.1.3` roll of the Sepolia operator (section 6, step 5).
+The mainnet inputs below are unchanged.
 
 ### You, for mainnet (can happen in parallel)
 
@@ -411,6 +382,8 @@ apex and `testnet.trustgraphs.xyz`.
 | Each root update | about 0.6 M gas plus Succinct proving (cents to low dollars for a small graph) |
 | Railway mainnet project (Postgres, indexer 1 GB, operator 2 GB) | roughly $20 to $40 per month at the reviewed ceilings |
 | Metered mainnet RPC | one paid plan for the indexer primary and the two frontend upstreams |
+| Vercel | Hobby plan, one project (D7); its terms restrict commercial use, to be revisited if the site's use changes |
+| Railway Sepolia project until decommissioned (step 9) | roughly $20 to $40 per month, ending after the mainnet soak |
 
 ## 8. Ownership of secrets after launch
 

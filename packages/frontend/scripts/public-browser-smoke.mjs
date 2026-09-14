@@ -8,8 +8,8 @@ import { chromium } from 'playwright'
 /**
  * Browser smoke for a public deployment, testnet or mainnet.
  *
- * ONE SCRIPT FOR BOTH SITES. The same application is served at
- * testnet.trustgraphs.xyz and trustgraphs.xyz, so the site under test is
+ * ONE SCRIPT FOR EVERY TARGET. The same application is built for mainnet
+ * (trustgraphs.xyz) and for Sepolia (run locally), so the site under test is
  * `FRONTEND_URL` and the chain is whatever the generated `config.json` says
  * the checkout was built for: `chain` names a target in
  * `lib/application-targets.json`, and that chain id is the read proxy's path

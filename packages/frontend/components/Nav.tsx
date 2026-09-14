@@ -34,14 +34,14 @@ import { ThemeToggle } from './ThemeToggle'
  * collapses to an icon, which is what buys the tag its room at 320px: brand
  * cluster about 176px, controls 92px, against a 304px row.
  *
- * THE TESTNET TAG IS A SECOND STAMP, ON ONE DEPLOYMENT ONLY. The same app is
- * served at testnet.trustgraphs.xyz and trustgraphs.xyz, and the alpha tag is
- * true of both: it is a statement about the software. "testnet" is a statement
- * about the chain, so it is gated on the build's target and appears only on
- * the Sepolia site; mainnet gets no chip, because "mainnet" is the default a
- * visitor assumes. It is the same stamp as the alpha tag, drawn the same way,
- * and it carries the full environment label as its title. On the testnet site
- * it costs about 60px of the 320px row, which the wordmark yields by
+ * THE TESTNET TAG IS A SECOND STAMP, ON ONE BUILD ONLY. The same app is built
+ * for mainnet (trustgraphs.xyz) and for Sepolia (run locally), and the alpha
+ * tag is true of both: it is a statement about the software. "testnet" is a
+ * statement about the chain, so it is gated on the build's target and appears
+ * only on Sepolia builds; mainnet gets no chip, because "mainnet" is the
+ * default a visitor assumes. It is the same stamp as the alpha tag, drawn the
+ * same way, and it carries the full environment label as its title. On a
+ * Sepolia build it costs about 60px of the 320px row, which the wordmark yields by
  * truncating; the chain a visitor is about to transact on outranks the last
  * three letters of the name.
  *

@@ -5,7 +5,7 @@ described by the same authoring file:
 
 | Project               | Chain                | Git branch | Regions                                                             | `FRONTEND_URL`                                                                              |
 | --------------------- | -------------------- | ---------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `trustgraphs-sepolia` | Sepolia (11155111)   | `main`     | Postgres `us-west2`; operator volume and indexer replica `us-east4` | `https://trustgraphs.xyz` (becomes `https://testnet.trustgraphs.xyz` with the testnet move) |
+| `trustgraphs-sepolia` | Sepolia (11155111)   | `main`     | Postgres `us-west2`; operator volume and indexer replica `us-east4` | `https://trustgraphs.xyz` (Sepolia has no public host of its own; see the note below)         |
 | `trustgraphs-mainnet` | Ethereum mainnet (1) | `mainnet`  | everything `us-west2`                                               | `https://trustgraphs.xyz`                                                                   |
 
 Each project runs the same four resources:
@@ -270,8 +270,10 @@ The process listens on `PORT=65421`, and Railway's deployment health check calls
 Ponder's `/ready` intentionally returns 503 until historical indexing completes, which can take
 longer than Railway's deploy window on the minimum CPU. Record the resulting origin, without a
 trailing `/sql`, as `PONDER_URL` for that chain's frontend build; the frontend client appends
-`/sql` itself. Custom API domains (`api.trustgraphs.xyz`, `api.testnet.trustgraphs.xyz`) are
-planned but not yet part of the IaC.
+`/sql` itself. A custom API domain for mainnet (`api.trustgraphs.xyz`) is planned but not yet part
+of the IaC; the Sepolia indexer keeps its generated hostname, since the Sepolia frontend is only
+run locally (`DEPLOY_TARGET=sepolia` with `PONDER_URL` set to that hostname) and the project is
+decommissioned after the mainnet launch.
 
 The operator stays on Railway private networking. Railway only uses configured
 [deployment health checks](https://docs.railway.com/deployments/healthchecks) while bringing a

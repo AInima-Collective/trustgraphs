@@ -59,8 +59,8 @@ export const VISIBLE_HYPERCERTS_NETWORKS = HYPERCERTS_NETWORKS.filter(
 
 export const CHAIN = CONFIG.chain
 // The canonical site origin: `FRONTEND_URL` at generation time (`scripts/generate-config.ts`).
-// The same app serves testnet.trustgraphs.xyz and trustgraphs.xyz, so every place that names the
-// site (metadataBase and OpenGraph, the sitemap and robots, WalletConnect metadata, analytics)
+// The same app is built for mainnet (trustgraphs.xyz) and Sepolia (run locally), so every place
+// that names the site (metadataBase and OpenGraph, the sitemap and robots, WalletConnect metadata, analytics)
 // reads it from here rather than spelling out a host. Public generation fails closed without it;
 // the fallback only covers a development config generated before the field existed.
 const configuredSiteUrl = (CONFIG as { siteUrl?: string }).siteUrl
