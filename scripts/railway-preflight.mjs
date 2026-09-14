@@ -81,7 +81,7 @@ assert.deepEqual(
       'https://ethereum-sepolia-rpc.publicnode.com',
       'https://sepolia.gateway.tenderly.co',
     ],
-    operatorRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    operatorRpcUrl: 'https://sepolia.gateway.tenderly.co',
     frontendUrl: 'https://trustgraphs.xyz',
     shared: {
       rpcPrimary: 'RPC_URL_11155111_0',
@@ -115,7 +115,7 @@ assert.deepEqual(
       'https://ethereum-rpc.publicnode.com',
       'https://mainnet.gateway.tenderly.co',
     ],
-    operatorRpcUrl: 'https://ethereum-rpc.publicnode.com',
+    operatorRpcUrl: 'https://mainnet.gateway.tenderly.co',
     frontendUrl: 'https://trustgraphs.xyz',
     shared: {
       rpcPrimary: 'RPC_URL_1_0',

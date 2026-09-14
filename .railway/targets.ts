@@ -129,7 +129,8 @@ const sepolia: RailwayTarget = {
     'https://ethereum-sepolia-rpc.publicnode.com',
     'https://sepolia.gateway.tenderly.co',
   ],
-  operatorRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+  // Tenderly, not publicnode: see the eth_getLogs note on RPC_URL in lib/project.ts (2026-09-14).
+  operatorRpcUrl: 'https://sepolia.gateway.tenderly.co',
   // Decision 2026-09-14: Sepolia has no public frontend of its own (the testnet host planned on
   // 2026-09-10 was dropped to keep the Vercel footprint at one project). The apex serves the
   // Sepolia build until the mainnet cutover, so this is the live value; after cutover the pings
@@ -173,9 +174,9 @@ const mainnet: RailwayTarget = {
     'https://ethereum-rpc.publicnode.com',
     'https://mainnet.gateway.tenderly.co',
   ],
-  // Same reasoning as Sepolia: the metered primary caps eth_getLogs at a 10-block range that the
-  // operator's registry scan can never fit, and publicnode answers the full-range scan.
-  operatorRpcUrl: 'https://ethereum-rpc.publicnode.com',
+  // Same reasoning as Sepolia: Tenderly's gateway answered every sampled log query consistently
+  // (including 2,000-block windows); publicnode, drpc and Cloudflare did not. See lib/project.ts.
+  operatorRpcUrl: 'https://mainnet.gateway.tenderly.co',
   frontendUrl: 'https://trustgraphs.xyz',
   // apiDomain: 'api.trustgraphs.xyz' once registered in the dashboard (phase 7).
   shared: {

@@ -138,10 +138,15 @@ export function trustgraphsProject(
       // declared non-root UID otherwise cannot write their attached volume.
       RAILWAY_RUN_UID: '0',
       PORT: '8080',
-      // NOT the shared Alchemy RPC: its free tier caps eth_getLogs at a 10-block range, and the
-      // operator's registry scan (hardcoded 10k-block chunks in zk/operator/src/chain.rs) can
-      // never fit. The indexer survives that cap only because Ponder chunks to 10 blocks.
-      // Publicnode answers the full-range scan; swap in a paid endpoint here when one exists.
+      // The operator's registry and checkpoint scans are eth_getLogs over 10k-block chunks
+      // (zk/operator/src/chain.rs), and eth_getLogs has no "I don't know" answer: a provider whose
+      // backend lacks the log index for a range answers `[]`. Measured 2026-09-14 against the
+      // operator's exact registry query: publicnode answered empty on 9 of 12 samples, then 10 of
+      // 10 (which left the Sepolia showcase instance skipped until a restart, see #152); Tenderly
+      // and the metered Alchemy primary answered correctly 10 of 10, and Tenderly also served
+      // 2,000-block windows on mainnet consistently. Tenderly keeps the operator's calls off the
+      // metered quota. (An older note here said Alchemy capped eth_getLogs at 10 blocks; the
+      // 10k-block chunk was answered fine on 2026-09-14.)
       RPC_URL: target.operatorRpcUrl,
       SUBMITTER_PRIVATE_KEY: ctx.shared[target.shared.submitterPrivateKey],
       NETWORK_PRIVATE_KEY: ctx.shared[target.shared.networkPrivateKey],
