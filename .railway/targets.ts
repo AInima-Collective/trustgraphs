@@ -38,8 +38,6 @@ export interface RailwayTarget {
   // Public fallbacks appended after the metered primary in PONDER_RPC_URLS_<chainId>. Each must be
   // on a host independent of the primary's; the indexer launcher refuses to start otherwise.
   rpcFallbacks: readonly string[]
-  // RPC_URL for the operator. See the eth_getLogs note on that variable in lib/project.ts.
-  operatorRpcUrl: string
   // The public frontend origin: what the indexer pings for cache revalidation.
   frontendUrl: string
   // The indexer's custom domain (the frontend's PONDER_URL), so it stops depending on a generated
@@ -129,8 +127,6 @@ const sepolia: RailwayTarget = {
     'https://ethereum-sepolia-rpc.publicnode.com',
     'https://sepolia.gateway.tenderly.co',
   ],
-  // Tenderly, not publicnode: see the eth_getLogs note on RPC_URL in lib/project.ts (2026-09-14).
-  operatorRpcUrl: 'https://sepolia.gateway.tenderly.co',
   // Decision 2026-09-14: Sepolia has no public frontend of its own (the testnet host planned on
   // 2026-09-10 was dropped to keep the Vercel footprint at one project). The apex serves the
   // Sepolia build until the mainnet cutover, so this is the live value; after cutover the pings
@@ -174,9 +170,6 @@ const mainnet: RailwayTarget = {
     'https://ethereum-rpc.publicnode.com',
     'https://mainnet.gateway.tenderly.co',
   ],
-  // Same reasoning as Sepolia: Tenderly's gateway answered every sampled log query consistently
-  // (including 2,000-block windows); publicnode, drpc and Cloudflare did not. See lib/project.ts.
-  operatorRpcUrl: 'https://mainnet.gateway.tenderly.co',
   frontendUrl: 'https://trustgraphs.xyz',
   // apiDomain: 'api.trustgraphs.xyz' once registered in the dashboard (phase 7).
   shared: {

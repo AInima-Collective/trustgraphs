@@ -142,12 +142,14 @@ export function trustgraphsProject(
       // (zk/operator/src/chain.rs), and eth_getLogs has no "I don't know" answer: a provider whose
       // backend lacks the log index for a range answers `[]`. Measured 2026-09-14 against the
       // operator's exact registry query: publicnode answered empty on 9 of 12 samples, then 10 of
-      // 10 (which left the Sepolia showcase instance skipped until a restart, see #152); Tenderly
-      // and the metered Alchemy primary answered correctly 10 of 10, and Tenderly also served
-      // 2,000-block windows on mainnet consistently. Tenderly keeps the operator's calls off the
-      // metered quota. (An older note here said Alchemy capped eth_getLogs at 10 blocks; the
+      // 10 (which left the Sepolia showcase instance skipped until a restart, see #152); the
+      // metered primary answered correctly 10 of 10. Tenderly's keyless gateway also answered
+      // correctly but rate-limits even single calls once the operator is running (every tick
+      // failed with -32005 within minutes), so the operator shares the indexer's metered primary.
+      // Its calls are sequential (one blocking client) and a few dozen per minute, well inside
+      // the plan. (An older note here said the primary capped eth_getLogs at 10 blocks; a
       // 10k-block chunk was answered fine on 2026-09-14.)
-      RPC_URL: target.operatorRpcUrl,
+      RPC_URL: ctx.shared[target.shared.rpcPrimary],
       SUBMITTER_PRIVATE_KEY: ctx.shared[target.shared.submitterPrivateKey],
       NETWORK_PRIVATE_KEY: ctx.shared[target.shared.networkPrivateKey],
       IPFS_PIN_API: 'https://uploads.pinata.cloud/v3/files',

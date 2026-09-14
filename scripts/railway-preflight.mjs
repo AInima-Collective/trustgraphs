@@ -81,7 +81,6 @@ assert.deepEqual(
       'https://ethereum-sepolia-rpc.publicnode.com',
       'https://sepolia.gateway.tenderly.co',
     ],
-    operatorRpcUrl: 'https://sepolia.gateway.tenderly.co',
     frontendUrl: 'https://trustgraphs.xyz',
     shared: {
       rpcPrimary: 'RPC_URL_11155111_0',
@@ -115,7 +114,6 @@ assert.deepEqual(
       'https://ethereum-rpc.publicnode.com',
       'https://mainnet.gateway.tenderly.co',
     ],
-    operatorRpcUrl: 'https://mainnet.gateway.tenderly.co',
     frontendUrl: 'https://trustgraphs.xyz',
     shared: {
       rpcPrimary: 'RPC_URL_1_0',
@@ -187,7 +185,6 @@ for (const row of [sepoliaRow, mainnetRow]) {
       `${label}: a fallback cannot share the primary's host`
     )
   }
-  assert.equal(new URL(row.operatorRpcUrl).protocol, 'https:')
   if (row.deployTarget === 'sepolia') {
     assert.equal(
       row.operatorEnv.DEPLOY_TARGET,
@@ -355,7 +352,7 @@ const checkTopology = (definition, row, blocks) => {
       // Railway mounts volumes root-owned; this documented override is scoped to the operator.
       RAILWAY_RUN_UID: '0',
       PORT: '8080',
-      RPC_URL: row.operatorRpcUrl,
+      RPC_URL: shared(row.shared.rpcPrimary),
       SUBMITTER_PRIVATE_KEY: shared('SUBMITTER_PRIVATE_KEY'),
       NETWORK_PRIVATE_KEY: shared('NETWORK_PRIVATE_KEY'),
       IPFS_PIN_API: 'https://uploads.pinata.cloud/v3/files',
