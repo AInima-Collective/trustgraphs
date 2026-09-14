@@ -337,6 +337,32 @@ impl Rpc {
         Ok(resp.get("result").cloned().unwrap_or(Value::Null))
     }
 
+    /// A round trip whose `null` result means "this node does not have it yet", not "there is
+    /// nothing". Load-balanced public providers answer each call from whichever node takes it,
+    /// and a node still catching up returns `null` for a receipt or block the rest of the fleet
+    /// has had for hours; on the live Sepolia operator (2026-09-14) that made a long-registered
+    /// instance flap out of the catalog every few ticks. Retry a couple of times, briefly, so an
+    /// odd lagging node is invisible, then fail closed so the caller reports a read failure
+    /// rather than acting on an absence that is not real.
+    pub(crate) fn call_present(&self, method: &str, params: Value, what: &str) -> Result<Value> {
+        const PAUSES_MS: [u64; 2] = [250, 750];
+        let mut attempt = 0usize;
+        loop {
+            let value = self.call(method, params.clone())?;
+            if !value.is_null() {
+                return Ok(value);
+            }
+            let Some(pause) = PAUSES_MS.get(attempt) else {
+                bail!(
+                    "{what} is unavailable from this RPC ({method} returned null on {} attempts)",
+                    PAUSES_MS.len() + 1
+                );
+            };
+            std::thread::sleep(std::time::Duration::from_millis(*pause));
+            attempt += 1;
+        }
+    }
+
     fn hex_u64(v: &Value) -> Result<u64> {
         let s = v.as_str().ok_or_else(|| anyhow!("expected a hex string, got {v}"))?;
         Ok(u64::from_str_radix(s.trim_start_matches("0x"), 16)?)
@@ -361,15 +387,34 @@ impl Rpc {
         }
     }
 
-    pub fn block_hash(&self, number: u64) -> Result<Option<B256>> {
-        let b = self.call("eth_getBlockByNumber", json!([format!("0x{number:x}"), false]))?;
-        Ok(b.get("hash").and_then(|v| v.as_str()).and_then(|s| {
-            s.trim_start_matches("0x").parse::<B256>().ok().or_else(|| {
+    /// The canonical hash at `number`.
+    ///
+    /// A block this RPC cannot produce is a read failure, never "no block". The two callers feed
+    /// the answer to `Anchor::finality`, where an absent block reads as REORGED: for a pending
+    /// submit that meant dropping a mined transaction, alerting, and re-submitting the held proof
+    /// (gas twice, and a likely revert), and for a checkpoint first seen through a lagging node it
+    /// pinned a zero anchor hash that judged the checkpoint reorged on every later tick. A height
+    /// never vanishes from a live chain; a reorg replaces the block at it with a different hash,
+    /// which the `Some(h) != expected` arm already catches.
+    pub fn block_hash(&self, number: u64) -> Result<B256> {
+        let b = self.call_present(
+            "eth_getBlockByNumber",
+            json!([format!("0x{number:x}"), false]),
+            &format!("block {number}"),
+        )?;
+        let s = b
+            .get("hash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("block {number} has no hash field"))?;
+        s.trim_start_matches("0x")
+            .parse::<B256>()
+            .ok()
+            .or_else(|| {
                 hex::decode(s.trim_start_matches("0x"))
                     .ok()
                     .and_then(|b| (b.len() == 32).then(|| B256::from_slice(&b)))
             })
-        }))
+            .ok_or_else(|| anyhow!("block {number} has a malformed hash: {s}"))
     }
 
     pub fn eth_call(&self, to: Address, data: Vec<u8>) -> Result<Vec<u8>> {
@@ -448,11 +493,14 @@ impl Rpc {
     /// that as "no logs" turned a transient read into a permanent-sounding catalog skip
     /// (`Undescribable`: "registered without a factory InstanceCreated event") that flipped back
     /// to `instance_recovered` a tick later; observed on the live Sepolia operator on 2026-09-14.
-    /// Failing here instead surfaces as the per-instance `ReadFailed` skip, which is what it is.
+    /// `call_present` retries a lagging node briefly; a receipt still missing after that surfaces
+    /// as the per-instance `ReadFailed` skip, which is what it is.
     pub fn receipt_logs(&self, tx: B256) -> Result<Vec<RawLog>> {
-        let r =
-            self.call("eth_getTransactionReceipt", json!([format!("0x{}", hex::encode(tx))]))?;
-        anyhow::ensure!(!r.is_null(), "receipt for {tx:#x} is unavailable from this RPC");
+        let r = self.call_present(
+            "eth_getTransactionReceipt",
+            json!([format!("0x{}", hex::encode(tx))]),
+            &format!("receipt for {tx:#x}"),
+        )?;
         let logs = r
             .get("logs")
             .and_then(|v| v.as_array())
@@ -461,11 +509,14 @@ impl Rpc {
     }
 
     /// Exact input bytes retained by an archival JSON-RPC node. This is the last-resort recovery
-    /// source for weighted manifests and must therefore fail closed when the provider prunes it.
+    /// source for weighted manifests and must therefore fail closed when the provider prunes it;
+    /// `call_present` keeps a merely lagging node from looking like a pruning one.
     pub fn transaction_input(&self, tx: B256) -> Result<Vec<u8>> {
-        let value =
-            self.call("eth_getTransactionByHash", json!([format!("0x{}", hex::encode(tx))]))?;
-        anyhow::ensure!(!value.is_null(), "transaction {tx:#x} is unavailable from this RPC");
+        let value = self.call_present(
+            "eth_getTransactionByHash",
+            json!([format!("0x{}", hex::encode(tx))]),
+            &format!("transaction {tx:#x}"),
+        )?;
         let input = value
             .get("input")
             .and_then(Value::as_str)
@@ -1924,25 +1975,29 @@ pub fn expected_instance_domain(snapshot: Address, chain_id: u64) -> B256 {
 }
 
 #[cfg(test)]
-mod receipt_logs_tests {
+mod present_reads_tests {
     use super::*;
     use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
 
-    /// A one-request JSON-RPC stub that answers with `body` whatever is asked.
-    fn stub(body: &'static str) -> String {
+    /// A JSON-RPC stub that answers successive requests with successive bodies, repeating the
+    /// last one, whatever is asked.
+    fn stub(bodies: &'static [&'static str]) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = [0u8; 4096];
-            let _ = stream.read(&mut request);
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            stream.write_all(response.as_bytes()).unwrap();
+            for (i, stream) in listener.incoming().enumerate() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request);
+                let body = bodies[i.min(bodies.len() - 1)];
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
         });
         format!("http://{addr}")
     }
@@ -1951,30 +2006,40 @@ mod receipt_logs_tests {
         Rpc::with_timeout(url, std::time::Duration::from_secs(5))
     }
 
+    const NULL: &str = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
+    const ONE_LOG: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[{"address":"0x731f64e9a03282ca36ed3d679a7662468b3c37c7","topics":["0x1111111111111111111111111111111111111111111111111111111111111111"],"data":"0x","blockNumber":"0x2a","transactionHash":"0x2222222222222222222222222222222222222222222222222222222222222222"}]}}"#;
+    const BLOCK: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a","hash":"0x7777777777777777777777777777777777777777777777777777777777777777"}}"#;
+
+    fn err_of<T>(r: Result<T>, what: &str) -> String {
+        r.err().map(|e| e.to_string()).unwrap_or_else(|| panic!("{what} must be an error"))
+    }
+
     /// Regression for the Sepolia flap of 2026-09-14: a lagging node behind a load-balanced
     /// provider answered `null` for a long-mined registering transaction, the empty log list was
     /// read as "no InstanceCreated event", and the instance was skipped as `Undescribable` until
-    /// the next tick hit a healthy node. A null receipt must be an error, so the catalog reports
-    /// a transient `ReadFailed` instead of a permanent-sounding skip.
+    /// the next tick hit a healthy node. A receipt that stays null is an error, so the catalog
+    /// reports a transient `ReadFailed` instead of a permanent-sounding skip.
     #[test]
-    fn a_null_receipt_is_a_read_failure_not_an_empty_receipt() {
-        let url = stub(r#"{"jsonrpc":"2.0","id":1,"result":null}"#);
-        let err = rpc(url)
-            .receipt_logs(B256::from([0x11; 32]))
-            .err()
-            .map(|e| e.to_string())
-            .expect("a null receipt must be an error");
+    fn a_receipt_that_stays_null_is_a_read_failure_not_an_empty_receipt() {
+        let url = stub(&[NULL]);
+        let err = err_of(rpc(url).receipt_logs(B256::from([0x11; 32])), "a null receipt");
         assert!(err.contains("unavailable from this RPC"), "{err}");
+        assert!(err.contains("3 attempts"), "{err}");
+    }
+
+    #[test]
+    fn one_lagging_answer_is_retried_and_the_receipt_is_read() {
+        let url = stub(&[NULL, ONE_LOG]);
+        let logs = rpc(url).receipt_logs(B256::from([0x22; 32])).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].block_number, 42);
+        assert_eq!(logs[0].topics[0], B256::from([0x11; 32]));
     }
 
     #[test]
     fn a_receipt_without_a_logs_field_is_a_read_failure() {
-        let url = stub(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1"}}"#);
-        let err = rpc(url)
-            .receipt_logs(B256::from([0x11; 32]))
-            .err()
-            .map(|e| e.to_string())
-            .expect("a null receipt must be an error");
+        let url = stub(&[r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1"}}"#]);
+        let err = err_of(rpc(url).receipt_logs(B256::from([0x11; 32])), "a receipt without logs");
         assert!(err.contains("has no logs field"), "{err}");
     }
 
@@ -1982,19 +2047,41 @@ mod receipt_logs_tests {
     fn a_mined_receipt_with_no_logs_is_still_an_empty_list() {
         // A transaction that genuinely emitted nothing keeps its meaning: an empty receipt, not an
         // error. Only the absent receipt changed.
-        let url = stub(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[]}}"#);
+        let url = stub(&[r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[]}}"#]);
         let logs = rpc(url).receipt_logs(B256::from([0x11; 32])).unwrap_or_else(|e| panic!("{e}"));
         assert!(logs.is_empty());
     }
 
+    /// The block-side twin. A null block used to reach `Anchor::finality` as `None`, which reads
+    /// as REORGED: a pending submit was dropped and re-submitted, and a checkpoint first seen
+    /// through a lagging node was pinned to a zero anchor hash. Now it is a read failure that
+    /// costs at most the tick.
     #[test]
-    fn a_receipt_with_a_log_parses_it() {
-        let url = stub(
-            r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[{"address":"0x731f64e9a03282ca36ed3d679a7662468b3c37c7","topics":["0x1111111111111111111111111111111111111111111111111111111111111111"],"data":"0x","blockNumber":"0x2a","transactionHash":"0x2222222222222222222222222222222222222222222222222222222222222222"}]}}"#,
+    fn a_block_that_stays_null_is_a_read_failure_not_a_reorg() {
+        let url = stub(&[NULL]);
+        let err = err_of(rpc(url).block_hash(42), "a null block");
+        assert!(err.contains("block 42 is unavailable from this RPC"), "{err}");
+    }
+
+    #[test]
+    fn one_lagging_answer_is_retried_and_the_block_hash_is_read() {
+        let url = stub(&[NULL, BLOCK]);
+        assert_eq!(rpc(url).block_hash(42).unwrap(), B256::from([0x77; 32]));
+    }
+
+    #[test]
+    fn one_lagging_answer_is_retried_and_the_transaction_input_is_read() {
+        let url = stub(&[NULL, r#"{"jsonrpc":"2.0","id":1,"result":{"input":"0xdeadbeef"}}"#]);
+        assert_eq!(
+            rpc(url).transaction_input(B256::from([0x33; 32])).unwrap(),
+            vec![0xde, 0xad, 0xbe, 0xef]
         );
-        let logs = rpc(url).receipt_logs(B256::from([0x22; 32])).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].block_number, 42);
-        assert_eq!(logs[0].topics[0], B256::from([0x11; 32]));
+    }
+
+    #[test]
+    fn a_block_without_a_hash_is_a_read_failure() {
+        let url = stub(&[r#"{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a"}}"#]);
+        let err = err_of(rpc(url).block_hash(42), "a block without a hash");
+        assert!(err.contains("has no hash field"), "{err}");
     }
 }
