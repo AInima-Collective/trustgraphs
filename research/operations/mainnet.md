@@ -351,6 +351,15 @@ table is byte-identical to v0.1.1 and to `deployments/mainnet.json`. The multi-a
 is `ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092`, attested; both chains' Railway operator
 services build from that one digest.
 
+**Superseded by `v0.1.4` (2026-09-14).** Tagged on the merge commit of #150 (`249466e`); release
+run 34876722054 passed every gate and the program table is byte-identical to v0.1.3 (so to v0.1.1
+and `deployments/mainnet.json`). Operator-only change: a null JSON-RPC receipt or block from a
+lagging node behind a load-balanced provider is retried briefly and then treated as a read failure,
+never as "no InstanceCreated event" (the Sepolia catalog flap) and never as a reorged block (#149,
+#150). The image both chains now build from is
+`ghcr.io/ainima-collective/trustgraphs-operator@sha256:3834588af5769e935445fbbcd8dce904958063d228c59292a16cc357e4315053`.
+`DEPLOYMENT_COMMIT` for the mainnet deploy is `249466e71d0493649ed16a1bfb0d8e7411640502`.
+
 ## 6d. Phase 5 runbook (superseded 2026-09-14)
 
 The testnet-move runbook that lived here (rename the Vercel project, add `testnet.trustgraphs.xyz`
