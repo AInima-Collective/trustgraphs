@@ -391,7 +391,7 @@ fn tick(
                 pending.tx_hash, anchor.block_number
             )
         })?;
-        match anchor.finality(head, pending.confirmations, live) {
+        match anchor.finality(head, pending.confirmations, Some(live)) {
             Finality::Final => {
                 journal.append(Record::Settled {
                     key: *key,
@@ -1008,13 +1008,13 @@ fn build_state(
             let live = rpc.block_hash(c.block_number)?;
             let anchor = *seen_anchors.entry((entry.instance_id, c.id)).or_insert(Anchor {
                 block_number: c.block_number,
-                block_hash: live.unwrap_or(B256::ZERO),
+                block_hash: live,
             });
             // A checkpoint that moved to a different block, or whose observed block hash no
             // longer matches the canonical chain, was reorged.
             let reorged = anchor.block_number != c.block_number
                 || matches!(
-                    anchor.finality(head, cfg.finality.confirmations, live),
+                    anchor.finality(head, cfg.finality.confirmations, Some(live)),
                     Finality::Reorged { .. }
                 );
             if reorged {
