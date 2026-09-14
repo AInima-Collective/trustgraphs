@@ -48,7 +48,7 @@ const sepoliaManifest = readJson('deployments/sepolia.json')
 const mainnetManifest = readJson('deployments/mainnet.json')
 
 const operatorImage =
-  'ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092'
+  'ghcr.io/ainima-collective/trustgraphs-operator@sha256:3834588af5769e935445fbbcd8dce904958063d228c59292a16cc357e4315053'
 
 // --- The targets table -------------------------------------------------------------------------
 

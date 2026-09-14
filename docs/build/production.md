@@ -110,13 +110,13 @@ docker compose -f docker-compose.prod.yml up -d
 `OPERATOR_IMAGE` must be the release workflow's complete
 `ghcr.io/.../trustgraphs-operator@sha256:...` reference. On startup, the operator refuses unless
 its embedded guest ELF digests and vkeys match the tracked release manifest, and unless that
-manifest is bound to the chain its profile names. The current release image, `v0.1.3`, built from
-commit `5902d7e` by
-[release run 34542450144](https://github.com/AInima-Collective/trustgraphs/actions/runs/34542450144)
+manifest is bound to the chain its profile names. The current release image, `v0.1.4`, built from
+commit `249466e` by
+[release run 34876722054](https://github.com/AInima-Collective/trustgraphs/actions/runs/34876722054)
 and shared by both chains, is:
 
 ```text
-ghcr.io/ainima-collective/trustgraphs-operator@sha256:645944e4ed08277bdbd1a9efc8e841af621565b02f82acaf251e39fdea301092
+ghcr.io/ainima-collective/trustgraphs-operator@sha256:3834588af5769e935445fbbcd8dce904958063d228c59292a16cc357e4315053
 ```
 
 That run reproduced the guest ELFs twice, published a linux/amd64 + linux/arm64 OCI index,
