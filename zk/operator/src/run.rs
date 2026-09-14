@@ -1006,10 +1006,9 @@ fn build_state(
     if cfg.tracks_block_hash_for(program) {
         for c in &mut checkpoints {
             let live = rpc.block_hash(c.block_number)?;
-            let anchor = *seen_anchors.entry((entry.instance_id, c.id)).or_insert(Anchor {
-                block_number: c.block_number,
-                block_hash: live,
-            });
+            let anchor = *seen_anchors
+                .entry((entry.instance_id, c.id))
+                .or_insert(Anchor { block_number: c.block_number, block_hash: live });
             // A checkpoint that moved to a different block, or whose observed block hash no
             // longer matches the canonical chain, was reorged.
             let reorged = anchor.block_number != c.block_number

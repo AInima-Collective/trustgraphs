@@ -2030,9 +2030,7 @@ mod present_reads_tests {
     #[test]
     fn one_lagging_answer_is_retried_and_the_receipt_is_read() {
         let url = stub(&[NULL, ONE_LOG]);
-        let logs = rpc(url)
-            .receipt_logs(B256::from([0x22; 32]))
-            .unwrap_or_else(|e| panic!("{e}"));
+        let logs = rpc(url).receipt_logs(B256::from([0x22; 32])).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].block_number, 42);
         assert_eq!(logs[0].topics[0], B256::from([0x11; 32]));
@@ -2050,9 +2048,7 @@ mod present_reads_tests {
         // A transaction that genuinely emitted nothing keeps its meaning: an empty receipt, not an
         // error. Only the absent receipt changed.
         let url = stub(&[r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[]}}"#]);
-        let logs = rpc(url)
-            .receipt_logs(B256::from([0x11; 32]))
-            .unwrap_or_else(|e| panic!("{e}"));
+        let logs = rpc(url).receipt_logs(B256::from([0x11; 32])).unwrap_or_else(|e| panic!("{e}"));
         assert!(logs.is_empty());
     }
 
@@ -2076,7 +2072,10 @@ mod present_reads_tests {
     #[test]
     fn one_lagging_answer_is_retried_and_the_transaction_input_is_read() {
         let url = stub(&[NULL, r#"{"jsonrpc":"2.0","id":1,"result":{"input":"0xdeadbeef"}}"#]);
-        assert_eq!(rpc(url).transaction_input(B256::from([0x33; 32])).unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(
+            rpc(url).transaction_input(B256::from([0x33; 32])).unwrap(),
+            vec![0xde, 0xad, 0xbe, 0xef]
+        );
     }
 
     #[test]
