@@ -1,9 +1,10 @@
 # Production operator policy for the public Ethereum mainnet app.
-# Release image v0.1.4 (release run 34876722054, commit 249466e): the config loader binds the
+# Release image v0.1.5 (release run 34897235238, commit 40e945d): the config loader binds the
 # manifest to chain_id and pins every embedded guest; the guests and vkeys are the v0.1.1 program
-# table, unchanged, and mainnet.json records them. v0.1.4 adds the lagging-node RPC hardening
-# (a null receipt or block is retried, then a read failure; never a skip or a reorg).
-# ghcr.io/ainima-collective/trustgraphs-operator@sha256:3834588af5769e935445fbbcd8dce904958063d228c59292a16cc357e4315053
+# table, unchanged, and mainnet.json records them. v0.1.4 added the lagging-node RPC hardening
+# (a null receipt or block is retried, then a read failure); v0.1.5 reconciles the registry scan
+# against the on-chain directory so an empty eth_getLogs answer cannot hide an instance.
+# ghcr.io/ainima-collective/trustgraphs-operator@sha256:43d04f3a21e56764bf2df14928e60c5fbef550d9ae1b70ddcc01644d030c6570
 #
 # Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
 # operator at startup and never enter its public status response. The transaction and Succinct

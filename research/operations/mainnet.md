@@ -360,6 +360,18 @@ never as "no InstanceCreated event" (the Sepolia catalog flap) and never as a re
 `ghcr.io/ainima-collective/trustgraphs-operator@sha256:3834588af5769e935445fbbcd8dce904958063d228c59292a16cc357e4315053`.
 `DEPLOYMENT_COMMIT` for the mainnet deploy is `249466e71d0493649ed16a1bfb0d8e7411640502`.
 
+**Superseded by `v0.1.5` (2026-09-14, later the same day).** The v0.1.4 roll on Sepolia exposed
+the provider's other failure: publicnode answered the operator's one-shot registry `eth_getLogs`
+scan empty (measured 9 of 12, then 10 of 10), so the showcase instance was skipped on every tick
+until a restart. #152 reconciles the scan against the registry's on-chain directory and reports a
+still-unseen registration as a transient read failure; #153 and #154 move the operator's `RPC_URL`
+to the shared metered primary (Tenderly's keyless gateway rate-limited the operator within
+minutes). Tagged on the #153 merge commit (`40e945d`); release run 34897235238 passed every gate
+with the program table byte-identical to v0.1.4. Image:
+`ghcr.io/ainima-collective/trustgraphs-operator@sha256:43d04f3a21e56764bf2df14928e60c5fbef550d9ae1b70ddcc01644d030c6570`.
+`DEPLOYMENT_COMMIT` for the mainnet deploy is `40e945d2a58efdc3512257f473bf3b337f39616f`. After the
+RPC move the Sepolia operator cataloged the showcase instance on its first tick (idle, 0 skipped).
+
 ## 6d. Phase 5 runbook (superseded 2026-09-14)
 
 The testnet-move runbook that lived here (rename the Vercel project, add `testnet.trustgraphs.xyz`

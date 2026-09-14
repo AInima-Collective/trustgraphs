@@ -1,8 +1,9 @@
 # Production operator policy for the public Sepolia app.
-# Release image v0.1.4 (release run 34876722054, commit 249466e; same guests and vkeys as the
+# Release image v0.1.5 (release run 34897235238, commit 40e945d; same guests and vkeys as the
 # v0.1.1 contracts generation this manifest records; the loader binds the manifest to chain_id
-# and pins every embedded guest; v0.1.4 adds the lagging-node RPC hardening):
-# ghcr.io/ainima-collective/trustgraphs-operator@sha256:3834588af5769e935445fbbcd8dce904958063d228c59292a16cc357e4315053
+# and pins every embedded guest; v0.1.4 added the lagging-node RPC hardening and v0.1.5 the
+# directory-reconciled registry scan):
+# ghcr.io/ainima-collective/trustgraphs-operator@sha256:43d04f3a21e56764bf2df14928e60c5fbef550d9ae1b70ddcc01644d030c6570
 #
 # Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
 # operator at startup and never enter its public status response. The transaction and Succinct
