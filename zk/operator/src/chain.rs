@@ -509,11 +509,14 @@ impl Rpc {
     }
 
     /// Exact input bytes retained by an archival JSON-RPC node. This is the last-resort recovery
-    /// source for weighted manifests and must therefore fail closed when the provider prunes it.
+    /// source for weighted manifests and must therefore fail closed when the provider prunes it;
+    /// `call_present` keeps a merely lagging node from looking like a pruning one.
     pub fn transaction_input(&self, tx: B256) -> Result<Vec<u8>> {
-        let value =
-            self.call("eth_getTransactionByHash", json!([format!("0x{}", hex::encode(tx))]))?;
-        anyhow::ensure!(!value.is_null(), "transaction {tx:#x} is unavailable from this RPC");
+        let value = self.call_present(
+            "eth_getTransactionByHash",
+            json!([format!("0x{}", hex::encode(tx))]),
+            &format!("transaction {tx:#x}"),
+        )?;
         let input = value
             .get("input")
             .and_then(Value::as_str)
@@ -2068,6 +2071,12 @@ mod present_reads_tests {
     fn one_lagging_answer_is_retried_and_the_block_hash_is_read() {
         let url = stub(&[NULL, BLOCK]);
         assert_eq!(rpc(url).block_hash(42).unwrap(), B256::from([0x77; 32]));
+    }
+
+    #[test]
+    fn one_lagging_answer_is_retried_and_the_transaction_input_is_read() {
+        let url = stub(&[NULL, r#"{"jsonrpc":"2.0","id":1,"result":{"input":"0xdeadbeef"}}"#]);
+        assert_eq!(rpc(url).transaction_input(B256::from([0x33; 32])).unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
     }
 
     #[test]
