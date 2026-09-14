@@ -440,10 +440,23 @@ impl Rpc {
         Ok(out)
     }
 
+    /// The logs of a mined transaction's receipt.
+    ///
+    /// A `null` receipt is a read failure, not an empty receipt. Load-balanced public providers
+    /// answer `eth_getTransactionReceipt` from whichever node takes the call, and a node still
+    /// catching up returns `null` for a transaction the rest of the fleet mined long ago. Treating
+    /// that as "no logs" turned a transient read into a permanent-sounding catalog skip
+    /// (`Undescribable`: "registered without a factory InstanceCreated event") that flipped back
+    /// to `instance_recovered` a tick later; observed on the live Sepolia operator on 2026-09-14.
+    /// Failing here instead surfaces as the per-instance `ReadFailed` skip, which is what it is.
     pub fn receipt_logs(&self, tx: B256) -> Result<Vec<RawLog>> {
         let r =
             self.call("eth_getTransactionReceipt", json!([format!("0x{}", hex::encode(tx))]))?;
-        let logs = r.get("logs").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        anyhow::ensure!(!r.is_null(), "receipt for {tx:#x} is unavailable from this RPC");
+        let logs = r
+            .get("logs")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow!("receipt for {tx:#x} has no logs field"))?;
         logs.iter().map(RawLog::parse).collect()
     }
 
@@ -1908,4 +1921,80 @@ pub fn submit_and_claim_calldata(
 /// it. Read from the contract when possible; this is the local check that the two agree.
 pub fn expected_instance_domain(snapshot: Address, chain_id: u64) -> B256 {
     keccak256((snapshot, U256::from(chain_id)).abi_encode())
+}
+
+#[cfg(test)]
+mod receipt_logs_tests {
+    use super::*;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+
+    /// A one-request JSON-RPC stub that answers with `body` whatever is asked.
+    fn stub(body: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    fn rpc(url: String) -> Rpc {
+        Rpc::with_timeout(url, std::time::Duration::from_secs(5))
+    }
+
+    /// Regression for the Sepolia flap of 2026-09-14: a lagging node behind a load-balanced
+    /// provider answered `null` for a long-mined registering transaction, the empty log list was
+    /// read as "no InstanceCreated event", and the instance was skipped as `Undescribable` until
+    /// the next tick hit a healthy node. A null receipt must be an error, so the catalog reports
+    /// a transient `ReadFailed` instead of a permanent-sounding skip.
+    #[test]
+    fn a_null_receipt_is_a_read_failure_not_an_empty_receipt() {
+        let url = stub(r#"{"jsonrpc":"2.0","id":1,"result":null}"#);
+        let err = rpc(url)
+            .receipt_logs(B256::from([0x11; 32]))
+            .err()
+            .map(|e| e.to_string())
+            .expect("a null receipt must be an error");
+        assert!(err.contains("unavailable from this RPC"), "{err}");
+    }
+
+    #[test]
+    fn a_receipt_without_a_logs_field_is_a_read_failure() {
+        let url = stub(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1"}}"#);
+        let err = rpc(url)
+            .receipt_logs(B256::from([0x11; 32]))
+            .err()
+            .map(|e| e.to_string())
+            .expect("a null receipt must be an error");
+        assert!(err.contains("has no logs field"), "{err}");
+    }
+
+    #[test]
+    fn a_mined_receipt_with_no_logs_is_still_an_empty_list() {
+        // A transaction that genuinely emitted nothing keeps its meaning: an empty receipt, not an
+        // error. Only the absent receipt changed.
+        let url = stub(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[]}}"#);
+        let logs = rpc(url).receipt_logs(B256::from([0x11; 32])).unwrap_or_else(|e| panic!("{e}"));
+        assert!(logs.is_empty());
+    }
+
+    #[test]
+    fn a_receipt_with_a_log_parses_it() {
+        let url = stub(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","logs":[{"address":"0x731f64e9a03282ca36ed3d679a7662468b3c37c7","topics":["0x1111111111111111111111111111111111111111111111111111111111111111"],"data":"0x","blockNumber":"0x2a","transactionHash":"0x2222222222222222222222222222222222222222222222222222222222222222"}]}}"#,
+        );
+        let logs = rpc(url).receipt_logs(B256::from([0x22; 32])).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].block_number, 42);
+        assert_eq!(logs[0].topics[0], B256::from([0x11; 32]));
+    }
 }
