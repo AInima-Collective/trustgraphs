@@ -87,8 +87,8 @@ if (isPublic) {
   }
 }
 
-// The canonical site origin. The same application is deployed once per public target
-// (testnet.trustgraphs.xyz on Sepolia, trustgraphs.xyz on mainnet), so nothing that names the
+// The canonical site origin. The same application is built once per target (trustgraphs.xyz on
+// mainnet; the Sepolia build runs locally), so nothing that names the
 // site — metadataBase and OpenGraph, the sitemap and robots, WalletConnect metadata, the
 // analytics hostname — may hard-code it. A public build must say which site it is; a local build
 // is the dev server unless FRONTEND_URL says otherwise.

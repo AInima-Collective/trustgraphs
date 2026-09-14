@@ -46,9 +46,9 @@ const DESCRIPTION =
 // crawlers cache its URL; `pnpm run brand:assets` writes that content-specific
 // public path along with Next's file-convention images.
 //
-// The origin is the deployment's, not a constant: the same app is served at
-// testnet.trustgraphs.xyz and trustgraphs.xyz, and each must resolve its own
-// relative metadata URLs and name itself in `og:url`.
+// The origin is the deployment's, not a constant: the same app is built for
+// mainnet (trustgraphs.xyz) and for Sepolia (run locally), and each build must
+// resolve its own relative metadata URLs and name itself in `og:url`.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {

@@ -130,9 +130,12 @@ const sepolia: RailwayTarget = {
     'https://sepolia.gateway.tenderly.co',
   ],
   operatorRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
-  // The testnet move (2026-09-10): the Sepolia app lives on the testnet subdomain.
-  frontendUrl: 'https://testnet.trustgraphs.xyz',
-  // apiDomain: 'api.testnet.trustgraphs.xyz' once registered in the dashboard (testnet move, step 6).
+  // Decision 2026-09-14: Sepolia has no public frontend of its own (the testnet host planned on
+  // 2026-09-10 was dropped to keep the Vercel footprint at one project). The apex serves the
+  // Sepolia build until the mainnet cutover, so this is the live value; after cutover the pings
+  // reach the mainnet app, whose revalidation route ignores unknown network ids. Flip it to the
+  // placeholder in research/operations/mainnet.md phase 8 when the project is decommissioned.
+  frontendUrl: 'https://trustgraphs.xyz',
   shared: {
     rpcPrimary: 'RPC_URL_11155111_0',
     ipfsGateway: 'IPFS_GATEWAY',
