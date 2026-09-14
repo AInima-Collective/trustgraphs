@@ -17,6 +17,9 @@ import {
 import type { ProgramContext } from './types'
 
 const SEED = 'deployments/mainnet.json'
+// The seed the generation-1 broadcast started from, archived when deployments/mainnet.json flipped
+// to `deployed` (2026-09-14). The finalization test runs the plan against this planned copy.
+const PLANNED_SEED = 'deployments/generations/v0.1.5/planned-mainnet.json'
 const ADDRESS = '0x1111111111111111111111111111111111111111'
 const ADMIN = '0x' + 'fe'.repeat(20)
 const BYTES32 = `0x${'33'.repeat(32)}` as `0x${string}`
@@ -78,27 +81,54 @@ const withGuestManifest = () => {
   return file
 }
 
-test('the tracked mainnet seed is a planned chain-1 manifest with canonical externals', () => {
-  const seed = loadReleaseManifest(SEED, { expectedChain: 'mainnet' })
-  assert.equal(seed.status, 'planned')
-  assert.equal(seed.chainId, 1)
-  assert.equal(releaseChainOf(seed), 'mainnet')
-  assert.equal(seed.instances.length, 0)
-  assert.equal(seed.firstDeploymentBlock, null)
+const assertCanonicalMainnetExternals = (
+  manifest: ReturnType<typeof loadReleaseManifest>
+) => {
+  assert.equal(manifest.chainId, 1)
+  assert.equal(releaseChainOf(manifest), 'mainnet')
+  assert.equal(manifest.instances.length, 0)
   // The generation-1 plan leaves the imported-EAS family out: absent, not null.
-  assert.equal('importedTrustgraphsFactory' in seed.contracts, false)
-  assert.equal('governedImportedTrustgraphsFactory' in seed.contracts, false)
+  assert.equal('importedTrustgraphsFactory' in manifest.contracts, false)
+  assert.equal(
+    'governedImportedTrustgraphsFactory' in manifest.contracts,
+    false
+  )
   // Canonical Safe 1.3.0 and the same SP1 gateway CREATE2 address as Sepolia.
   const sepolia = loadReleaseManifest('deployments/sepolia.json')
   assert.equal(
-    seed.contracts.safeSingleton.address,
+    manifest.contracts.safeSingleton.address,
     sepolia.contracts.safeSingleton.address
   )
-  assert.equal(seed.external.sp1Gateway, sepolia.external.sp1Gateway)
-  assert.notEqual(seed.external.eas, sepolia.external.eas)
+  assert.equal(manifest.external.sp1Gateway, sepolia.external.sp1Gateway)
+  assert.notEqual(manifest.external.eas, sepolia.external.eas)
   // Same released guests as the live Sepolia generation.
-  assert.deepEqual(seed.programs, sepolia.programs)
+  assert.deepEqual(manifest.programs, sepolia.programs)
+}
+
+test('the tracked mainnet manifest is the deployed generation-1 record with canonical externals', () => {
+  const manifest = loadReleaseManifest(SEED, { expectedChain: 'mainnet' })
+  assert.equal(manifest.status, 'deployed')
+  assert.equal(manifest.firstDeploymentBlock, 25_978_660)
+  assert.equal(
+    manifest.deploymentCommit,
+    '40e945d2a58efdc3512257f473bf3b337f39616f'
+  )
+  for (const key of hostedFamilyKeys('mainnet')) {
+    const record = manifest.contracts[key]
+    assert.ok(record?.address && record.block !== null, key)
+  }
+  assertCanonicalMainnetExternals(manifest)
   assert.throws(() => loadReleaseManifest(SEED), /Sepolia manifest must bind/)
+})
+
+test('the archived planned seed is what the generation-1 broadcast started from', () => {
+  const seed = loadReleaseManifest(PLANNED_SEED, { expectedChain: 'mainnet' })
+  assert.equal(seed.status, 'planned')
+  assert.equal(seed.firstDeploymentBlock, null)
+  assertCanonicalMainnetExternals(seed)
+  const deployed = loadReleaseManifest(SEED, { expectedChain: 'mainnet' })
+  assert.deepEqual(seed.external, deployed.external)
+  assert.deepEqual(seed.programs, deployed.programs)
 })
 
 test('mainnet resolves only as a production target and plans the same steps minus the imported family', () => {
@@ -140,10 +170,10 @@ test('mainnet resolves only as a production target and plans the same steps minu
       env.deployContracts.filter((step) => !step.skip?.(fresh)).length,
       16
     )
-    assert.deepEqual(env.deployContracts.slice(-2).map((step) => step.name), [
-      'Hand off Proving Vault',
-      'Hand off Subnetwork Registry',
-    ])
+    assert.deepEqual(
+      env.deployContracts.slice(-2).map((step) => step.name),
+      ['Hand off Proving Vault', 'Hand off Subnetwork Registry']
+    )
     assert.equal(
       generationManifestPath('v1', 'mainnet'),
       'deployments/generations/v1/mainnet.json'
@@ -183,7 +213,9 @@ test('a sub-day epoch floor on mainnet needs the mainnet opt-in, not the testnet
 })
 
 test('a fresh mainnet broadcast finalizes the seed without the imported family and batches the admin grants', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trustgraphs-mainnet-plan-'))
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'trustgraphs-mainnet-plan-')
+  )
   const originalCwd = process.cwd()
   const originalEnv = { ...process.env }
   t.after(() => {
@@ -191,15 +223,27 @@ test('a fresh mainnet broadcast finalizes the seed without the imported family a
     process.env = originalEnv
     fs.rmSync(root, { recursive: true, force: true })
   })
-  const seedBytes = fs.readFileSync(SEED, 'utf8')
-  for (const dir of ['deployments', 'zk', '.docker', 'broadcast/Mainnet.s.sol/1']) {
+  const seedBytes = fs.readFileSync(PLANNED_SEED, 'utf8')
+  for (const dir of [
+    'deployments',
+    'zk',
+    '.docker',
+    'broadcast/Mainnet.s.sol/1',
+  ]) {
     fs.mkdirSync(path.join(root, dir), { recursive: true })
   }
   fs.writeFileSync(path.join(root, SEED), seedBytes)
-  fs.writeFileSync(path.join(root, 'guest-manifest.json'), JSON.stringify(guest))
+  fs.writeFileSync(
+    path.join(root, 'guest-manifest.json'),
+    JSON.stringify(guest)
+  )
   fs.writeFileSync(path.join(root, 'zk/sp1-builder-image.txt'), `${builder}\n`)
   process.chdir(root)
-  for (const key of ['SKIP_PROVING_VAULT', 'HYPERCERTS_PROGRAM_VKEY', 'NOSTR_WORKSPACE_VKEY'])
+  for (const key of [
+    'SKIP_PROVING_VAULT',
+    'HYPERCERTS_PROGRAM_VKEY',
+    'NOSTR_WORKSPACE_VKEY',
+  ])
     delete process.env[key]
   Object.assign(
     process.env,
@@ -226,10 +270,16 @@ test('a fresh mainnet broadcast finalizes the seed without the imported family a
     'Governed Factory': ['governed_factory', 'governed_factory'],
     'Weighted ZK Verifier': ['zk_verifier_weighted', 'zk_verifier'],
     'Weighted Factory': ['weighted_factory', 'weighted_factory'],
-    'Governed Weighted Factory': ['governed_weighted_factory', 'governed_weighted_factory'],
+    'Governed Weighted Factory': [
+      'governed_weighted_factory',
+      'governed_weighted_factory',
+    ],
     'Composition ZK Verifier': ['zk_verifier_composition', 'zk_verifier'],
     'Trust Compose Factory': ['trust_compose_factory', 'trust_compose_factory'],
-    'Governed Compose Factory': ['governed_compose_factory', 'governed_compose_factory'],
+    'Governed Compose Factory': [
+      'governed_compose_factory',
+      'governed_compose_factory',
+    ],
     'Contributions Factory': ['contributions_factory', 'contributions_factory'],
   }
   const vkeys: Record<string, `0x${string}`> = {
@@ -277,7 +327,8 @@ test('a fresh mainnet broadcast finalizes the seed without the imported family a
         safe_singleton: seed.contracts.safeSingleton.address!,
         safe_factory: seed.contracts.safeProxyFactory.address!,
       })
-    if (step.name === 'Contributions Factory') artifact.zk_verifier = nextAddress()
+    if (step.name === 'Contributions Factory')
+      artifact.zk_verifier = nextAddress()
     if (step.name === 'Proving Vault')
       Object.assign(artifact, {
         eth_usd_feed: seed.external.ethUsdFeed!,
@@ -299,11 +350,23 @@ test('a fresh mainnet broadcast finalizes the seed without the imported family a
   for (const transaction of batch.transactions) {
     assert.match(transaction.data, /^0x2f2ff15d/)
     assert.equal(transaction.contractMethod.name, 'grantRole')
-    assert.equal(transaction.to, JSON.parse(fs.readFileSync('.docker/instance_registry_deploy.json', 'utf8')).instance_registry)
+    assert.equal(
+      transaction.to,
+      JSON.parse(
+        fs.readFileSync('.docker/instance_registry_deploy.json', 'utf8')
+      ).instance_registry
+    )
   }
   assert.deepEqual(
-    batch.transactions.map((transaction) => transaction.contractInputsValues.account),
-    ['factory', 'weighted_factory', 'trust_compose_factory', 'contributions_factory'].map(
+    batch.transactions.map(
+      (transaction) => transaction.contractInputsValues.account
+    ),
+    [
+      'factory',
+      'weighted_factory',
+      'trust_compose_factory',
+      'contributions_factory',
+    ].map(
       (key, index) =>
         JSON.parse(
           fs.readFileSync(
@@ -321,7 +384,10 @@ test('a fresh mainnet broadcast finalizes the seed without the imported family a
   assert.equal(deployed.deploymentCommit, commit)
   assert.equal(deployed.firstDeploymentBlock, 2001)
   assert.equal('importedTrustgraphsFactory' in deployed.contracts, false)
-  assert.equal('governedImportedTrustgraphsFactory' in deployed.contracts, false)
+  assert.equal(
+    'governedImportedTrustgraphsFactory' in deployed.contracts,
+    false
+  )
   for (const key of hostedFamilyKeys('mainnet')) {
     const record = deployed.contracts[key]
     assert.ok(record?.address && record.block !== null, key)
@@ -334,7 +400,12 @@ test('a fresh mainnet broadcast finalizes the seed without the imported family a
 
 test('the Safe batch encodes grantRole with the zero admin role and keccak names', () => {
   const batch = safeTransactionBatch(1, [
-    { label: 'a', contract: ADDRESS, role: 'DEFAULT_ADMIN_ROLE', account: ADMIN },
+    {
+      label: 'a',
+      contract: ADDRESS,
+      role: 'DEFAULT_ADMIN_ROLE',
+      account: ADMIN,
+    },
     { label: 'b', contract: ADDRESS, role: 'REGISTRAR_ROLE', account: ADMIN },
   ])
   assert.equal(
