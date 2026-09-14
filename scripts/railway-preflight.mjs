@@ -105,9 +105,9 @@ assert.deepEqual(
     chainId: 1,
     branch: 'mainnet',
     region: {
-      database: 'us-west2',
-      operatorState: 'us-west2',
-      indexer: 'us-west2',
+      database: 'us-east4-eqdc4a',
+      operatorState: 'us-east4-eqdc4a',
+      indexer: 'us-east4-eqdc4a',
     },
     writerSchema: 'trustgraph_mainnet_v1',
     rpcFallbacks: [
