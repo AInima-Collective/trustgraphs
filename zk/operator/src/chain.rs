@@ -463,13 +463,26 @@ impl Rpc {
         to: u64,
         chunk: u64,
     ) -> Result<Vec<RawLog>> {
+        self.logs_matching(address, &[topic0], from, to, chunk)
+    }
+
+    /// `eth_getLogs` over `[from, to]` in `chunk`-sized windows, filtering on the leading topics.
+    pub fn logs_matching(
+        &self,
+        address: Address,
+        topics: &[B256],
+        from: u64,
+        to: u64,
+        chunk: u64,
+    ) -> Result<Vec<RawLog>> {
+        let topics = topics.iter().map(|t| format!("0x{}", hex::encode(t))).collect::<Vec<_>>();
         let mut out = Vec::new();
         let mut start = from;
         while start <= to {
             let end = (start.saturating_add(chunk.saturating_sub(1))).min(to);
             let params = json!([{
                 "address": address,
-                "topics": [format!("0x{}", hex::encode(topic0))],
+                "topics": topics,
                 "fromBlock": format!("0x{start:x}"),
                 "toBlock": format!("0x{end:x}"),
             }]);
@@ -584,6 +597,9 @@ pub struct RegistryScan {
     pub registered_in: BTreeMap<B256, (u64, B256)>,
     /// Highest block already covered. `None` before the first scan.
     pub scanned_to: Option<u64>,
+    /// Ids the registry directory lists whose `InstanceRegistered` event this RPC has not shown
+    /// us yet. Retried on every refresh; see `reconcile`.
+    pub unresolved: std::collections::BTreeSet<B256>,
 }
 
 /// The block range a refresh should ask for, or `None` when there is nothing to ask.
@@ -622,6 +638,63 @@ impl RegistryScan {
             }
         }
         self.scanned_to = Some(end);
+        self.reconcile(rpc, registry, from_block, head)
+    }
+
+    /// Check the scan against the registry's own directory and chase whatever the log scan
+    /// missed.
+    ///
+    /// `eth_getLogs` has no "I don't know" answer: a load-balanced public provider whose backend
+    /// lacks the log index for a range answers `[]`, indistinguishable from "nothing happened".
+    /// The live Sepolia operator (2026-09-14) drew such an answer for its one-shot startup scan,
+    /// `scanned_to` moved past the registration, and the showcase instance was skipped as
+    /// "registered without a factory InstanceCreated event" on every tick until a restart. The
+    /// directory (`getInstanceIds`, an `eth_call`) is the ground truth for existence, and a
+    /// registration always emits its event in the registering transaction, so an id the directory
+    /// lists and the scan lacks is a provider failure, never an absence. Ask for that one id's
+    /// event directly, briefly retrying an empty answer; what is still missing stays in
+    /// `unresolved` and is asked again next refresh, and the catalog reports it as a transient read
+    /// failure rather than a permanent skip.
+    fn reconcile(
+        &mut self,
+        rpc: &Rpc,
+        registry: Address,
+        from_block: u64,
+        head: u64,
+    ) -> Result<()> {
+        const PAUSES_MS: [u64; 2] = [250, 750];
+        let ret = rpc.eth_call(registry, getInstanceIdsCall {}.abi_encode())?;
+        let listed = getInstanceIdsCall::abi_decode_returns(&ret)?;
+        self.unresolved.clear();
+        for id in listed {
+            if self.registered_in.contains_key(&id) {
+                continue;
+            }
+            let mut attempt = 0usize;
+            let found = loop {
+                let logs = rpc.logs_matching(
+                    registry,
+                    &[InstanceRegistered::SIGNATURE_HASH, id],
+                    from_block,
+                    head,
+                    10_000,
+                )?;
+                if let Some(log) = logs.first() {
+                    break Some((log.block_number, log.transaction_hash));
+                }
+                let Some(pause) = PAUSES_MS.get(attempt) else { break None };
+                std::thread::sleep(std::time::Duration::from_millis(*pause));
+                attempt += 1;
+            };
+            match found {
+                Some(registration) => {
+                    self.registered_in.insert(id, registration);
+                }
+                None => {
+                    self.unresolved.insert(id);
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -726,16 +799,23 @@ impl ChainReader for RpcCatalog<'_> {
     }
 
     fn registration_block(&self, id: B256) -> Result<u64> {
-        self.registered_in
-            .get(&id)
-            .map(|(block, _)| *block)
-            .ok_or_else(|| anyhow!("no InstanceRegistered event for {id:#x}"))
+        self.registered_in.get(&id).map(|(block, _)| *block).ok_or_else(|| {
+            anyhow!(
+                "registration of {id:#x} is not visible from this RPC yet: the registry lists \
+                 it but eth_getLogs answered without its InstanceRegistered event; retried next tick"
+            )
+        })
     }
 
     fn created_params(&self, id: B256) -> Result<Option<CreatedParams>> {
-        let Some((created_block, tx)) = self.registered_in.get(&id).copied() else {
-            return Ok(None);
-        };
+        // The directory lists this id (that is how the catalog got here), so a registration we
+        // have not seen is the provider's failure, not a factory-less instance: report the
+        // transient read failure rather than `Undescribable`.
+        let (created_block, tx) = self
+            .registered_in
+            .get(&id)
+            .copied()
+            .ok_or_else(|| self.registration_block(id).unwrap_err())?;
         let logs = self.rpc.receipt_logs(tx)?;
         let Some(log) = logs.iter().find(|l| {
             l.topics.first() == Some(&InstanceCreated::SIGNATURE_HASH)
@@ -886,9 +966,11 @@ impl ChainReader for RpcCatalog<'_> {
     }
 
     fn weighted_created_params(&self, id: B256) -> Result<Option<WeightedCreatedParams>> {
-        let Some((created_block, tx)) = self.registered_in.get(&id).copied() else {
-            return Ok(None);
-        };
+        let (created_block, tx) = self
+            .registered_in
+            .get(&id)
+            .copied()
+            .ok_or_else(|| self.registration_block(id).unwrap_err())?;
         let logs = self.rpc.receipt_logs(tx)?;
         let Some(log) = logs.iter().find(|candidate| {
             candidate.topics.first() == Some(&WeightedInstanceCreated::SIGNATURE_HASH)
@@ -2083,5 +2165,130 @@ mod present_reads_tests {
         let url = stub(&[r#"{"jsonrpc":"2.0","id":1,"result":{"number":"0x2a"}}"#]);
         let err = err_of(rpc(url).block_hash(42), "a block without a hash");
         assert!(err.contains("has no hash field"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod registry_scan_tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
+
+    /// Every request the stub saw: (method, params).
+    type Seen = Arc<Mutex<Vec<(String, Value)>>>;
+
+    /// A JSON-RPC stub that answers by method: each method has a queue of `result` bodies, the
+    /// last of which repeats. Requests are recorded so a test can assert what was asked.
+    fn stub(queues: &[(&'static str, &'static [&'static str])]) -> (String, Seen) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let record = Arc::clone(&seen);
+        let mut queues: BTreeMap<&'static str, VecDeque<&'static str>> =
+            queues.iter().map(|(m, bodies)| (*m, bodies.iter().copied().collect())).collect();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = vec![0u8; 65536];
+                let n = stream.read(&mut request).unwrap_or(0);
+                let text = String::from_utf8_lossy(&request[..n]);
+                let body_start = text.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
+                let req: Value = serde_json::from_str(&text[body_start..]).unwrap_or(Value::Null);
+                let method = req["method"].as_str().unwrap_or("").to_string();
+                record.lock().unwrap().push((method.clone(), req["params"].clone()));
+                let result = match queues.get_mut(method.as_str()) {
+                    Some(q) if q.len() > 1 => q.pop_front().unwrap(),
+                    Some(q) => q.front().copied().unwrap_or("null"),
+                    None => "null",
+                };
+                let body = format!(r#"{{"jsonrpc":"2.0","id":1,"result":{result}}}"#);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
+    fn rpc(url: String) -> Rpc {
+        Rpc::with_timeout(url, std::time::Duration::from_secs(5))
+    }
+
+    const REGISTRY: Address = Address::new([0x73; 20]);
+    const ID: B256 = B256::new([0xe4; 32]);
+    /// `getInstanceIds()` returning `[ID]`: offset, length, one word.
+    const DIRECTORY_WITH_ID: &str = r#""0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4""#;
+    const REGISTRATION_LOG: &str = r#"[{"address":"0x7373737373737373737373737373737373737373","topics":["0xb018bfa19cee3cfecd3390fa5dd10e0f94488ee465620448e69e5745c499eb0b","0xe4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4","0x1111111111111111111111111111111111111111111111111111111111111111"],"data":"0x","blockNumber":"0xb21548","transactionHash":"0x2222222222222222222222222222222222222222222222222222222222222222"}]"#;
+
+    #[test]
+    fn the_registered_event_topic_is_the_one_the_tests_encode() {
+        assert_eq!(
+            format!("0x{}", hex::encode(InstanceRegistered::SIGNATURE_HASH)),
+            "0xb018bfa19cee3cfecd3390fa5dd10e0f94488ee465620448e69e5745c499eb0b"
+        );
+    }
+
+    /// The Sepolia failure of 2026-09-14: the range scan answers `[]`, the directory lists the
+    /// instance, and the targeted lookup answers `[]` once before a healthy backend answers.
+    /// The scan must end with the registration known and the range marked covered.
+    #[test]
+    fn a_registration_the_range_scan_missed_is_chased_through_the_directory() {
+        let (url, seen) = stub(&[
+            ("eth_getLogs", &["[]", "[]", REGISTRATION_LOG]),
+            ("eth_call", &[DIRECTORY_WITH_ID]),
+        ]);
+        let mut scan = RegistryScan::default();
+        scan.refresh(&rpc(url), REGISTRY, 11_670_856, 11_675_000).unwrap();
+        assert_eq!(scan.registered_in.get(&ID), Some(&(0xb21548, B256::new([0x22; 32]))));
+        assert!(scan.unresolved.is_empty());
+        assert_eq!(scan.scanned_to, Some(11_675_000));
+        let seen = seen.lock().unwrap();
+        let targeted = seen
+            .iter()
+            .filter(|(m, p)| {
+                m == "eth_getLogs" && p[0]["topics"].as_array().map(|t| t.len()) == Some(2)
+            })
+            .count();
+        assert_eq!(targeted, 2, "one empty targeted answer, then the registration");
+    }
+
+    #[test]
+    fn a_registration_no_backend_will_show_is_a_read_failure_not_an_absence() {
+        let (url, _) = stub(&[("eth_getLogs", &["[]"]), ("eth_call", &[DIRECTORY_WITH_ID])]);
+        let rpc = rpc(url);
+        let mut scan = RegistryScan::default();
+        scan.refresh(&rpc, REGISTRY, 11_670_856, 11_675_000).unwrap();
+        assert!(scan.unresolved.contains(&ID));
+        assert!(!scan.registered_in.contains_key(&ID));
+
+        let reader = RpcCatalog::new(&rpc, REGISTRY, &scan);
+        let err = reader.registration_block(ID).unwrap_err().to_string();
+        assert!(err.contains("not visible from this RPC yet"), "{err}");
+        let err = reader
+            .created_params(ID)
+            .err()
+            .map(|e| e.to_string())
+            .expect("a missing registration must not read as a factory-less instance");
+        assert!(err.contains("not visible from this RPC yet"), "{err}");
+    }
+
+    #[test]
+    fn a_directory_the_scan_already_covers_asks_for_nothing_more() {
+        let (url, seen) =
+            stub(&[("eth_getLogs", &[REGISTRATION_LOG]), ("eth_call", &[DIRECTORY_WITH_ID])]);
+        let mut scan = RegistryScan::default();
+        scan.refresh(&rpc(url), REGISTRY, 11_670_856, 11_675_000).unwrap();
+        assert!(scan.registered_in.contains_key(&ID));
+        let seen = seen.lock().unwrap();
+        assert_eq!(
+            seen.iter().filter(|(m, _)| m == "eth_getLogs").count(),
+            1,
+            "one range chunk, no targeted lookups"
+        );
     }
 }
