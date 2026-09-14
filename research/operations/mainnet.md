@@ -382,6 +382,35 @@ The mainnet inputs below are unchanged.
     plenty to start); the Succinct requester key needs PROVE credit on the Succinct network. Keep
     all three off any machine the Sepolia keys touched.
 
+## 6e. Phase 6 status (2026-09-14): mainnet contracts deployed
+
+Broadcast at about 22:35 UTC from a clean checkout of `v0.1.5` (`DEPLOYMENT_COMMIT`
+`40e945d2a58efdc3512257f473bf3b337f39616f`) with the release `guest-manifest.json`; preflight 27 of
+27 beforehand, dry run the same 18-step plan as the fork rehearsal. First deployment block
+25,978,660; 49 transactions from the deployer `0xA4Eb12403ba70d74f0A1690634c3a3f134c9c266`; cost
+0.0062 ETH at a 0.06 gwei base fee (the quiet window the plan waited for). The deployer renounced
+every role. Admin Safe `0x181c9b70FF0090DAF21bf3eba086EDBF5C230A4c` executed the four
+`REGISTRAR_ROLE` grants as one Transaction Builder batch in
+[`0x882a7430…083a59`](https://etherscan.io/tx/0x882a7430d1d44ada87d48b77d1368182a67f2c1718d46cdb43f8d2ec22083a59)
+(block 25,978,780). `deploy:mainnet:postcheck`: 65 of 65, including the registry, vault and
+subnetwork-registry role graph. Etherscan verification ran from the same checkout.
+
+| Contract | Address |
+| --- | --- |
+| InstanceRegistry | `0x6B95cBeC599f1D1956A05A52f5Bdf4E180196108` |
+| TrustgraphsFactory | `0xC4D988422636121b5943421A036C44Ea90c2d2D4` |
+| GovernedTrustgraphsFactory | `0x2bF99bB243A388f8f1862EfcF2E6CA57D1783143` |
+| WeightedTrustgraphsFactory / governed | `0xB729b6Ed016F23c233cBdAB83f8723EB91Aaa1dC` / `0xa4E33F260C3bDC89f0407753EDebf54BbDd820a2` |
+| TrustComposeFactory / governed | `0xB47456985771479bD880cE5F227265bC423D9f25` / `0x6ED2E26Ba7ABD06C7D405F138Cb32a63714E3262` |
+| ContributionsFactory | `0x8772e7e47BaC43606Da1aec8Ff909C0F55cDD900` |
+| ProvingVault | `0x03bd82d8BD9fac711650094fB36B6e8D2c008204` |
+| SubnetworkRegistry | `0xDC6F5D93B6Bc9E5473fF23886daAC2E7A72F4665` |
+
+The full record, including the four verifiers and the schema registrar, is `deployments/mainnet.json`.
+Two things learned on the day: the deploy script requires `0x`-prefixed keys while the preflight
+tolerates unprefixed ones (the first broadcast attempt stopped before sending anything), and the
+target env loader needs a base `.env` in the checkout (copy `.env.example`, never a local `.env`).
+
 ## 7. Cost sketch
 
 | Item | Estimate |
