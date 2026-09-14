@@ -193,9 +193,7 @@ platform) followed by two independent public fallbacks, publicnode and Tenderly 
 question. The list is written alchemy-first so the near-identical `PONDER_RPC_URL_<chainId>` /
 `PONDER_RPC_URLS_<chainId>` names cannot be "corrected" into a pool with no independent failover:
 a variable edit did exactly that twice on 2026-08-26, and the indexer launcher now refuses to
-start when the list has no host independent of the primary. The operator uses publicnode directly
-rather than the shared primary, because the metered free tier caps `eth_getLogs` at a 10-block
-range that the operator's registry scan can never fit.
+start when the list has no host independent of the primary. The operator uses Tenderly's public gateway directly (its `RPC_URL`), because the operator's log scans need a provider that never answers an indexed range with an empty list; publicnode did exactly that on 2026-09-14 and is kept only as an indexer fallback
 
 In the Railway dashboard, open **Project Settings → Shared Variables**, select the `production`
 environment of the linked project, and add that project's names from the table. Seal every
