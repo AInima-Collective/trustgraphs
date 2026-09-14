@@ -1,12 +1,12 @@
 {
   "$schema": "./schema.json",
   "version": 1,
-  "status": "planned",
+  "status": "deployed",
   "stage": "production",
   "chain": "mainnet",
   "chainId": 1,
-  "deploymentCommit": null,
-  "firstDeploymentBlock": null,
+  "deploymentCommit": "40e945d2a58efdc3512257f473bf3b337f39616f",
+  "firstDeploymentBlock": 25978660,
   "external": {
     "eas": "0xA1207F3BBa224E2c9c3c6D5aF63D0eb1582Ce587",
     "schemaRegistry": "0xA7b39296258348C78294F95B872b282326A97BDF",
@@ -16,54 +16,54 @@
   },
   "contracts": {
     "schemaRegistrar": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xC16Ec53Ed9cE7F31eC006A65541DF201E977748a",
+      "block": 25978660,
+      "txHash": "0x70bfc90412c53b5cb62ec6f84857c254f7f91a5da18fcd5b09677c46bd0ddf0b"
     },
     "rootVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xb899A7196D65F5F8700e88f6173b76B5663d8e98",
+      "block": 25978662,
+      "txHash": "0x947213cb9eed8a35ddf026b61709e460b9bc7d53a6b273c348a229361f7ca5a2"
     },
     "instanceRegistry": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x6B95cBeC599f1D1956A05A52f5Bdf4E180196108",
+      "block": 25978663,
+      "txHash": "0x39a96d933aedb8bac6760d3492eee80be5c59fd27f0fdda14b9b63e4a1c1b2b3"
     },
     "provingVault": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x03bd82d8BD9fac711650094fB36B6e8D2c008204",
+      "block": 25978744,
+      "txHash": "0x2ffc9df46555888e2f919e12fdfaddf5ed9a1028134b6c2585edc5854ca7e8d5"
     },
     "trustgraphsFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xC4D988422636121b5943421A036C44Ea90c2d2D4",
+      "block": 25978699,
+      "txHash": "0x258245f0b24dee7032bd638e12d2a108950b3ab040c2990c80579b0a3d4d9b2b"
     },
     "signerVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x64614e6a51161B4BF70378fa7929694C98DaE5bB",
+      "block": 25978700,
+      "txHash": "0xbf091f7e2a2dec98c60ad07184d5e6cf8ec96ddb39a2360689784bb0bb072f53"
     },
     "governedTrustgraphsFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x2bF99bB243A388f8f1862EfcF2E6CA57D1783143",
+      "block": 25978707,
+      "txHash": "0xb1d9a467e87a9871f60b8aacbd85cc3a28658cb1280b10548b00bbc84733bc25"
     },
     "signerSyncModuleDeployer": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x8221D3eaACCEA7d3834b593ccC3aaEf476A69E00",
+      "block": 25978702,
+      "txHash": "0xd018e6b6f25996728606e1a6f44b7a021609a8c414449bac083bf37958db19a6"
     },
     "parentAuthorityModuleDeployer": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xf968e4Fb99772CD72655B226554E597d5Ecb3C24",
+      "block": 25978704,
+      "txHash": "0x33d381b2e2de1cddac99dc77987141c6582f6e0c47db152e21e7afdea08f20da"
     },
     "subnetworkRegistry": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xDC6F5D93B6Bc9E5473fF23886daAC2E7A72F4665",
+      "block": 25978747,
+      "txHash": "0x6a25179e5284084d3afd364b9334d67fe80cb7727b6f11343579b2f681936b3c"
     },
     "safeSingleton": {
       "address": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
@@ -76,44 +76,44 @@
       "txHash": null
     },
     "weightedVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x1066C4B970a7f5c5dDA047B61d2cB18EB2Ed2E20",
+      "block": 25978717,
+      "txHash": "0x789ed15b1cb01b461fb705976a872e80d9f2dcce20ae30ee65bd0a2e4d340f76"
     },
     "weightedTrustgraphsFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xB729b6Ed016F23c233cBdAB83f8723EB91Aaa1dC",
+      "block": 25978722,
+      "txHash": "0xb14d6c89531ca74ac7c3a828967d17fbfcdb4f3a9c19c4876c46e8d07f8e7f43"
     },
     "governedWeightedTrustgraphsFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xa4E33F260C3bDC89f0407753EDebf54BbDd820a2",
+      "block": 25978724,
+      "txHash": "0x712b70033d36109743628cfbcfb8dc5858987c63a78a515b73309310750ceaec"
     },
     "compositionVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xc5C158815AE31bbC3Ab5E587141ec6734628bDFF",
+      "block": 25978726,
+      "txHash": "0x1eae6a3886f3e2da688b43f1945ecaeb57c074a8fc7aaaa11e49f0da9446a879"
     },
     "trustComposeFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xB47456985771479bD880cE5F227265bC423D9f25",
+      "block": 25978733,
+      "txHash": "0x0cbac10e2fffa2db995d57a7c1e0e60669c961a79ee1b6ac8fc48cb828593c2f"
     },
     "governedTrustComposeFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x6ED2E26Ba7ABD06C7D405F138Cb32a63714E3262",
+      "block": 25978734,
+      "txHash": "0x6e106d3c9a2bab1c5e7796c09e2c219394581c5a140d1c60f0aa5d0a48558b23"
     },
     "contributionsVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x8bd04604FE231ccC0C25C6eD367b8e1928208B9C",
+      "block": 25978738,
+      "txHash": "0xae8246f9e82cab7590b317f9310d76d8fe9f9d23694acb13f82399d81e6ec315"
     },
     "contributionsFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x8772e7e47BaC43606Da1aec8Ff909C0F55cDD900",
+      "block": 25978740,
+      "txHash": "0x07fb0f8b801bd54cddce6a7d04d96dd7c4dabcba3d13bcf0fab03112179552bd"
     }
   },
   "programs": {
