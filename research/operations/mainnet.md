@@ -146,6 +146,10 @@ Sepolia's 50; a quiet graph costs nothing either way), `curated.single_release_i
 showcase network is recorded, an `ops.alert_webhook`, and `[ipfs] min_success = 2` if a second
 independent publication target is adopted (section 5).
 
+Revised on 2026-09-15 after the first root (section 6f): `[finality] confirmations = 12`,
+`cadence.subsidy_min_blocks = 50`, and `[budget]` at $25 per instance and $50 global per day with
+`eth_usd = 2400`. Signer sync keeps 64 confirmations and its own budget.
+
 Because `config.rs` changes, mainnet runs a new operator image. Guest sources do not change, so
 the release workflow's reproducibility gate should show the `v0.1.1` program table unchanged;
 the preflight asserts this.
@@ -455,6 +459,23 @@ recording), replacing the zero placeholder the loader refuses.
 The network Safe is 1-of-1 with the admin Safe's signer `0x5885…e834` as its owner, not the admin
 Safe itself as step 7 of section 6 planned; both rest on the same key today. The recovery proposer
 is the same signer, with the 14-day recovery delay. Signer sync is off for this network.
+
+**First root.** Checkpoint 0 was minted by hand at block 25,984,687 through the permissionless
+`trigger()`, freezing the network's first six attestations. The operator requested the proof after
+64 confirmations, Succinct returned it in under two minutes, and the submitter landed it in
+[`0x153fa5f9…a84c`](https://etherscan.io/tx/0x153fa5f9c9baea6885eb32dfdb65500ffc303acc763d63c7f1aa4f159c41a84c)
+at block 25,984,768 for 1,156,918 gas. The root
+`0x1e13ad30c6754fd715e620b8448a52c51de8d7aa9d92d2f6769e0dcc0eb35071` scores 11 accounts, published
+as `bafkreidzuyba6twd3mghgmnldoqsgedmhazijo3fwwcxto6qkudmcmayae`.
+Checked independently: the CID digest, the stored `ipfsHash` and the SHA-256 of the bytes a public
+gateway served all agree, and the OpenZeppelin tree rebuilt from those scores reproduces the
+on-chain root. The indexer's `/network/<snapshot>/status` reports the same root.
+
+The submit landed during a base-fee spike, at 1.76 gwei against 0.15 gwei half an hour earlier, so
+it cost 0.00204 ETH. At the configured `eth_usd` that booked 511 cents against the 500-cent
+per-instance cap, and the operator held the network under `loss_budget`. The spend window is a
+rolling day rebuilt from the journal, so a restart does not clear it, and the operator re-posts
+the alert on every tick while the hold lasts. The profile was revised the same day (section 4.3).
 
 ## 7. Cost sketch
 
