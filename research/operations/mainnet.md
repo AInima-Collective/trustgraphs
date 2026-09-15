@@ -435,7 +435,9 @@ GovernedTrustgraphsFactory. Epoch length 1, a multi-token fund distributor with 
 and a 0.01 ETH proving-tank prepay in the same transaction. The registry row, the snapshot's
 `paramsHash` and verifier, and the indexer's record all agree with the manifest entry, which is
 recorded as the manifest's single instance so the subsidized operator's `single_release_instance`
-gate opens.
+gate opens. The same change sets `deployments/operator.mainnet.toml` `[paid] recipient` to the
+mainnet submitter `0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882` (funded with 0.1 ETH, nonce 0 at
+recording), replacing the zero placeholder the loader refuses.
 
 | Item                              | Value                                                                                       |
 | --------------------------------- | ------------------------------------------------------------------------------------------- |
