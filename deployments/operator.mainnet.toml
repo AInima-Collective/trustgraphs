@@ -25,10 +25,8 @@ single_release_instance = true
 [paid]
 enabled = true
 # The vault address is read from the finalized release manifest and checked for conflicts.
-# PLACEHOLDER: replace with the public address of the separately funded mainnet submitter key.
-# The zero address is deliberately what the loader refuses ("[paid] enabled but `recipient` is
-# missing or zero"), so the daemon cannot start until this line is replaced.
-recipient = "0x0000000000000000000000000000000000000000"
+# The public address of the separately funded mainnet submitter key (SUBMITTER_PRIVATE_KEY).
+recipient = "0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882"
 
 [cadence]
 tick_seconds = 60

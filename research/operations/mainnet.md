@@ -208,7 +208,7 @@ below is the project as it runs today and, after cutover, the local `.env.local`
 | `IPFS_GATEWAY_PUBLIC`                      | gateway ending in `/ipfs/`                                       | same or separate                                 |
 | `FRONTEND_URL`                             | `https://trustgraphs.xyz` today; `http://127.0.0.1:3000` locally | `https://trustgraphs.xyz`                        |
 | `IPFS_PIN_API_KEY`, quotas                 | Pinata token                                                     | Pinata token (separate key)                      |
-| `FEATURED_NETWORK_ID`                      | Sepolia showcase instance id                                     | mainnet showcase instance id, set after creation |
+| `FEATURED_NETWORK_ID`                      | Sepolia showcase instance id                                     | `0x8bacf0f9…57fbe4` (section 6f)                 |
 | `NEXT_PUBLIC_EAS_RELAY_ENABLED`            | as today                                                         | unset (off)                                      |
 | `NEXT_PUBLIC_EAS_OFFCHAIN_*`               | as today                                                         | unset (creation of the strict lane stays hidden) |
 
@@ -424,6 +424,37 @@ The full record, including the four verifiers and the schema registrar, is `depl
 Two things learned on the day: the deploy script requires `0x`-prefixed keys while the preflight
 tolerates unprefixed ones (the first broadcast attempt stopped before sending anything), and the
 target env loader needs a base `.env` in the checkout (copy `.env.example`, never a local `.env`).
+
+## 6f. Phase 7 status (2026-09-15): showcase network created
+
+The showcase network "Ethereum Extitutional" was created through the governed wizard on the mainnet
+Vercel preview in
+[`0x29d3175f…45e368`](https://etherscan.io/tx/0x29d3175fddd681e6bc16ca39df016047eaf0b6b9bc050f0f4d9b00f1ed45e368)
+(block 25,984,526, 13,987,629 gas), sent by `0x5885B93aABeD8FA8BC56E2aB6cC38127EC77e834` to the
+GovernedTrustgraphsFactory. Epoch length 1, a multi-token fund distributor with no display token,
+and a 0.01 ETH proving-tank prepay in the same transaction. The registry row, the snapshot's
+`paramsHash` and verifier, and the indexer's record all agree with the manifest entry, which is
+recorded as the manifest's single instance so the subsidized operator's `single_release_instance`
+gate opens. The same change sets `deployments/operator.mainnet.toml` `[paid] recipient` to the
+mainnet submitter `0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882` (funded with 0.1 ETH, nonce 0 at
+recording), replacing the zero placeholder the loader refuses.
+
+| Item                              | Value                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| Instance id                       | `0x8bacf0f9589f8ca66f9d1c69334d46214408a64d97dd2906076ee51c9057fbe4`                        |
+| Schema UID                        | `0x9f0d1948e9441478677bc521dcc8372ad8687c7570413738f69ed73315f9eb5d`                        |
+| Params hash                       | `0xdc7da9ef3abae61a70e8bd466c48e63c50d2bcabd214531556a496239ea21693`                        |
+| MerkleSnapshot                    | `0xB496f02CF099F966ED12BaA76A2a89F7e00919C6`                                                |
+| EASIndexerResolver (accumulator)  | `0xB60f400d7c2284c77809d6d8C22F4E2ac9C50FBa`                                                |
+| MerkleFundDistributor             | `0x26F4d9B2b770a731039B534D58491a2A49F3dF96`                                                |
+| ParamsController                  | `0x8DAEc345ee4d2dF0882e835d7D4b8Cf4450A6F83`                                                |
+| Network Safe                      | `0x610753236320258090264Ad835549D6059eB5102`                                                |
+| MerkleGovModule                   | `0x1E2E21b17EcF4aEA88bf736941630c147cDf69b8`                                                |
+| Recovery module / execution guard | `0x616b848dcB6CD8a06f824F4EC2707754483CC5A7` / `0xbDAa4197CD9F021dFC71EfE34D79f7e7F2680180` |
+
+The network Safe is 1-of-1 with the admin Safe's signer `0x5885…e834` as its owner, not the admin
+Safe itself as step 7 of section 6 planned; both rest on the same key today. The recovery proposer
+is the same signer, with the 14-day recovery delay. Signer sync is off for this network.
 
 ## 7. Cost sketch
 
