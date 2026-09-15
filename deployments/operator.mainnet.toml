@@ -31,9 +31,10 @@ recipient = "0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882"
 [cadence]
 tick_seconds = 60
 # The mainnet factory epoch floor is 1 block (decision D2 in research/operations/mainnet.md), so
-# this is the ONLY rate limit on subsidized proving of the curated instance: 300 blocks is about
-# one hour between proofs while the graph is changing. Quiet graphs cost nothing regardless.
-subsidy_min_blocks = 300
+# this and [budget] are the only limits on subsidized proving of the curated instance. 50 blocks is
+# about ten minutes between proofs while the graph is changing (lowered from 300 on 2026-09-15, the
+# Sepolia value); the daily budget below caps what that can spend. Quiet graphs cost nothing.
+subsidy_min_blocks = 50
 max_concurrent = 1
 max_per_instance = 1
 
@@ -45,8 +46,10 @@ replacement_after_s = 300
 simulate_before_send = true
 
 [finality]
-# Two Ethereum epochs: a proof is only bought for a checkpoint beyond ordinary short reorg depth.
-confirmations = 64
+# About 2.5 minutes. Post-merge mainnet reorgs deeper than a block or two are rare, and the cost of
+# one is a wasted proof, never a wrong root: a reorged submit re-plans from the held proof. Lowered
+# from 64 (full finality) on 2026-09-15 so a root follows its checkpoint within minutes.
+confirmations = 12
 track_block_hash = true
 
 [prover]
@@ -55,16 +58,18 @@ groth16 = true
 timeout_s = 3600
 
 [budget]
-# Sized to the epoch. The first submitProof of an instance measured 1,010,079 gas on the mainnet-
-# fork rehearsal (2026-09-10): about $2.50 at 1 gwei and about $25 at 10 gwei; later submits are
-# cheaper (warm slots). Succinct cycles are priced through cents_per_billion_cycles; eth_usd books
-# on-chain gas burn into the same ledger. Replace eth_usd with the price at launch.
-per_instance_usd_per_day = 5
-global_usd_per_day = 20
+# The showcase's first mainnet submitProof (2026-09-15) used 1,156,918 gas at 1.76 gwei during a
+# base-fee spike: 0.00204 ETH, about $5, which alone exhausted the original $5 per-instance cap and
+# held the network for a rolling day. Later submits are cheaper (warm slots). Succinct cycles are
+# priced through cents_per_billion_cycles; eth_usd books on-chain gas burn into the same ledger
+# (Chainlink ETH/USD read $2,396 on 2026-09-15). The window is rolling and rebuilt from the journal,
+# so a restart does not reset spend.
+per_instance_usd_per_day = 25
+global_usd_per_day = 50
 global_alert_percent = 80
 window_seconds = 86400
 cents_per_billion_cycles = 100
-eth_usd = 2500
+eth_usd = 2400
 
 [signer_sync]
 enabled = true

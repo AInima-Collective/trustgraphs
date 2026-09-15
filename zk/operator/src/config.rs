@@ -1668,13 +1668,15 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         assert_eq!(cfg.paid.vault, Some(vault.parse::<Address>().unwrap()));
         let showcase = deployed["instances"][0]["instanceId"].as_str().unwrap();
         assert_eq!(cfg.curated.instances, vec![showcase.parse::<B256>().unwrap()]);
-        // The mainnet deltas the Sepolia profile annotates.
-        assert_eq!(cfg.finality.confirmations, 64);
+        // The mainnet deltas the Sepolia profile annotates. Root cadence and finality were lowered
+        // and the budget raised on 2026-09-15, after the first root exhausted the original cap;
+        // signer sync keeps full finality.
+        assert_eq!(cfg.finality.confirmations, 12);
         assert_eq!(cfg.signer_sync.confirmations, 64);
-        assert_eq!(cfg.cadence.subsidy_min_blocks, 300);
+        assert_eq!(cfg.cadence.subsidy_min_blocks, 50);
         assert_eq!(cfg.gas.max_basefee_gwei, 30);
-        assert_eq!(cfg.budget.per_instance_usd_per_day, 5);
-        assert_eq!(cfg.budget.global_usd_per_day, 20);
+        assert_eq!(cfg.budget.per_instance_usd_per_day, 25);
+        assert_eq!(cfg.budget.global_usd_per_day, 50);
         assert_eq!(cfg.ipfs.required_successes(), 1);
         assert_eq!(cfg.ops.alert_webhook.as_deref(), Some("https://alerts.invalid"));
         assert_pinned_programs(&cfg, &deployed);
