@@ -86,7 +86,6 @@ const assertCanonicalMainnetExternals = (
 ) => {
   assert.equal(manifest.chainId, 1)
   assert.equal(releaseChainOf(manifest), 'mainnet')
-  assert.equal(manifest.instances.length, 0)
   // The generation-1 plan leaves the imported-EAS family out: absent, not null.
   assert.equal('importedTrustgraphsFactory' in manifest.contracts, false)
   assert.equal(
@@ -118,6 +117,16 @@ test('the tracked mainnet manifest is the deployed generation-1 record with cano
     assert.ok(record?.address && record.block !== null, key)
   }
   assertCanonicalMainnetExternals(manifest)
+  // The showcase network is the single tracked instance: the subsidized operator runs with
+  // `curated.single_release_instance = true` and fails closed on any other count.
+  assert.equal(manifest.instances.length, 1)
+  const [showcase] = manifest.instances
+  const factoryAddresses = new Set(
+    Object.values(manifest.contracts).map((record) => record.address)
+  )
+  for (const address of Object.values(showcase.contracts)) {
+    assert.equal(factoryAddresses.has(address), false, address)
+  }
   assert.throws(() => loadReleaseManifest(SEED), /Sepolia manifest must bind/)
 })
 
@@ -125,6 +134,7 @@ test('the archived planned seed is what the generation-1 broadcast started from'
   const seed = loadReleaseManifest(PLANNED_SEED, { expectedChain: 'mainnet' })
   assert.equal(seed.status, 'planned')
   assert.equal(seed.firstDeploymentBlock, null)
+  assert.deepEqual(seed.instances, [])
   assertCanonicalMainnetExternals(seed)
   const deployed = loadReleaseManifest(SEED, { expectedChain: 'mainnet' })
   assert.deepEqual(seed.external, deployed.external)

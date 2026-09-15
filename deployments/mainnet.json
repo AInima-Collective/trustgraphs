@@ -153,5 +153,17 @@
       "elfSha256": "0x3238e0ef525febdc094ed7d3fe1958ef93ddeddbb31599cd3d0d615d8ea121b7"
     }
   },
-  "instances": []
+  "instances": [
+    {
+      "instanceId": "0x8bacf0f9589f8ca66f9d1c69334d46214408a64d97dd2906076ee51c9057fbe4",
+      "name": "Ethereum Extitutional",
+      "schemaUid": "0x9f0d1948e9441478677bc521dcc8372ad8687c7570413738f69ed73315f9eb5d",
+      "contracts": {
+        "merkleSnapshot": "0xB496f02CF099F966ED12BaA76A2a89F7e00919C6",
+        "easIndexerResolver": "0xB60f400d7c2284c77809d6d8C22F4E2ac9C50FBa",
+        "merkleFundDistributor": "0x26F4d9B2b770a731039B534D58491a2A49F3dF96",
+        "paramsController": "0x8DAEc345ee4d2dF0882e835d7D4b8Cf4450A6F83"
+      }
+    }
+  ]
 }
