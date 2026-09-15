@@ -78,17 +78,23 @@ test('normal network API reconciles both lanes and publishes verified provenance
   assert.match(api, /incomplete derived mutation log/)
 })
 
-test('normal network API resolves isolated weighted instances by snapshot', async () => {
-  const api = await source('./network.ts')
-  assert.match(api, /weightedPriorInstance/)
+test('network and account APIs resolve isolated weighted instances by snapshot', async () => {
+  const lookup = await source('./snapshot-network.ts')
+  assert.match(lookup, /weightedPriorInstance/)
   assert.match(
-    api,
+    lookup,
     /select\(\{ schemaUid: weightedPriorInstance\.schemaUid \}\)[\s\S]*?from\(weightedPriorInstance\)[\s\S]*?weightedPriorInstance\.snapshot/
   )
   assert.match(
-    api,
+    lookup,
     /select\(\{ resolver: weightedPriorInstance\.resolver \}\)[\s\S]*?from\(weightedPriorInstance\)[\s\S]*?weightedPriorInstance\.snapshot/
   )
+  // Both route files go through the shared lookup rather than the static catalog alone.
+  for (const route of ['./network.ts', './account.ts']) {
+    const api = await source(route)
+    assert.match(api, /schemaUidsForSnapshot\(/, route)
+    assert.match(api, /resolverForSnapshot\(/, route)
+  }
 })
 
 test('snapshot work checkpoints update the same reorg-reverted checkpoint row', async () => {

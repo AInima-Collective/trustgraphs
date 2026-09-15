@@ -336,8 +336,10 @@ try {
   await noOverflow()
 
   await page.goto(`${origin}/attestations`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('combobox', { name: /^verification status$/i }).waitFor()
-  await page.getByRole('combobox', { name: /^sort order$/i }).waitFor()
+  // A filter names what it filters as well as its current value.
+  await page
+    .getByRole('button', { name: /^filter by status: all statuses$/i })
+    .waitFor()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`${origin}/create/weighted`, {
