@@ -397,13 +397,18 @@ export const Popup = ({
             aria-modal={false}
             aria-label={popupLabel}
             className={cn(
-              'fixed z-50 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain border border-hairline-strong transition-[opacity,transform] [&>*]:shrink-0',
+              'fixed z-50 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain border border-hairline-strong transition-[opacity,visibility] [&>*]:shrink-0',
               // Prevent initial flash on page load by hiding until first open.
               !openedOnce.current && 'hidden',
-              // Open.
+              // The closed state has to be in the base styles, as in `Modal`. It
+              // used to be only `animate-out fade-out-0`, and tw-animate's exit
+              // does not fill forwards: 150ms after closing, the panel was back
+              // at full opacity, inert and click-through, so every popup looked
+              // like it refused to close. The transition keeps the fade, and
+              // `visibility` flips to hidden at its end.
               open
                 ? 'animate-in fade-in-0 zoom-in-95'
-                : 'animate-out fade-out-0 zoom-out-95 pointer-events-none',
+                : 'invisible opacity-0 pointer-events-none',
               popupClassName
             )}
             ref={setDropdownRef}
