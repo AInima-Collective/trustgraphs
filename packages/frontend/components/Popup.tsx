@@ -23,6 +23,9 @@ import { Card } from './Card'
 const FOCUSABLE =
   'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
 
+/** How far a touch may travel and still be a tap that closes the panel. */
+const TAP_SLOP_PX = 10
+
 export interface PopupProps {
   trigger: PopupTrigger
   position: 'left' | 'right' | 'wide' | 'same'
@@ -133,34 +136,68 @@ export const Popup = ({
 
   const dropdownRef = useRef<HTMLDivElement | null>(null)
 
-  // Listen for click not in bounds, and close if so. Adds listener only when
-  // the dropdown is open.
+  /**
+   * Close on a press outside the trigger and the panel.
+   *
+   * This used to be a bubbling `click` listener on `window`, and the popup
+   * stayed open whenever that click never arrived. Any control that stops its
+   * own click from propagating swallowed it: every info tooltip, the copy
+   * buttons in the members table, address links. On touch the graph canvas
+   * cancels the touch events a tap would become a click from, so tapping the
+   * graph (most of a network page) did nothing either.
+   *
+   * Pointer events in the capture phase reach this before any of those
+   * handlers can stop them, and pointer events still fire where the click
+   * would not. A mouse or pen closes it on press. A touch closes it on a tap
+   * and not on the start of a scroll: the browser cancels the pointer once it
+   * takes the gesture over as a scroll, and a drag on the graph ends too far
+   * from where it started.
+   */
   useEffect(() => {
-    // Don't do anything if not on browser or popup is not open.
-    // If open is switched off, the useEffect will remove the listener and then
-    // not-readd it.
-    if (typeof window === 'undefined' || !open) {
+    if (!open) {
       return
     }
 
-    const closeIfClickOutside = (event: MouseEvent) => {
-      if (!(event.target instanceof Node)) {
+    // The wrapper itself (its padding, beside the trigger) counts as outside.
+    const isOutside = (target: EventTarget | null) =>
+      target instanceof Node &&
+      (!wrapperRef.current?.contains(target) ||
+        wrapperRef.current === target) &&
+      !dropdownRef.current?.contains(target)
+
+    let touch: { id: number; x: number; y: number } | null = null
+    const onPointerDown = (event: PointerEvent) => {
+      if (!isOutside(event.target)) {
         return
       }
-
-      // If clicked on an element that is not a descendant of the popup
-      // wrapper or the dropdown, close it.
-      if (
-        (!wrapperRef.current?.contains(event.target) ||
-          wrapperRef.current === event.target) &&
-        !dropdownRef.current?.contains(event.target)
-      ) {
+      if (event.pointerType === 'touch') {
+        touch = { id: event.pointerId, x: event.clientX, y: event.clientY }
+      } else {
         setOpen(false)
       }
     }
+    const onPointerUp = (event: PointerEvent) => {
+      if (!touch || event.pointerId !== touch.id) {
+        return
+      }
+      const moved = Math.hypot(event.clientX - touch.x, event.clientY - touch.y)
+      touch = null
+      if (moved <= TAP_SLOP_PX) {
+        setOpen(false)
+      }
+    }
+    const onPointerCancel = () => {
+      touch = null
+    }
 
-    window.addEventListener('click', closeIfClickOutside)
-    return () => window.removeEventListener('click', closeIfClickOutside)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('pointerup', onPointerUp, true)
+    document.addEventListener('pointercancel', onPointerCancel, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('pointerup', onPointerUp, true)
+      document.removeEventListener('pointercancel', onPointerCancel, true)
+    }
   }, [open, setOpen])
 
   // Track button to position the dropdown.
