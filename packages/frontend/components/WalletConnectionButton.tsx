@@ -94,10 +94,17 @@ export const WalletConnectionButton = ({
     },
   })
 
+  // Open on each `openConnectWallet()` call made while this button is mounted. The counter lives
+  // in the provider and outlives every page, so "open whenever it is above zero" reopened the
+  // picker on its own in every button mounted after the first request: one "Connect to vouch",
+  // dismissed, and moving to the rewards tab opened two panels, the page's and the nav's.
+  const seenOpenId = useRef(_openId)
   useEffect(() => {
-    if (_openId > 0) {
-      setOpenRef.current?.(true)
+    if (_openId === seenOpenId.current) {
+      return
     }
+    seenOpenId.current = _openId
+    setOpenRef.current?.(true)
   }, [_openId])
 
   const accountHref = `/account/${address}`
@@ -238,11 +245,9 @@ export const WalletConnectionButton = ({
                 className="justify-start gap-3 h-11"
                 variant="ghost"
                 size="sm"
-                onClick={(e) => {
+                onClick={() => {
                   navigator.clipboard.writeText(address)
                   setCopied(true)
-                  // Don't close the popup. Updating the copied state causes this to re-render, which causes the original event target to no longer be contained by the popup, which causes the popup to close.
-                  e.stopPropagation()
                 }}
               >
                 <CopyIcon className="w-4 h-4 text-muted-foreground" />

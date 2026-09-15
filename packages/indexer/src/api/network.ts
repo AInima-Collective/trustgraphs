@@ -12,7 +12,6 @@ import {
   merkleSnapshot,
   proofSubmission,
   snapshotTrigger,
-  weightedPriorInstance,
 } from 'ponder:schema'
 import { Hex, isAddress } from 'viem'
 
@@ -28,7 +27,8 @@ import {
   requireRowScoreProgram,
   requireSnapshotScoreProgram,
 } from './score-programs'
-import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
+import { resolverForSnapshot, schemaUidsForSnapshot } from './snapshot-network'
+import { lower } from './utils'
 import { currentTimedVouches } from '../trust-reconcile'
 
 const app = new Hono()
@@ -50,76 +50,6 @@ const requireTrustNetworkProgram = async (snapshot: string) => {
 }
 
 // Get the accounts and attestations that are part of the network defined by the Merkle Snapshot contract.
-/**
- * The vouch schema UIDs to attribute attestations to, for one snapshot.
- *
- * Three sources, in order: the build-time config (hand-deployed networks, and the program-tagged
- * entries this route deliberately ignores), then the ordinary and isolated weighted instance
- * catalogs. Without both catalog lookups a factory network 404s here, which is not a cosmetic
- * failure: it is exactly the endpoint the network page reads its member list and attestation feed
- * from, so a freshly created community would render its name and a vouch button over a permanently
- * empty roster.
- */
-const schemaUidsForSnapshot = async (
-  merkleSnapshotContract: string
-): Promise<Hex[] | null> => {
-  const configured = NETWORKS.find((network) =>
-    isHexEqual(network.contracts.merkleSnapshot, merkleSnapshotContract)
-  )
-  // `demo:govern` adds presentation/governance data for the factory-created
-  // demo to the static catalog before it knows the instance schema. An empty
-  // `schemas` array is therefore not an authoritative "no schemas" result:
-  // fall through to the on-chain factory catalog, or every indexed vouch is
-  // excluded by the empty `inArray` below and the graph appears blank.
-  if (configured && configured.schemas.length > 0) {
-    return configured.schemas.map((schema) => schema.uid as Hex)
-  }
-
-  const [row] = await db
-    .select({ schemaUid: instance.schemaUid })
-    .from(instance)
-    .where(eq(instance.snapshot, merkleSnapshotContract.toLowerCase() as Hex))
-    .limit(1)
-  if (row) return [row.schemaUid as Hex]
-
-  const [weighted] = await db
-    .select({ schemaUid: weightedPriorInstance.schemaUid })
-    .from(weightedPriorInstance)
-    .where(
-      eq(
-        weightedPriorInstance.snapshot,
-        merkleSnapshotContract.toLowerCase() as Hex
-      )
-    )
-    .limit(1)
-  return weighted ? [weighted.schemaUid as Hex] : null
-}
-
-/** Resolve the lane-1 fold log for config-backed and factory-created networks alike. */
-const resolverForSnapshot = async (snapshot: string): Promise<Hex | null> => {
-  const configured = NETWORKS.find((network) =>
-    isHexEqual(network.contracts.merkleSnapshot, snapshot)
-  )
-  const configuredResolver = (
-    configured?.contracts as { easIndexerResolver?: string } | undefined
-  )?.easIndexerResolver
-  if (configuredResolver) return configuredResolver.toLowerCase() as Hex
-
-  const [row] = await db
-    .select({ resolver: instance.resolver })
-    .from(instance)
-    .where(eq(instance.snapshot, snapshot.toLowerCase() as Hex))
-    .limit(1)
-  if (row) return row.resolver as Hex
-
-  const [weighted] = await db
-    .select({ resolver: weightedPriorInstance.resolver })
-    .from(weightedPriorInstance)
-    .where(eq(weightedPriorInstance.snapshot, snapshot.toLowerCase() as Hex))
-    .limit(1)
-  return (weighted?.resolver as Hex | undefined) ?? null
-}
-
 app.get('/:snapshot', async (c) => {
   const merkleSnapshotContract = c.req.param('snapshot')
   const schemaUids = await schemaUidsForSnapshot(merkleSnapshotContract)

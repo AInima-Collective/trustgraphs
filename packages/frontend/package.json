@@ -12,6 +12,7 @@
     "predev": "npm run ensure-env-local && npm run indexer:config && npm run config:generate && npm run config:link && npm run networks:link && npm run wagmi:generate",
     "ensure-env-local": "if ! test -f .env.local; then cp .env.example .env.local; fi",
     "dev": "next dev --webpack",
+    "dev:mainnet": "set -a && . ./.env.mainnet && set +a && pnpm run dev",
     "lint": "eslint .",
     "format": "eslint . --fix",
     "start": "next start",

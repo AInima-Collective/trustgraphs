@@ -1,35 +1,30 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import {
-  ArrowUpRight,
-  Check,
-  FileText,
-  ListFilter,
-  MessageSquare,
-  MessageSquareOff,
-} from 'lucide-react'
+import { ArrowUpRight, ListFilter } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type React from 'react'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Hex } from 'viem'
 import { useAccount } from 'wagmi'
 
-import { Address, TableAddress } from '@/components/Address'
+import { Address } from '@/components/Address'
+import {
+  AttestationTable,
+  type SchemaToNetwork,
+  useSchemaToNetwork,
+} from '@/components/AttestationTable'
 import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
-import { Button, ButtonLink } from '@/components/Button'
+import { Button } from '@/components/Button'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
-import { InfoTooltip } from '@/components/InfoTooltip'
+import { GraphStat, GraphStatRail } from '@/components/GraphStatRail'
 import { SectionHeading } from '@/components/SectionHeading'
-import { StatisticCard } from '@/components/StatisticCard'
-import { Column, Table } from '@/components/Table'
-import { Tooltip } from '@/components/Tooltip'
 import { useNetworks } from '@/contexts/CatalogContext'
-import { NetworkProvider } from '@/contexts/NetworkContext'
+import { NetworkProvider, useNetwork } from '@/contexts/NetworkContext'
 import { useIntoAttestationsData } from '@/hooks/useAttestation'
+import { useEns } from '@/hooks/useEns'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { AttestationData } from '@/lib/attestation'
 import {
@@ -38,11 +33,11 @@ import {
   erc8004AgentLabel,
 } from '@/lib/erc8004'
 import { parseErrorMessage } from '@/lib/error'
-import { isTrustedSeed } from '@/lib/network'
+import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
 import { Network } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
-import { cn, formatBigNumber, isHexEqual } from '@/lib/utils'
-import { NetworkProfile, ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { cn, formatBigNumber, formatPercentage, isHexEqual } from '@/lib/utils'
+import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 // Uses web2gl, which is not supported on the server
 const NetworkGraph = dynamic(
@@ -52,14 +47,23 @@ const NetworkGraph = dynamic(
   }
 )
 
-type NetworkRow = NetworkProfile & {
+/** Same height as the graph, so the page does not jump when it arrives. */
+const GRAPH_HEIGHT = 'h-96 sm:h-[32rem]'
+
+/** A network this account appears in, with its rank there once the indexer has scored it. */
+type Membership = {
   network: Network
-  seed: boolean
+  rank?: number
 }
+
+type PushBreadcrumb = ReturnType<typeof usePushBreadcrumb>
+
+const shortAddress = (address: string) =>
+  `${address.slice(0, 6)}…${address.slice(-4)}`
 
 export const AccountProfilePage = ({
   address,
-  ensName,
+  ensName: serverEnsName,
 }: {
   address: Hex
   ensName: string | null
@@ -69,17 +73,17 @@ export const AccountProfilePage = ({
   // The runtime trust-graph catalog: this page attributes scores and attestations to
   // networks, and both lookups have to know about instances created since the last deploy.
   const networks = useNetworks()
-  const schemaToNetwork = useMemo(() => {
-    const map: SchemaToNetwork = {}
-    for (const network of networks) {
-      for (const schema of network.schemas) {
-        map[schema.uid.toLowerCase()] = network
-      }
-    }
-    return map
-  }, [networks])
+  const schemaToNetwork = useSchemaToNetwork()
 
   const { address: connectedAddress } = useAccount()
+  const isYou = !!connectedAddress && isHexEqual(connectedAddress, address)
+  // The server resolves the name for the first paint; fill it in here if that lookup failed.
+  const { name: clientEnsName } = useEns(address, {
+    enableName: !serverEnsName,
+  })
+  const ensName = serverEnsName || clientEnsName || null
+  const displayName = ensName || shortAddress(address)
+
   const pushBreadcrumb = usePushBreadcrumb({
     route: `/account/${address}`,
     title: ensName || undefined,
@@ -87,21 +91,17 @@ export const AccountProfilePage = ({
 
   const {
     isLoading: isLoadingNetworkProfiles,
-    error: errorNetworkProfiles,
     data: networkProfiles,
     refetch: refreshNetworkProfiles,
   } = useQuery(ponderQueries.accountNetworkProfiles(address))
 
-  const {
-    isLoading: isLoadingAgents,
-    error: errorAgents,
-    data: agentRelations,
-    refetch: refreshAgents,
-  } = useQuery(ponderQueries.accountAgents(address))
+  const { data: agentRelations } = useQuery(
+    ponderQueries.accountAgents(address)
+  )
 
   const {
     isLoading: isLoadingAttestations,
-    error: errorAttestations,
+    error: attestationsError,
     data: attestations,
     refetch: refreshAttestations,
   } = usePonderQuery({
@@ -114,9 +114,11 @@ export const AccountProfilePage = ({
     refreshNetworkProfiles()
   }, [attestations?.length, refreshNetworkProfiles])
 
-  const isLoading =
-    isLoadingNetworkProfiles || isLoadingAttestations || isLoadingAgents
-  const error = errorNetworkProfiles || errorAttestations || errorAgents
+  useEffect(() => {
+    attestations?.forEach((attestation) => {
+      router.prefetch(`/attestations/${attestation.uid}`)
+    })
+  }, [router, attestations])
 
   const relatedAgents = useMemo(() => {
     const byKey = new Map<string, Erc8004AgentSummary>()
@@ -136,700 +138,471 @@ export const AccountProfilePage = ({
     return [...byKey.values()]
   }, [agentRelations])
 
-  useEffect(() => {
-    attestations?.forEach((attestation) => {
-      router.prefetch(`/attestations/${attestation.uid}`)
-    })
-  }, [router, attestations])
-
-  const { networkRows, maxScore, averageScore, medianScore } = useMemo(() => {
-    const networkRows =
-      networkProfiles
-        ?.flatMap((networkProfile): NetworkRow | [] => {
-          // Find the network that this merkle snapshot contract belongs to.
-          const network = networks.find((network) =>
-            isHexEqual(
-              networkProfile.merkleSnapshotContract,
-              network.contracts.merkleSnapshot
-            )
-          )
-
-          if (!network || networkProfile.score === '0') {
-            return []
-          }
-
-          return {
-            network,
-            ...networkProfile,
-            seed: isTrustedSeed(network, address),
-          }
-        })
-        .sort((a, b) => Number(b.score) - Number(a.score)) || []
-
-    const maxScore = networkRows.reduce(
-      (max, network) => Math.max(max, Number(network.score)),
-      0
-    )
-    const averageScore =
-      networkRows.length > 0
-        ? networkRows.reduce((sum, network) => sum + Number(network.score), 0) /
-          networkRows.length
-        : 0
-    const medianScore =
-      networkRows.length > 1
-        ? Number(networkRows[Math.ceil(networkRows.length / 2)].score)
-        : Number(networkRows[0]?.score || '0')
-
-    return {
-      networkRows,
-      maxScore,
-      averageScore,
-      medianScore,
+  /**
+   * Every network the account appears in: the ones the indexer has scored it in, highest score
+   * first, then any other network it has given or received an attestation in.
+   *
+   * The indexer's list alone is not enough. Until it learned about factory-created networks it
+   * returned nothing on mainnet, where every network is one, and this page told members of the
+   * showcase network they were in no network at all. An account's own attestations name their
+   * networks directly, so a network it takes part in shows up here either way.
+   */
+  const memberships = useMemo(() => {
+    const byId = new Map<string, Membership>()
+    const scored = [...(networkProfiles ?? [])]
+      .filter((profile) => profile.score !== '0')
+      .sort((a, b) => Number(b.score) - Number(a.score))
+    for (const profile of scored) {
+      const network = networks.find((network) =>
+        isHexEqual(
+          profile.merkleSnapshotContract,
+          network.contracts.merkleSnapshot
+        )
+      )
+      if (network && !byId.has(network.id)) {
+        byId.set(network.id, { network, rank: profile.rank })
+      }
     }
-  }, [networkProfiles, networks, address])
+    for (const attestation of attestations ?? []) {
+      const network = schemaToNetwork[attestation.schema.toLowerCase()]
+      if (network && !byId.has(network.id)) {
+        byId.set(network.id, { network })
+      }
+    }
+    return [...byId.values()]
+  }, [networkProfiles, networks, attestations, schemaToNetwork])
 
-  const networksColumns: Column<NetworkRow>[] = [
-    {
-      key: 'name',
-      header: 'NETWORK',
-      tooltip: 'The name of the network.',
-      sortable: false,
-      accessor: (row) => row.network.name,
-      render: (row) => (
-        <Link
-          href={`/networks/${row.network.id}`}
-          onClick={() => pushBreadcrumb()}
-          className="tg-touch-target inline-flex items-center underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        >
-          {row.network.name}
-        </Link>
-      ),
-    },
-    {
-      key: 'seed',
-      header: 'SEED',
-      tooltip:
-        'Indicates if this account is part of the initial seed group that bootstrapped this network. Seed member influence is designed to diminish as the network grows.',
-      sortable: false,
-      render: (row) => (row.seed ? '🌱' : ''),
-    },
-    {
-      key: 'validated',
-      header: 'VALIDATED',
-      tooltip:
-        'Indicates if this member has attained a significant trust score in the network.',
-      sortable: false,
-      render: (row) => (row.validated ? <Check className="w-4 h-4" /> : ''),
-    },
-    {
-      key: 'rank',
-      header: 'RANK',
-      tooltip:
-        "Member's position in this network ranked by Trust Score. Rank is recalculated as new attestations are made.",
-      sortable: true,
-      accessor: (row) => row.rank,
-      render: (row) => `#${row.rank}`,
-    },
-    {
-      key: 'attestationsReceived',
-      header: 'RECEIVED',
-      tooltip:
-        'The number of attestations this member has received from other participants in this network.',
-      sortable: true,
-      accessor: (row) => row.attestationsReceived.inNetwork.length,
-      render: (row) =>
-        formatBigNumber(
-          row.attestationsReceived.inNetwork.length,
-          undefined,
-          true
-        ),
-    },
-    {
-      key: 'attestationsGiven',
-      header: 'SENT',
-      tooltip:
-        'The number of attestations this member has given to other participants that are counted for the network, indicating their level of engagement in building network trust.',
-      sortable: true,
-      accessor: (row) => row.attestationsGiven.inNetwork.length,
-      render: (row) =>
-        formatBigNumber(
-          row.attestationsGiven.inNetwork.length,
-          undefined,
-          true
-        ),
-    },
-    {
-      key: 'score',
-      header: 'SCORE',
-      tooltip:
-        "This member's calculated Trust Score using a PageRank-style algorithm. Higher scores indicate stronger endorsement from trusted peers in the network.",
-      sortable: true,
-      accessor: (row) => row.score,
-      // Score is a pool allocation in wei (scaled by precisionScale = 1e18); divide for display.
-      render: (row) => formatBigNumber(row.score, 18),
-    },
-  ]
+  const [selectedId, setSelectedId] = useState<string>()
+  const selected =
+    memberships.find((membership) => membership.network.id === selectedId) ??
+    memberships[0]
 
-  const [filterMode, setFilterMode] = useState<'network' | 'all'>('network')
-  const [selectedNetworkId, setSelectedNetworkId] = useState<string>('all')
-
-  const inAnyNetwork = networkRows.length > 0
-
-  // Get the selected network row (if any)
-  const selectedNetworkRow =
-    selectedNetworkId === 'all'
-      ? null
-      : networkRows.find((row) => row.network.id === selectedNetworkId)
-
-  // If not a network participant, always show all attestations.
-  const onlyNetworkAttestations = !inAnyNetwork
-    ? false
-    : filterMode === 'network'
-
-  // If in-network and has attestations, show the network graph.
-  const showNetworkGraph =
-    inAnyNetwork &&
-    selectedNetworkId !== 'all' &&
-    networkRows.some(
-      (row) =>
-        row.attestationsReceived.inNetwork.length > 0 ||
-        row.attestationsGiven.inNetwork.length > 0
-    )
-
-  // Filter network rows based on selected network
-  const filteredNetworkRows = selectedNetworkRow
-    ? [selectedNetworkRow]
-    : networkRows
-
-  const allAttestationsReceived =
-    attestations?.filter((attestation) =>
-      isHexEqual(attestation.recipient, address)
-    ) || []
-
-  const networkAttestationsReceived = filteredNetworkRows.flatMap(
-    (row) =>
-      attestations?.filter((attestation) =>
-        row.attestationsReceived.inNetwork.includes(attestation.uid)
-      ) || []
-  )
-
-  const attestationsReceived = onlyNetworkAttestations
-    ? networkAttestationsReceived
-    : allAttestationsReceived
-
-  const outOfNetworkAttestationsReceived =
-    allAttestationsReceived.length - networkAttestationsReceived.length
-
-  const allAttestationsGiven =
-    attestations?.filter((attestation) =>
-      isHexEqual(attestation.attester, address)
-    ) || []
-
-  const networkAttestationsGiven = filteredNetworkRows.flatMap(
-    (row) =>
-      attestations?.filter((attestation) =>
-        row.attestationsGiven.inNetwork.includes(attestation.uid)
-      ) || []
-  )
-
-  const attestationsGiven = onlyNetworkAttestations
-    ? networkAttestationsGiven
-    : allAttestationsGiven
-
-  const outOfNetworkAttestationsGiven =
-    allAttestationsGiven.length - networkAttestationsGiven.length
+  const isLoading = isLoadingNetworkProfiles || isLoadingAttestations
 
   return (
-    <div className="space-y-6">
-      <BreadcrumbRenderer />
-
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-x-4 gap-y-2 mb-2">
-        <Address
-          address={address}
-          textClassName="text-xl text-primary font-bold"
-          displayMode="full"
-          showCopyIcon={true}
-          noHighlight
-          link={false}
-        />
-
-        <div className="flex flex-row gap-2">
-          {!!selectedNetworkRow?.network.applicationUrl && (
-            <Tooltip
-              title={`Apply to join ${selectedNetworkRow.network.name}`}
-              asChild
-              nativeButton={false}
-            >
-              <ButtonLink
-                role="link"
-                href={selectedNetworkRow.network.applicationUrl}
-                aria-label={`Apply to join ${selectedNetworkRow.network.name}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                size="icon"
-                variant="default"
+    <div className="space-y-10 sm:space-y-12">
+      <header className="flex flex-col items-start gap-4">
+        <BreadcrumbRenderer className="mb-2" />
+        <div className="flex w-full flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
+          <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
+            <p className="tg-label">{isYou ? 'Your account' : 'Account'}</p>
+            <h1 className="max-w-full break-words text-4xl font-bold">
+              {displayName}
+            </h1>
+            <Address
+              address={address}
+              displayText={address}
+              displayMode="full"
+              link={false}
+              showEns={false}
+              noHighlight
+              textClassName="text-xs text-text-subtle"
+            />
+            {relatedAgents.length > 0 && (
+              <ul
+                aria-label="ERC-8004 agent identities"
+                className="flex list-none flex-wrap gap-2 pl-0"
               >
-                <FileText className="!w-4.5 !h-4.5" />
-              </ButtonLink>
-            </Tooltip>
-          )}
-
-          <CreateAttestationModal
-            defaultRecipient={
-              connectedAddress?.toLowerCase() === address.toLowerCase()
-                ? undefined
-                : ensName || address
-            }
-          />
-        </div>
-      </div>
-
-      {!isLoadingAgents && !errorAgents && relatedAgents.length > 0 && (
-        <section
-          aria-label="ERC-8004 agent identities"
-          className="border-y border-border py-4 space-y-3"
-        >
-          <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-wider">
-            {(agentRelations?.verifiedWalletFor.length ?? 0) > 0 && (
-              <span className="border border-success/40 bg-success-soft px-2 py-1 text-success">
-                Verified wallet for {agentRelations!.verifiedWalletFor.length}{' '}
-                {agentRelations!.verifiedWalletFor.length === 1
-                  ? 'agent'
-                  : 'agents'}
-              </span>
-            )}
-            {(agentRelations?.owns.length ?? 0) > 0 && (
-              <span className="border border-border bg-surface px-2 py-1 text-text-muted">
-                Owns {agentRelations!.owns.length}{' '}
-                {agentRelations!.owns.length === 1 ? 'identity' : 'identities'}
-              </span>
+                {relatedAgents.map((agent) => (
+                  <li key={agent.key}>
+                    <Link
+                      href={erc8004AgentHref(agent)}
+                      title={`Chain ${agent.chainId} · ERC-8004 #${agent.agentId}`}
+                      className="inline-flex items-center gap-1.5 border border-success/40 px-2 py-1 text-[10px] uppercase tracking-wider text-success transition-colors hover:border-success"
+                    >
+                      ◈ {erc8004AgentLabel(agent)} ·{' '}
+                      {agent.roles
+                        .map((role) =>
+                          role === 'verified_wallet'
+                            ? 'Verified wallet'
+                            : 'Owner'
+                        )
+                        .join(' · ')}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {relatedAgents.map((agent) => (
-              <Link
-                key={agent.key}
-                href={erc8004AgentHref(agent)}
-                className="group inline-flex min-w-48 items-center justify-between gap-4 border border-border bg-surface px-3 py-2 text-xs transition-colors hover:border-hairline-strong"
-              >
-                <span>
-                  <span className="block text-text">
-                    {erc8004AgentLabel(agent)}
-                  </span>
-                  <span className="mt-0.5 block text-[10px] text-text-subtle">
-                    Chain {agent.chainId} · ERC-8004 #{agent.agentId}
-                  </span>
-                  <span className="mt-1 block text-[9px] uppercase tracking-wider text-success">
-                    {agent.roles
-                      .map((role) =>
-                        role === 'verified_wallet'
-                          ? 'Verified wallet'
-                          : 'Owner identity'
-                      )
-                      .join(' · ')}
-                  </span>
-                </span>
-                <ArrowUpRight className="h-3.5 w-3.5 text-text-subtle group-hover:text-text" />
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="text-center py-8">
-          <div className="text-sm text-text">◉ LOADING PROFILE DATA ◉</div>
-          <div className="text-xs mt-2 text-text-muted">
-            Fetching account information...
+          <div className="flex shrink-0 flex-row flex-wrap items-center gap-3 lg:pt-1">
+            <CreateAttestationModal
+              title={isYou ? 'Vouch for someone' : `Vouch for ${displayName}`}
+              className="h-11 px-5"
+              defaultRecipient={isYou ? undefined : ensName || address}
+            />
           </div>
         </div>
-      )}
+      </header>
 
-      {/* Error State */}
-      {error && (
+      {attestationsError ? (
         <div className="border border-error bg-error-soft p-4 rounded-sm">
           <div className="error-text text-sm text-error">
-            ⚠️ {parseErrorMessage(error)}
+            ⚠️ {parseErrorMessage(attestationsError)}
           </div>
           <Button
             onClick={() => {
               refreshNetworkProfiles()
               refreshAttestations()
-              refreshAgents()
             }}
             className="mt-3 !px-4 !py-2"
           >
             <span className="text-xs">RETRY</span>
           </Button>
         </div>
-      )}
-
-      {/* Account Info */}
-      {!isLoading && !error && (
-        <>
-          {/* Network Status */}
-          {networkRows.length > 0 ? (
-            <Table
-              className="py-6"
-              cellClassName="text-sm"
-              columns={networksColumns}
-              data={networkRows}
-              defaultSortColumn="rank"
-              defaultSortDirection="asc"
-              getRowKey={(row) => row.network.id}
-              onRowClick={(row) => {
-                pushBreadcrumb()
-                router.push(`/networks/${row.network.id}`)
-              }}
-            />
-          ) : (
-            <div className="my-6 border border-warn bg-warn-soft p-4 rounded-md">
-              <div className="text-sm text-warn">
-                ⚠️ This account is not currently a participant in any
-                TrustNetworks.
-              </div>
-              <div className="text-xs mt-1 text-warn">
-                Participate in attestations to appear in Network rankings.
-              </div>
-            </div>
+      ) : isLoading ? (
+        <div
+          className={cn(
+            'flex flex-col items-center justify-center border border-border text-center',
+            GRAPH_HEIGHT
           )}
-
-          {/* Statistics */}
-          <div
-            className={cn(
-              'grid grid-cols-1 justify-start items-stretch gap-6 border-y border-border py-12',
-              showNetworkGraph && 'lg:grid-cols-2 lg:items-start'
-            )}
-          >
-            <div className="space-y-6">
-              <SectionHeading>Statistics</SectionHeading>
-              <div className="flex flex-row gap-4 flex-wrap">
-                <StatisticCard
-                  title="NETWORKS"
-                  tooltip="The number of networks this account is participating in."
-                  value={formatBigNumber(networkRows.length, undefined, true)}
-                />
-                <StatisticCard
-                  title="HIGHEST SCORE"
-                  tooltip="The account's highest Trust Score based on reputation in all their networks."
-                  value={formatBigNumber(Math.round(maxScore), 18)}
-                />
-                {networkRows.length > 1 && (
-                  <StatisticCard
-                    title="AVERAGE + MEDIAN TRUST SCORE"
-                    tooltip="This account's typical Trust Scores in all their networks."
-                    value={
-                      averageScore === medianScore
-                        ? formatBigNumber(Math.round(averageScore), 18)
-                        : `${formatBigNumber(
-                            Math.round(averageScore),
-                            18
-                          )} / ${formatBigNumber(Math.round(medianScore), 18)}`
-                    }
-                  />
-                )}
-                <StatisticCard
-                  title="ATTESTATIONS RECEIVED"
-                  tooltip={
-                    onlyNetworkAttestations
-                      ? 'Total number of attestations this account has received from other network members.'
-                      : 'Total number of attestations this account has received from others.'
-                  }
-                  value={formatBigNumber(
-                    attestationsReceived.length,
-                    undefined,
-                    true
-                  )}
-                />
-                <StatisticCard
-                  title="ATTESTATIONS MADE"
-                  tooltip={
-                    onlyNetworkAttestations
-                      ? 'Total number of attestations this account has given to other members that are counted for the network.'
-                      : 'Total number of attestations this account has given to others.'
-                  }
-                  value={formatBigNumber(
-                    attestationsGiven.length,
-                    undefined,
-                    true
-                  )}
-                />
-              </div>
-            </div>
-
-            {showNetworkGraph && (
-              <div className="h-[66vh] lg:h-full">
-                <Suspense fallback={null}>
-                  {/* Show network graph for the selected network, or first network if none selected */}
-                  <NetworkProvider
-                    network={
-                      selectedNetworkRow?.network || networkRows[0].network
-                    }
-                  >
-                    <NetworkGraph onlyAddress={address} />
-                  </NetworkProvider>
-                </Suspense>
-              </div>
-            )}
+        >
+          <div className="text-sm text-text">◉ LOADING PROFILE DATA ◉</div>
+          <div className="text-xs mt-2 text-text-muted">
+            Fetching account information...
           </div>
-
-          {/* Attestations Received Section */}
-          <div className="border-b border-border pt-6 pb-12 space-y-6">
-            <div className="flex flex-row justify-between items-center gap-4 flex-wrap">
-              <h2 className="font-bold">
-                {!isLoading && attestationsReceived.length === 0
-                  ? 'NO ATTESTATIONS RECEIVED'
-                  : 'ATTESTATIONS RECEIVED'}
-              </h2>
-
-              <div className="flex flex-row gap-2 flex-wrap">
-                {inAnyNetwork && networkRows.length > 1 && (
-                  <Dropdown
-                    options={[
-                      { value: 'all', label: 'All Networks' },
-                      ...networkRows.map((row) => ({
-                        value: row.network.id,
-                        label: row.network.name,
-                      })),
-                    ]}
-                    selected={selectedNetworkId}
-                    onSelect={(value) => setSelectedNetworkId(value)}
-                  />
-                )}
-
-                <Dropdown
-                  options={
-                    inAnyNetwork
-                      ? [
-                          { value: 'network', label: 'Network Only' },
-                          { value: 'all', label: 'All Attestations' },
-                        ]
-                      : [{ value: 'all', label: 'All Attestations' }]
-                  }
-                  selected={filterMode}
-                  onSelect={(value) => setFilterMode(value)}
-                  icon={<ListFilter className="!w-5 !h-5" />}
-                />
-              </div>
-            </div>
-
-            {isLoading && (
-              <div className="text-center py-8">
-                <div className="text-sm text-text">LOADING ATTESTATIONS</div>
-              </div>
-            )}
-
-            {!isLoading && attestationsReceived.length > 0 && (
-              <Table
-                columns={attestationsReceivedColumns(
-                  pushBreadcrumb,
-                  schemaToNetwork
-                )}
-                data={attestationsReceived}
-                cellClassName="text-sm"
-                defaultSortColumn="time"
-                defaultSortDirection="desc"
-                onRowClick={(row) => {
-                  pushBreadcrumb()
-                  router.push(`/attestations/${row.uid}`)
-                }}
-                getRowKey={(row) => row.uid}
-              />
-            )}
-
-            {!isLoading &&
-              onlyNetworkAttestations &&
-              outOfNetworkAttestationsReceived > 0 && (
-                <div className="flex flex-row gap-1 items-center">
-                  <InfoTooltip
-                    title={
-                      'Attestations from accounts outside of the Trust Network and duplicates from in-network accounts are currently hidden, as they do not impact this account\'s score. To view these attestations, change the filter from "Network Only" to "All Attestations".'
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground italic">
-                    {formatBigNumber(
-                      outOfNetworkAttestationsReceived,
-                      undefined,
-                      true
-                    )}{' '}
-                    out-of-network attestation
-                    {outOfNetworkAttestationsReceived > 1
-                      ? 's are'
-                      : ' is'}{' '}
-                    hidden from view.
-                  </p>
-                </div>
-              )}
-          </div>
-
-          {/* Attestations Given Section */}
-          <div className="border-b border-border pt-6 pb-12 space-y-6">
-            <h2 className="font-bold">
-              {!isLoading && attestationsGiven.length === 0
-                ? 'NO ATTESTATIONS MADE'
-                : 'ATTESTATIONS MADE'}
-            </h2>
-
-            {isLoading && (
-              <div className="text-center py-8">
-                <div className="text-sm text-text">LOADING ATTESTATIONS</div>
-              </div>
-            )}
-
-            {!isLoading && attestationsGiven.length > 0 && (
-              <Table
-                columns={attestationsGivenColumns(
-                  pushBreadcrumb,
-                  schemaToNetwork
-                )}
-                defaultSortColumn="time"
-                cellClassName="text-sm"
-                defaultSortDirection="desc"
-                data={attestationsGiven}
-                onRowClick={(row) => {
-                  pushBreadcrumb()
-                  router.push(`/attestations/${row.uid}`)
-                }}
-                getRowKey={(row) => row.uid}
-              />
-            )}
-
-            {!isLoading &&
-              onlyNetworkAttestations &&
-              outOfNetworkAttestationsGiven > 0 && (
-                <div className="flex flex-row gap-1 items-center">
-                  <InfoTooltip
-                    title={
-                      'Attestations to accounts outside of the Trust Network and duplicates to in-network accounts are currently hidden, as they are not counted in the network. To view these attestations, change the filter from "Network Only" to "All Attestations".'
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground italic">
-                    {formatBigNumber(
-                      outOfNetworkAttestationsGiven,
-                      undefined,
-                      true
-                    )}{' '}
-                    out-of-network attestation
-                    {outOfNetworkAttestationsGiven > 1 ? 's are' : ' is'} hidden
-                    from view.
-                  </p>
-                </div>
-              )}
-          </div>
-        </>
+        </div>
+      ) : selected ? (
+        <NetworkProvider key={selected.network.id} network={selected.network}>
+          <AccountInNetwork
+            address={address}
+            displayName={displayName}
+            memberships={memberships}
+            onSelect={setSelectedId}
+            attestations={attestations ?? []}
+            schemaToNetwork={schemaToNetwork}
+            pushBreadcrumb={pushBreadcrumb}
+          />
+        </NetworkProvider>
+      ) : (
+        <AttestationsSection
+          address={address}
+          attestations={attestations ?? []}
+          schemaToNetwork={schemaToNetwork}
+          pushBreadcrumb={pushBreadcrumb}
+        />
       )}
     </div>
   )
 }
 
-/** `{ lowercased schema uid -> network }`, built from the runtime catalog by the page. */
-type SchemaToNetwork = Record<string, Network>
-
-const commonAttestationColumns = (
-  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>,
+/** The account as seen from the selected network: its graph, its standing, its attestations. */
+function AccountInNetwork({
+  address,
+  displayName,
+  memberships,
+  onSelect,
+  attestations,
+  schemaToNetwork,
+  pushBreadcrumb,
+}: {
+  address: Hex
+  displayName: string
+  memberships: Membership[]
+  onSelect: (networkId: string) => void
+  attestations: AttestationData[]
   schemaToNetwork: SchemaToNetwork
-): Column<AttestationData>[] => [
-  {
-    key: 'network',
-    header: 'NETWORK',
-    tooltip: 'The network this attestation was made on.',
-    sortable: false,
-    render: (row) => {
-      const networkName = schemaToNetwork[row.schema.toLowerCase()]
-      if (!networkName) {
-        return <span className="text-text-subtle text-sm">—</span>
-      }
-      return (
-        <Link
-          className="group/network inline-flex items-center gap-2 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation()
-            pushBreadcrumb()
-          }}
-          href={`/networks/${networkName.id}`}
+  pushBreadcrumb: PushBreadcrumb
+}) {
+  // Standing comes from the same read as the network's own member table, so the two agree.
+  const {
+    network,
+    isLoading,
+    accountData,
+    attestationsData,
+    totalParticipants,
+    totalValue,
+  } = useNetwork()
+  const entry = accountData.find((row) => isHexEqual(row.account, address))
+  const weighted = network.program === 'trust-graph-weighted'
+  const seed = isTrustedSeed(network, address)
+  // A threshold of 0 (every factory network) validates every member, which says nothing.
+  const validated =
+    !!entry &&
+    network.validatedThreshold > 0 &&
+    isValidatedInNetwork(network, entry.value)
+
+  // What this network counts: the current attestation between each pair of its members.
+  const countedUids = useMemo(
+    () =>
+      attestationsData
+        ? new Set(attestationsData.map(({ uid }) => uid.toLowerCase()))
+        : null,
+    [attestationsData]
+  )
+
+  const pending = isLoading ? '—' : null
+  const badges = isLoading
+    ? []
+    : [
+        seed && (weighted ? 'Weighted prior' : 'Seed member'),
+        validated && 'Validated',
+      ].filter((badge): badge is string => !!badge)
+  const headingActions = (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {badges.map((badge) => (
+        <span
+          key={badge}
+          className="border border-success/40 px-2 py-1 text-[10px] uppercase tracking-wider text-success"
         >
-          <span className="text-sm text-text-muted transition-colors group-hover/network:text-text">
-            {networkName.name}
-          </span>
-          <ArrowUpRight className="h-3 w-3 shrink-0 text-text-muted transition-colors group-hover/network:text-text" />
-        </Link>
-      )
-    },
-  },
-  {
-    key: 'confidence',
-    header: 'CONFIDENCE',
-    tooltip: 'The strength of the attestation as specified by the attester.',
-    sortable: true,
-    accessor: (row) => Number(row.decodedData?.confidence || '0'),
-    render: (row) => (
-      <div className="text-sm text-text">
-        {formatBigNumber(row.decodedData?.confidence || '0', undefined, true)}
-      </div>
-    ),
-  },
-  {
-    key: 'comment',
-    header: 'COMMENT',
-    tooltip:
-      'An optional comment from the attester. Hover or tap on the icon to view.',
-    render: (row) =>
-      row.decodedData?.comment ? (
-        <Tooltip title={row.decodedData.comment}>
-          <MessageSquare className="!w-4.5 !h-4.5" />
-        </Tooltip>
-      ) : (
-        <Tooltip title="No comment provided">
-          <MessageSquareOff className="!w-4.5 !h-4.5 opacity-40" />
-        </Tooltip>
-      ),
-  },
-  {
-    key: 'time',
-    header: 'TIME',
-    tooltip: 'The time the attestation was made.',
-    sortable: true,
-    accessor: (row) => Number(row.time),
-    render: (row) => (
+          {badge}
+        </span>
+      ))}
       <Link
-        href={`/attestations/${row.uid}`}
+        href={`/networks/${network.id}`}
         onClick={() => pushBreadcrumb()}
-        className="tg-touch-target inline-flex flex-col justify-center text-sm text-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        aria-label={`View attestation from ${row.formattedTime}`}
+        className="tg-touch-target inline-flex items-center gap-1 text-sm text-text-muted underline underline-offset-4 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       >
-        <span>{row.formattedTime}</span>
-        <span className="text-xs text-text-muted">{row.formattedTimeAgo}</span>
+        View network
+        <ArrowUpRight className="h-3.5 w-3.5" />
       </Link>
-    ),
-  },
-]
+    </div>
+  )
 
-const attestationsReceivedColumns = (
-  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>,
-  schemaToNetwork: SchemaToNetwork
-): Column<AttestationData>[] => [
-  {
-    key: 'attester',
-    header: 'ATTESTER',
-    tooltip: 'The account that made the attestation.',
-    sortable: false,
-    render: (row) => <TableAddress address={row.attester} showNavIcon />,
-  },
-  ...commonAttestationColumns(pushBreadcrumb, schemaToNetwork),
-]
+  return (
+    <>
+      <section
+        aria-label={`${displayName} in ${network.name}`}
+        className="space-y-4"
+      >
+        {memberships.length > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border pb-2">
+            <nav
+              aria-label="Networks"
+              className="flex flex-row items-center gap-1 overflow-x-auto"
+            >
+              {memberships.map((membership) => {
+                const active = membership.network.id === network.id
+                return (
+                  <button
+                    key={membership.network.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => onSelect(membership.network.id)}
+                    className={cn(
+                      'inline-flex min-h-11 shrink-0 items-center gap-2 px-3 py-2 text-sm transition-colors sm:min-h-0 sm:py-1.5',
+                      active
+                        ? 'bg-primary text-primary-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                    )}
+                  >
+                    {membership.network.name}
+                    {membership.rank !== undefined && membership.rank > 0 && (
+                      <span className="text-xs tabular-nums opacity-70">
+                        #{membership.rank}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </nav>
+            {headingActions}
+          </div>
+        ) : (
+          // Not `SectionHeading`: that truncates the name to fit its actions, and on a phone the
+          // badge and link left "ETHEREUM EXTITUT…". This wraps them under it instead.
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border pb-2">
+            <h2 className="tg-label-strong">{network.name}</h2>
+            {headingActions}
+          </div>
+        )}
 
-const attestationsGivenColumns = (
-  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>,
+        <div className={cn('relative', GRAPH_HEIGHT)}>
+          <div className="absolute inset-0">
+            <Suspense fallback={null}>
+              <NetworkGraph
+                title={`${displayName}'s connections`}
+                onlyAddress={address}
+              />
+            </Suspense>
+          </div>
+
+          <GraphStatRail label={`${displayName}'s standing in ${network.name}`}>
+            <GraphStat
+              label="Rank"
+              value={
+                pending ??
+                (entry
+                  ? `#${entry.rank} of ${formatBigNumber(totalParticipants, undefined, true)}`
+                  : 'Not ranked')
+              }
+            />
+            <GraphStat
+              label="Trust score"
+              value={pending ?? formatBigNumber(entry?.value ?? '0', 18)}
+            />
+            <GraphStat
+              label="Share of network"
+              value={
+                pending ??
+                (entry && totalValue > 0
+                  ? formatPercentage((Number(entry.value) / totalValue) * 100)
+                  : '—')
+              }
+            />
+            <GraphStat
+              label="Received / given"
+              value={pending ?? `${entry?.received ?? 0} / ${entry?.sent ?? 0}`}
+            />
+          </GraphStatRail>
+        </div>
+      </section>
+
+      <AttestationsSection
+        address={address}
+        attestations={attestations}
+        network={network}
+        countedUids={countedUids}
+        schemaToNetwork={schemaToNetwork}
+        pushBreadcrumb={pushBreadcrumb}
+      />
+    </>
+  )
+}
+
+function AttestationsSection({
+  address,
+  attestations,
+  network,
+  countedUids,
+  schemaToNetwork,
+  pushBreadcrumb,
+}: {
+  address: Hex
+  attestations: AttestationData[]
+  /** The network the page is showing, if the account is in one. */
+  network?: Network
+  /** The attestation UIDs that network counts, or null while they load. */
+  countedUids?: Set<string> | null
   schemaToNetwork: SchemaToNetwork
-): Column<AttestationData>[] => [
-  {
-    key: 'recipient',
-    header: 'RECIPIENT',
-    tooltip: 'The account that received the attestation.',
-    sortable: false,
-    render: (row) => <TableAddress showNavIcon address={row.recipient} />,
-  },
-  ...commonAttestationColumns(pushBreadcrumb, schemaToNetwork),
-]
+  pushBreadcrumb: PushBreadcrumb
+}) {
+  const [filter, setFilter] = useState<'counted' | 'all'>('counted')
+  const counting = !!network && filter === 'counted'
+  const loading = counting && !countedUids
+
+  const visible =
+    counting && countedUids
+      ? attestations.filter(({ uid }) => countedUids.has(uid.toLowerCase()))
+      : attestations
+  const received = visible.filter((attestation) =>
+    isHexEqual(attestation.recipient, address)
+  )
+  const given = visible.filter((attestation) =>
+    isHexEqual(attestation.attester, address)
+  )
+  const hidden = loading ? 0 : attestations.length - visible.length
+
+  return (
+    <section aria-label="Attestations" className="space-y-8">
+      <div className="flex flex-row flex-wrap items-center justify-between gap-x-8 gap-y-4">
+        <div className="flex flex-col gap-1">
+          <SectionHeading>Attestations</SectionHeading>
+          <p className="text-xs text-text-muted">
+            {counting && network
+              ? `The ones ${network.name} counts`
+              : 'Every attestation to or from this account'}
+          </p>
+        </div>
+
+        {network && (
+          <Dropdown
+            label="Filter attestations"
+            options={[
+              { value: 'counted', label: 'COUNTED IN NETWORK' },
+              { value: 'all', label: 'ALL ATTESTATIONS' },
+            ]}
+            selected={filter}
+            onSelect={(value) => setFilter(value)}
+            icon={<ListFilter className="!w-4 !h-4" />}
+            triggerSize="sm"
+            triggerClassName="text-xs"
+            optionClassName="text-xs"
+          />
+        )}
+      </div>
+
+      <AttestationList
+        heading="Received"
+        rows={received}
+        counterparty="attester"
+        loading={loading}
+        showNetwork={!counting}
+        schemaToNetwork={schemaToNetwork}
+        pushBreadcrumb={pushBreadcrumb}
+      />
+      <AttestationList
+        heading="Given"
+        rows={given}
+        counterparty="recipient"
+        loading={loading}
+        showNetwork={!counting}
+        schemaToNetwork={schemaToNetwork}
+        pushBreadcrumb={pushBreadcrumb}
+      />
+
+      {counting && network && hidden > 0 && (
+        <p className="text-xs text-text-muted">
+          {formatBigNumber(hidden, undefined, true)} more{' '}
+          {hidden === 1 ? 'attestation is' : 'attestations are'} not counted in{' '}
+          {network.name}: from another network, replaced by a newer one between
+          the same two accounts, or with an account outside it.{' '}
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className="tg-touch-target underline underline-offset-4 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            Show all
+          </button>
+        </p>
+      )}
+    </section>
+  )
+}
+
+function AttestationList({
+  heading,
+  rows,
+  counterparty,
+  loading,
+  showNetwork,
+  schemaToNetwork,
+  pushBreadcrumb,
+}: {
+  heading: string
+  rows: AttestationData[]
+  /** The other side of each attestation, the one to list. */
+  counterparty: 'attester' | 'recipient'
+  loading: boolean
+  /** Name each row's network; off when every row is in the one being shown. */
+  showNetwork: boolean
+  schemaToNetwork: SchemaToNetwork
+  pushBreadcrumb: PushBreadcrumb
+}) {
+  return (
+    <div className="space-y-3">
+      <h3 className="tg-label">
+        {heading} ·{' '}
+        {loading ? '…' : formatBigNumber(rows.length, undefined, true)}
+      </h3>
+
+      {loading ? (
+        <div className="py-6 text-center text-sm text-text">
+          LOADING ATTESTATIONS
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="border border-border bg-surface py-6 text-center text-xs uppercase tracking-wider text-text-muted">
+          None yet
+        </div>
+      ) : (
+        <AttestationTable
+          rows={rows}
+          parties={counterparty}
+          showNetwork={showNetwork}
+          schemaToNetwork={schemaToNetwork}
+          pushBreadcrumb={pushBreadcrumb}
+        />
+      )}
+    </div>
+  )
+}

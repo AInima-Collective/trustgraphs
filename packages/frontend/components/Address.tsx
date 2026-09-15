@@ -16,8 +16,11 @@ interface AddressProps {
   address: string
   className?: string
   textClassName?: string
-  /** Display mode for the address */
-  displayMode?: 'full' | 'truncated' | 'auto'
+  /**
+   * Display mode for the address. `compact` keeps a name whole and shortens
+   * only a bare address, where `truncated` shortens both ("zargha....eth").
+   */
+  displayMode?: 'full' | 'truncated' | 'auto' | 'compact'
   /** Whether to show ENS name if available */
   showEns?: boolean
   /** Custom display text (overrides ENS and address) */
@@ -137,6 +140,12 @@ export const Address = ({
         return <span className={textClasses}>{displayedText}</span>
       case 'truncated':
         return <span className={textClasses}>{truncatedText}</span>
+      case 'compact':
+        return (
+          <span className={textClasses}>
+            {isShowingEns || displayText ? displayedText : truncatedText}
+          </span>
+        )
       case 'auto':
       default:
         return isShowingEns ? (
