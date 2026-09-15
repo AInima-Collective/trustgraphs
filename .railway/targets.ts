@@ -155,10 +155,14 @@ const mainnet: RailwayTarget = {
   // merge to main cannot rebuild the mainnet indexer.
   branch: 'mainnet',
   // Everything in one region; the Sepolia split above is a historical accident.
+  // The first apply (2026-09-14) asked for us-west2 everywhere and Railway placed Postgres and the
+  // operator volume in us-east4 anyway (where Sepolia's operator volume also lives). Moving a
+  // stateful side is destructive and moving the indexer is not, so the row records what the
+  // platform did and the indexer follows it: one region, nothing recreated.
   region: {
-    database: 'us-west2',
-    operatorState: 'us-west2',
-    indexer: 'us-west2',
+    database: 'us-east4-eqdc4a',
+    operatorState: 'us-east4-eqdc4a',
+    indexer: 'us-east4-eqdc4a',
   },
   writerSchema: 'trustgraph_mainnet_v1',
   // Both cursors start at the generation's first block, read from the manifest when planned.

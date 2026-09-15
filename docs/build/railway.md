@@ -3,10 +3,10 @@
 Trustgraphs runs one Railway project per chain. Both live in the personal workspace and are
 described by the same authoring file:
 
-| Project               | Chain                | Git branch | Regions                                                             | `FRONTEND_URL`                                                                              |
-| --------------------- | -------------------- | ---------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `trustgraphs-sepolia` | Sepolia (11155111)   | `main`     | Postgres `us-west2`; operator volume and indexer replica `us-east4` | `https://trustgraphs.xyz` (Sepolia has no public host of its own; see the note below)         |
-| `trustgraphs-mainnet` | Ethereum mainnet (1) | `mainnet`  | everything `us-west2`                                               | `https://trustgraphs.xyz`                                                                   |
+| Project               | Chain                | Git branch | Regions                                                                             | `FRONTEND_URL`                                                                        |
+| --------------------- | -------------------- | ---------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `trustgraphs-sepolia` | Sepolia (11155111)   | `main`     | Postgres `us-west2`; operator volume and indexer replica `us-east4`                 | `https://trustgraphs.xyz` (Sepolia has no public host of its own; see the note below) |
+| `trustgraphs-mainnet` | Ethereum mainnet (1) | `mainnet`  | everything `us-east4` (Railway placed the stateful pieces there on the first apply) | `https://trustgraphs.xyz`                                                             |
 
 Each project runs the same four resources:
 
