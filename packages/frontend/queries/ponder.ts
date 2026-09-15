@@ -678,6 +678,8 @@ export const ponderQueryFns = {
       account?: Hex
       /** The schema to filter attestations by. */
       schema?: Hex
+      /** Any of these schemas: a network's, which may have more than one. */
+      schemas?: Hex[]
       /** The timestamp order to sort attestations by. */
       order?: 'asc' | 'desc'
       /** The limit of attestations to return. */
@@ -700,6 +702,7 @@ export const ponderQueryFns = {
               : undefined,
             // Filter by schema
             options.schema ? eq(t.schema, options.schema) : undefined,
+            options.schemas ? inArray(t.schema, options.schemas) : undefined,
             // Filter by revoked
             !options.includeRevoked ? eq(t.revocationTime, 0n) : undefined,
             // Filter by self-attested

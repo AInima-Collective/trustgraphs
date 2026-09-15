@@ -1,160 +1,161 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import type React from 'react'
+import { ListFilter } from 'lucide-react'
 import { useState } from 'react'
 import { Hex } from 'viem'
 
-import { AttestationCard } from '@/components/AttestationCard'
+import {
+  AttestationTable,
+  useSchemaToNetwork,
+} from '@/components/AttestationTable'
+import { Dropdown } from '@/components/Dropdown'
+import { PageTitle, SectionHeading } from '@/components/SectionHeading'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { useIntoAttestationsData } from '@/hooks/useAttestation'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
+import { applicationEnvironmentLabel } from '@/lib/application-chains'
+import { AttestationStatus } from '@/lib/attestation'
+import { CHAIN } from '@/lib/config'
+import { parseErrorMessage } from '@/lib/error'
 import { usePonderQuery } from '@/lib/use-ponder-query'
+import { formatBigNumber } from '@/lib/utils'
 import { ponderQueryFns } from '@/queries/ponder'
 
-export default function AttestationsPage() {
-  const router = useRouter()
-  const pushBreadcrumb = usePushBreadcrumb()
-  const [selectedSchema, _setSelectedSchema] = useState<string>('all')
-  const [selectedStatus, setSelectedStatus] = useState<string>('all')
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
-  const [limit, _setLimit] = useState(500)
+/** The newest this many. Older ones stay reachable from their accounts and networks. */
+const LIMIT = 500
 
-  const {
-    data: [{ count: totalAttestations }] = [{ count: 0 }],
-    isLoading: isLoadingTotalAttestations,
-  } = usePonderQuery({
+type StatusFilter = 'all' | `${AttestationStatus}`
+
+export default function AttestationsPage() {
+  const pushBreadcrumb = usePushBreadcrumb()
+  const networks = useNetworks()
+  const schemaToNetwork = useSchemaToNetwork()
+  const [networkId, setNetworkId] = useState('all')
+  const [status, setStatus] = useState<StatusFilter>('all')
+  const network = networks.find((network) => network.id === networkId)
+
+  const { data: [{ count: total }] = [{ count: 0 }] } = usePonderQuery({
     queryFn: ponderQueryFns.getAttestationCount,
   })
 
-  const { data: attestations = [], isLoading: isLoadingAttestations } =
-    usePonderQuery({
-      queryFn: ponderQueryFns.getAttestations({
-        schema:
-          selectedSchema === 'all' || !selectedSchema.startsWith('0x')
-            ? undefined
-            : (selectedSchema as Hex),
-        includeRevoked: true,
-        includeSelfAttests: true,
-        order: sortOrder === 'newest' ? 'desc' : 'asc',
-        limit,
-      }),
-      select: useIntoAttestationsData(),
-    })
+  const {
+    data: attestations = [],
+    isLoading,
+    error,
+  } = usePonderQuery({
+    queryFn: ponderQueryFns.getAttestations({
+      // A network may have more than one schema; filtering in the query rather than on the page
+      // keeps the newest LIMIT of that network, not its share of everyone's newest LIMIT.
+      schemas: network?.schemas.map((schema) => schema.uid as Hex),
+      includeRevoked: true,
+      includeSelfAttests: true,
+      order: 'desc',
+      limit: LIMIT,
+    }),
+    select: useIntoAttestationsData(),
+  })
 
-  const filteredAttestations = attestations.filter(
-    (item) => selectedStatus === 'all' || item.status === selectedStatus
+  const rows = attestations.filter(
+    (attestation) => status === 'all' || attestation.status === status
   )
+  const capped = !network && attestations.length === LIMIT && total > LIMIT
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl">Attestations</h1>
-      </div>
+    <div className="space-y-10 sm:space-y-12">
+      <header className="flex flex-col items-start gap-3">
+        <PageTitle>Attestations</PageTitle>
+        <p className="max-w-2xl text-sm text-text-muted">
+          Every attestation made in a network on{' '}
+          {applicationEnvironmentLabel(CHAIN)}, newest first. Each one is one
+          account vouching for another, recorded on-chain with EAS.
+        </p>
+      </header>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* <div>
-          <label className="text-sm mb-2 block">SCHEMA TYPE</label>
-          <select
-            value={selectedSchema}
-            onChange={(e) => setSelectedSchema(e.target.value)}
-            className="w-full text-sm p-2 rounded-sm bg-background border border-border cursor-pointer"
-          >
-            <option value="all">ALL SCHEMAS</option>
-            {SCHEMAS.map((schema) => (
-              <option key={schema.uid} value={schema.uid}>
-                {schema.name}
-              </option>
-            ))}
-          </select>
-        </div> */}
+      <section aria-label="Attestations" className="space-y-6">
+        <div className="flex flex-row flex-wrap items-center justify-between gap-x-8 gap-y-4">
+          <div className="flex flex-col gap-1">
+            <SectionHeading>{network?.name ?? 'All networks'}</SectionHeading>
+            <p className="text-xs text-text-muted">
+              {isLoading
+                ? 'Loading…'
+                : `${formatBigNumber(rows.length, undefined, true)} ${
+                    rows.length === 1 ? 'attestation' : 'attestations'
+                  }${
+                    capped
+                      ? `, the newest of ${formatBigNumber(total, undefined, true)}`
+                      : ''
+                  }`}
+            </p>
+          </div>
 
-        <div>
-          <label htmlFor="attestation-status" className="text-sm mb-2 block">
-            VERIFICATION STATUS
-          </label>
-          <select
-            id="attestation-status"
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="w-full text-sm p-2 rounded-sm bg-background border border-border cursor-pointer"
-          >
-            <option value="all">ALL STATUSES</option>
-            <option value="verified">VERIFIED</option>
-            <option value="expired">EXPIRED</option>
-            <option value="revoked">REVOKED</option>
-          </select>
+          <div className="flex flex-row flex-wrap items-stretch gap-2">
+            {networks.length > 1 && (
+              <Dropdown
+                label="Filter by network"
+                options={[
+                  { value: 'all', label: 'ALL NETWORKS' },
+                  ...networks.map((network) => ({
+                    value: network.id,
+                    label: network.name.toUpperCase(),
+                  })),
+                ]}
+                selected={networkId}
+                onSelect={setNetworkId}
+                triggerSize="sm"
+                triggerClassName="text-xs"
+                optionClassName="text-xs"
+              />
+            )}
+            <Dropdown<StatusFilter>
+              label="Filter by status"
+              options={[
+                { value: 'all', label: 'ALL STATUSES' },
+                { value: AttestationStatus.VERIFIED, label: 'ACTIVE' },
+                { value: AttestationStatus.REVOKED, label: 'REVOKED' },
+                { value: AttestationStatus.EXPIRED, label: 'EXPIRED' },
+              ]}
+              selected={status}
+              onSelect={setStatus}
+              icon={<ListFilter className="!w-4 !h-4" />}
+              triggerSize="sm"
+              triggerClassName="text-xs"
+              optionClassName="text-xs"
+            />
+          </div>
         </div>
 
-        <div>
-          <label htmlFor="attestation-sort" className="text-sm mb-2 block">
-            SORT ORDER
-          </label>
-          <select
-            id="attestation-sort"
-            value={sortOrder}
-            onChange={(e) =>
-              setSortOrder(e.target.value as 'newest' | 'oldest')
-            }
-            className="w-full text-sm p-2 rounded-sm bg-background border border-border cursor-pointer"
-          >
-            <option value="newest">NEWEST FIRST</option>
-            <option value="oldest">OLDEST FIRST</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Loading State */}
-      {(isLoadingAttestations || isLoadingTotalAttestations) && (
-        <div className="text-center py-8">
-          <h1 className="text-2xl">Loading attestations</h1>
-          <div className="text-sm mt-2">Fetching data...</div>
-        </div>
-      )}
-
-      {!isLoadingTotalAttestations &&
-        filteredAttestations.length === 0 &&
-        totalAttestations > 0 && (
-          <div className="text-center py-12">
-            <div className="text-sm">NO ATTESTATIONS MATCH CURRENT FILTERS</div>
-            <div className="text-xs mt-2">
-              TRY ADJUSTING YOUR FILTER SETTINGS
+        {error ? (
+          <div className="border border-error bg-error-soft p-4 rounded-sm">
+            <div className="error-text text-sm text-error">
+              ⚠️ {parseErrorMessage(error)}
             </div>
           </div>
-        )}
-
-      {!isLoadingTotalAttestations && totalAttestations === 0 && (
-        <div className="text-center py-12">
-          <div className="text-sm">NO ATTESTATIONS FOUND</div>
-          <div className="text-xs mt-2">
-            {selectedSchema !== 'all'
-              ? 'NO ATTESTATIONS FOR SELECTED SCHEMA'
-              : 'NO ATTESTATIONS AVAILABLE'}
+        ) : isLoading ? (
+          <div className="text-center py-8">
+            <div className="text-sm text-text">◉ LOADING ATTESTATIONS ◉</div>
+            <div className="text-xs mt-2 text-text-muted">
+              Fetching the newest attestations...
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Attestations List */}
-      {!isLoadingAttestations && filteredAttestations.length > 0 && (
-        <div className="space-y-4">
-          <p className="text-xs text-muted-foreground italic">
-            {filteredAttestations.length} matching attestations
-          </p>
-
-          {filteredAttestations.map((item) => (
-            <AttestationCard
-              key={item.uid}
-              uid={item.uid}
-              href={`/attestations/${item.uid}`}
-              onClick={() => {
-                pushBreadcrumb()
-                router.push(`/attestations/${item.uid}`)
-              }}
-            />
-          ))}
-        </div>
-      )}
+        ) : rows.length === 0 ? (
+          <div className="border border-border bg-surface py-8 text-center">
+            <div className="text-sm text-text-muted">NO ATTESTATIONS FOUND</div>
+            {(status !== 'all' || network) && (
+              <div className="text-xs mt-2 text-text-muted">
+                TRY ADJUSTING YOUR FILTER SETTINGS
+              </div>
+            )}
+          </div>
+        ) : (
+          <AttestationTable
+            rows={rows}
+            parties="both"
+            showNetwork={!network}
+            schemaToNetwork={schemaToNetwork}
+            pushBreadcrumb={pushBreadcrumb}
+          />
+        )}
+      </section>
     </div>
   )
 }

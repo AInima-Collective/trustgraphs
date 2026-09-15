@@ -75,6 +75,10 @@ export const Dropdown = <T extends string = string>({
             onClick={onClick}
             size={triggerSize}
             className={cn('gap-3', triggerClassName)}
+            // The visible text is only the current value ("ALL STATUSES"), which
+            // does not say what it filters. Name both; the visible text stays in
+            // the name so voice control can still reach it by what it reads.
+            aria-label={`${label}: ${selectedLabel}`}
           >
             {icon}
             <span>{selectedLabel}</span>

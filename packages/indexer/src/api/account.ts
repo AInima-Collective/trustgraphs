@@ -7,7 +7,6 @@ import {
   easAttestation,
   merkleSnapshot,
 } from 'ponder:schema'
-import { Hex } from 'viem'
 
 import {
   ScoreProgramApiError,
@@ -16,8 +15,12 @@ import {
   requireSnapshotScoreProgram,
 } from './score-programs'
 import {
+  resolverForSnapshot,
+  schemaUidsForSnapshot,
+  validatedThresholdForSnapshot,
+} from './snapshot-network'
+import {
   MerkleTreeWithEntries,
-  EAS_NETWORKS as NETWORKS,
   getMerkleTreeWithEntries,
   isHexEqual,
   lower,
@@ -129,48 +132,63 @@ app.get('/:account/networks', async (c) => {
               desc(merkleSnapshot.timestamp)
             )
         ).map(async (snapshot): Promise<NetworkProfile | null> => {
-          // Find the network that this merkle snapshot contract belongs to.
-          const network = NETWORKS.find((network) =>
-            isHexEqual(network.contracts.merkleSnapshot, snapshot.address)
-          )
-          if (!network) {
+          // Vouch networks only, config-backed and factory-created alike. This used to look the
+          // snapshot up in the static catalog alone, which is empty on mainnet, so every mainnet
+          // account came back a member of nothing.
+          const schemaUids = await schemaUidsForSnapshot(snapshot.address)
+          if (!schemaUids) {
             return null
           }
 
-          const currentAttestationUids = await currentUidsForResolver(
-            network.contracts.easIndexerResolver
-          )
+          try {
+            const currentAttestationUids = await currentUidsForResolver(
+              await resolverForSnapshot(snapshot.address)
+            )
 
-          // Get the merkle tree with its entries for the latest merkle root.
-          const merkleTreeWithEntries = await getMerkleTreeWithEntries(
-            snapshot.address,
-            snapshot.root
-          )
-          if (!merkleTreeWithEntries) {
-            return null
-          }
-          const currentScoreProgram = await requireSnapshotScoreProgram(
-            snapshot.address,
-            'merkle'
-          )
-          const scoreProgram = requireRowScoreProgram(
-            merkleTreeWithEntries.tree,
-            currentScoreProgram,
-            'merkle'
-          )
-          for (const entry of merkleTreeWithEntries.entries) {
-            requireEntryScoreProgram(entry, currentScoreProgram)
-          }
+            // Get the merkle tree with its entries for the latest merkle root.
+            const merkleTreeWithEntries = await getMerkleTreeWithEntries(
+              snapshot.address,
+              snapshot.root
+            )
+            if (!merkleTreeWithEntries) {
+              return null
+            }
+            const currentScoreProgram = await requireSnapshotScoreProgram(
+              snapshot.address,
+              'merkle'
+            )
+            const scoreProgram = requireRowScoreProgram(
+              merkleTreeWithEntries.tree,
+              currentScoreProgram,
+              'merkle'
+            )
+            for (const entry of merkleTreeWithEntries.entries) {
+              requireEntryScoreProgram(entry, currentScoreProgram)
+            }
 
-          return buildNetworkProfile({
-            account,
-            snapshot,
-            merkleTreeWithEntries,
-            attestations,
-            network,
-            currentAttestationUids,
-            scoreProgram,
-          })
+            return buildNetworkProfile({
+              account,
+              snapshot,
+              merkleTreeWithEntries,
+              attestations,
+              schemaUids,
+              validatedThreshold: validatedThresholdForSnapshot(
+                snapshot.address
+              ),
+              currentAttestationUids,
+              scoreProgram,
+            })
+          } catch (error) {
+            // One network whose score program does not line up must not blank every other
+            // membership on the account; that network's own routes still report it.
+            if (error instanceof ScoreProgramApiError) {
+              console.warn(
+                `Skipping ${snapshot.address} in ${account}'s networks: ${error.message}`
+              )
+              return null
+            }
+            throw error
+          }
         })
       )
     ).filter((network) => network !== null)
@@ -199,11 +217,8 @@ app.get('/:account/network/:snapshot', async (c) => {
       return c.json({ error: 'Snapshot parameter is required' }, 400)
     }
 
-    // Find the network that this merkle snapshot contract belongs to.
-    const network = NETWORKS.find((network) =>
-      isHexEqual(network.contracts.merkleSnapshot, snapshotAddress)
-    )
-    if (!network) {
+    const schemaUids = await schemaUidsForSnapshot(snapshotAddress)
+    if (!schemaUids) {
       return c.json({ error: 'Network not found' }, 404)
     }
 
@@ -226,10 +241,7 @@ app.get('/:account/network/:snapshot', async (c) => {
       .where(
         and(
           // Only include attestations for network schemas.
-          inArray(
-            easAttestation.schema,
-            network.schemas.map((schema) => schema.uid as Hex)
-          ),
+          inArray(easAttestation.schema, schemaUids),
           // Only include attestations for the account.
           or(
             eq(easAttestation.attester, account as `0x${string}`),
@@ -267,9 +279,10 @@ app.get('/:account/network/:snapshot', async (c) => {
       snapshot,
       merkleTreeWithEntries,
       attestations,
-      network,
+      schemaUids,
+      validatedThreshold: validatedThresholdForSnapshot(snapshot.address),
       currentAttestationUids: await currentUidsForResolver(
-        network.contracts.easIndexerResolver
+        await resolverForSnapshot(snapshot.address)
       ),
       scoreProgram,
     })
@@ -294,7 +307,8 @@ const buildNetworkProfile = ({
   snapshot,
   merkleTreeWithEntries: { tree, entries },
   attestations,
-  network,
+  schemaUids,
+  validatedThreshold,
   currentAttestationUids,
   scoreProgram,
 }: {
@@ -302,7 +316,10 @@ const buildNetworkProfile = ({
   snapshot: typeof merkleSnapshot.$inferSelect
   merkleTreeWithEntries: MerkleTreeWithEntries
   attestations: (typeof easAttestation.$inferSelect)[]
-  network: (typeof NETWORKS)[number]
+  /** The network's vouch schemas. */
+  schemaUids: string[]
+  /** In whole tokens. */
+  validatedThreshold: number
   currentAttestationUids: Set<string>
   scoreProgram: ScoreProgramProvenance
 }): NetworkProfile => {
@@ -326,9 +343,7 @@ const buildNetworkProfile = ({
         // Attestation is given by the account.
         isHexEqual(attestation.attester, account) &&
         // Attestation is for a schema that is part of the network.
-        network.schemas.some((schema) =>
-          isHexEqual(schema.uid, attestation.schema)
-        )
+        schemaUids.some((uid) => isHexEqual(uid, attestation.schema))
     )
     // Sort by timestamp in descending order so the newest attestations are first.
     .sort((a, b) => Number(b.timestamp - a.timestamp))
@@ -358,9 +373,7 @@ const buildNetworkProfile = ({
         // Attestation is received by the account.
         isHexEqual(attestation.recipient, account) &&
         // Attestation is for a schema that is part of the network.
-        network.schemas.some((schema) =>
-          isHexEqual(schema.uid, attestation.schema)
-        )
+        schemaUids.some((uid) => isHexEqual(uid, attestation.schema))
     )
     // Sort by timestamp in descending order so the newest attestations are first.
     .sort((a, b) => Number(b.timestamp - a.timestamp))
@@ -390,7 +403,7 @@ const buildNetworkProfile = ({
     merkleIpfsHash: tree.ipfsHashCid,
     rank,
     score,
-    validated: Number(score) >= network.validatedThreshold,
+    validated: Number(score) >= validatedThreshold,
     attestationsGiven: {
       inNetwork: inNetworkAttestationsGiven,
       outOfNetwork: outOfNetworkAttestationsGiven,
@@ -403,7 +416,7 @@ const buildNetworkProfile = ({
 }
 
 /** The exact current pair state for a trust-graph resolver, derived from accumulator fold order. */
-const currentUidsForResolver = async (resolver: string | undefined) => {
+const currentUidsForResolver = async (resolver: string | null | undefined) => {
   if (!resolver) return new Set<string>()
   const rows = await db
     .select({
