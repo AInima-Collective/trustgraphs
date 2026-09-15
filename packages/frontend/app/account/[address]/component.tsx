@@ -9,15 +9,18 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Hex } from 'viem'
 import { useAccount } from 'wagmi'
 
-import { Address, TableAddress } from '@/components/Address'
+import { Address } from '@/components/Address'
+import {
+  AttestationTable,
+  type SchemaToNetwork,
+  useSchemaToNetwork,
+} from '@/components/AttestationTable'
 import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button } from '@/components/Button'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { GraphStat, GraphStatRail } from '@/components/GraphStatRail'
 import { SectionHeading } from '@/components/SectionHeading'
-import { Column, Table } from '@/components/Table'
-import { Tooltip } from '@/components/Tooltip'
 import { useNetworks } from '@/contexts/CatalogContext'
 import { NetworkProvider, useNetwork } from '@/contexts/NetworkContext'
 import { useIntoAttestationsData } from '@/hooks/useAttestation'
@@ -53,9 +56,6 @@ type Membership = {
   rank?: number
 }
 
-/** `{ lowercased schema uid -> network }`, built from the runtime catalog by the page. */
-type SchemaToNetwork = Record<string, Network>
-
 type PushBreadcrumb = ReturnType<typeof usePushBreadcrumb>
 
 const shortAddress = (address: string) =>
@@ -73,15 +73,7 @@ export const AccountProfilePage = ({
   // The runtime trust-graph catalog: this page attributes scores and attestations to
   // networks, and both lookups have to know about instances created since the last deploy.
   const networks = useNetworks()
-  const schemaToNetwork = useMemo(() => {
-    const map: SchemaToNetwork = {}
-    for (const network of networks) {
-      for (const schema of network.schemas) {
-        map[schema.uid.toLowerCase()] = network
-      }
-    }
-    return map
-  }, [networks])
+  const schemaToNetwork = useSchemaToNetwork()
 
   const { address: connectedAddress } = useAccount()
   const isYou = !!connectedAddress && isHexEqual(connectedAddress, address)
@@ -587,14 +579,6 @@ function AttestationList({
   schemaToNetwork: SchemaToNetwork
   pushBreadcrumb: PushBreadcrumb
 }) {
-  const router = useRouter()
-  const columns = attestationColumns({
-    counterparty,
-    showNetwork,
-    schemaToNetwork,
-    pushBreadcrumb,
-  })
-
   return (
     <div className="space-y-3">
       <h3 className="tg-label">
@@ -611,177 +595,14 @@ function AttestationList({
           None yet
         </div>
       ) : (
-        <>
-          <ul className="list-none divide-y divide-border border-y border-border pl-0 md:hidden">
-            {[...rows]
-              .sort((a, b) => Number(b.time - a.time))
-              .map((row) => {
-                const comment = commentOf(row)
-                const network = schemaToNetwork[row.schema.toLowerCase()]
-                return (
-                  <li
-                    key={row.uid}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-3"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <Address
-                        address={row[counterparty]}
-                        showCopyIcon={false}
-                        showNavIcon
-                      />
-                      <p className="text-xs text-text-muted">
-                        {showNetwork && network && `${network.name} · `}
-                        {row.formattedTimeAgo}
-                      </p>
-                      {comment && (
-                        <p className="line-clamp-2 text-xs text-text">
-                          {comment}
-                        </p>
-                      )}
-                    </div>
-                    <Link
-                      href={`/attestations/${row.uid}`}
-                      onClick={() => pushBreadcrumb()}
-                      aria-label={`View attestation from ${row.formattedTime}`}
-                      className="tg-touch-target inline-flex flex-col items-end text-right focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                    >
-                      <span className="text-sm tabular-nums text-text">
-                        {formatBigNumber(confidenceOf(row), undefined, true)}
-                      </span>
-                      <span className="text-[9px] uppercase tracking-wider text-text-subtle">
-                        Confidence
-                      </span>
-                    </Link>
-                  </li>
-                )
-              })}
-          </ul>
-          <Table
-            className="hidden md:block"
-            columns={columns}
-            data={rows}
-            rowClassName="text-sm"
-            defaultSortColumn="time"
-            defaultSortDirection="desc"
-            onRowClick={(row) => {
-              pushBreadcrumb()
-              router.push(`/attestations/${row.uid}`)
-            }}
-            getRowKey={(row) => row.uid}
-          />
-        </>
+        <AttestationTable
+          rows={rows}
+          parties={counterparty}
+          showNetwork={showNetwork}
+          schemaToNetwork={schemaToNetwork}
+          pushBreadcrumb={pushBreadcrumb}
+        />
       )}
     </div>
   )
 }
-
-const commentOf = (row: AttestationData) =>
-  typeof row.decodedData?.comment === 'string'
-    ? row.decodedData.comment.trim()
-    : ''
-
-const confidenceOf = (row: AttestationData) =>
-  Number(row.decodedData?.confidence || '0')
-
-const attestationColumns = ({
-  counterparty,
-  showNetwork,
-  schemaToNetwork,
-  pushBreadcrumb,
-}: {
-  counterparty: 'attester' | 'recipient'
-  showNetwork: boolean
-  schemaToNetwork: SchemaToNetwork
-  pushBreadcrumb: PushBreadcrumb
-}): Column<AttestationData>[] => [
-  counterparty === 'attester'
-    ? {
-        key: 'attester',
-        header: 'ATTESTER',
-        tooltip: 'The account that made the attestation.',
-        sortable: false,
-        render: (row) => <TableAddress address={row.attester} showNavIcon />,
-      }
-    : {
-        key: 'recipient',
-        header: 'RECIPIENT',
-        tooltip: 'The account that received the attestation.',
-        sortable: false,
-        render: (row) => <TableAddress address={row.recipient} showNavIcon />,
-      },
-  ...(showNetwork
-    ? [
-        {
-          key: 'network',
-          header: 'NETWORK',
-          tooltip: 'The network this attestation was made in.',
-          sortable: false,
-          render: (row: AttestationData) => {
-            const network = schemaToNetwork[row.schema.toLowerCase()]
-            if (!network) {
-              return <span className="text-text-subtle text-sm">—</span>
-            }
-            return (
-              <Link
-                className="group/network inline-flex items-center gap-2 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  pushBreadcrumb()
-                }}
-                href={`/networks/${network.id}`}
-              >
-                <span className="text-sm text-text-muted transition-colors group-hover/network:text-text">
-                  {network.name}
-                </span>
-                <ArrowUpRight className="h-3 w-3 shrink-0 text-text-muted transition-colors group-hover/network:text-text" />
-              </Link>
-            )
-          },
-        },
-      ]
-    : []),
-  {
-    key: 'confidence',
-    header: 'CONFIDENCE',
-    tooltip: 'The strength of the attestation as specified by the attester.',
-    sortable: true,
-    accessor: confidenceOf,
-    render: (row) => formatBigNumber(confidenceOf(row), undefined, true),
-  },
-  {
-    key: 'comment',
-    header: 'COMMENT',
-    tooltip: 'An optional comment from the attester.',
-    sortable: false,
-    render: (row) => {
-      const comment = commentOf(row)
-      return comment ? (
-        <Tooltip title={comment}>
-          <span className="block max-w-[32ch] truncate text-left text-text-muted">
-            {comment}
-          </span>
-        </Tooltip>
-      ) : (
-        <span className="text-text-subtle">—</span>
-      )
-    },
-  },
-  {
-    key: 'time',
-    header: 'TIME',
-    tooltip: 'The time the attestation was made.',
-    sortable: true,
-    accessor: (row) => Number(row.time),
-    render: (row) => (
-      <Link
-        href={`/attestations/${row.uid}`}
-        onClick={() => pushBreadcrumb()}
-        className="tg-touch-target inline-flex flex-col justify-center text-sm text-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        aria-label={`View attestation from ${row.formattedTime}`}
-      >
-        <span>{row.formattedTime}</span>
-        <span className="text-xs text-text-muted">{row.formattedTimeAgo}</span>
-      </Link>
-    ),
-  },
-]
