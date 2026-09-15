@@ -429,7 +429,7 @@ Two things learned on the day: the deploy script requires `0x`-prefixed keys whi
 tolerates unprefixed ones (the first broadcast attempt stopped before sending anything), and the
 target env loader needs a base `.env` in the checkout (copy `.env.example`, never a local `.env`).
 
-## 6f. Phase 7 status (2026-09-15): showcase network created
+## 6f. Phase 7 status (2026-09-15): showcase network live, gate met
 
 The showcase network "Ethereum Extitutional" was created through the governed wizard on the mainnet
 Vercel preview in
@@ -476,6 +476,22 @@ it cost 0.00204 ETH. At the configured `eth_usd` that booked 511 cents against t
 per-instance cap, and the operator held the network under `loss_budget`. The spend window is a
 rolling day rebuilt from the journal, so a restart does not clear it, and the operator re-posts
 the alert on every tick while the hold lasts. The profile was revised the same day (section 4.3).
+
+**Second root.** The revised profile deployed at 19:50 UTC. The restarted operator's first tick
+triggered checkpoint 1 at block 25,985,079, freezing 18 attestations. It proved the checkpoint
+after 12 confirmations and landed root
+`0x622b65697da211c9c922ad260c3c29781b13f12b5d62f7c0c62f9c2fc981b079` in
+[`0xac3ceccf…b98b`](https://etherscan.io/tx/0xac3ceccf58dd8893fe524b9fdaff5a3b87fc00aa2a24c84b826b89329a24b98b)
+at block 25,985,109, for 1,133,933 gas at 0.196 gwei, or 0.000223 ETH. It passed the same four
+checks as the first root, and the indexer served it within the minute.
+
+**Restart drill** (`docs/build/railway.md` section 7). The operator restart was the deploy above.
+Its journal was 1,569 bytes with SHA-256 `8d0253f0…513a` before the restart, and the first 1,569
+bytes hashed the same afterwards. The restarted daemon sent nothing for checkpoint 0 and went
+straight to checkpoint 1. The indexer was restarted in place at 20:02 UTC: `/ready` answered in
+26 seconds, it resumed from its stored position about 65 blocks back, reached chain head in 40
+seconds, and still served the second root. With the first real root accepted, phase 7's gate is
+met.
 
 ## 7. Cost sketch
 
