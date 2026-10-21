@@ -36,6 +36,7 @@ import {
   scoreProgramBinding,
   signerSyncModule,
   signerSyncRotation,
+  trustPool,
 } from 'ponder:schema'
 import { type Hex, isAddress, isHex } from 'viem'
 
@@ -84,7 +85,8 @@ const serialize = (
   row: InstanceRow,
   governance?: GovernanceRow,
   signer?: SignerView,
-  scoreProgram?: ReturnType<typeof serializeScoreProgramBinding>
+  scoreProgram?: ReturnType<typeof serializeScoreProgramBinding>,
+  pool?: Hex
 ) => ({
   id: row.id,
   chainId: row.chainId,
@@ -111,6 +113,7 @@ const serialize = (
     easOffchainAnchorRegistry: row.offchainRegistry,
     trustgraphsParamsController: row.paramsController,
     merkleGovModule: governance?.address ?? null,
+    trustPool: pool ?? null,
     safe:
       governance || signer
         ? {
@@ -257,6 +260,23 @@ const governanceFor = async (rows: InstanceRow[]) => {
   )
 }
 
+/** The recorded TrustPool voting each network's scores, keyed by snapshot like governance. */
+const trustPoolsFor = async (rows: InstanceRow[]) => {
+  if (rows.length === 0) return new Map<string, Hex>()
+  const pools = await db
+    .select({ address: trustPool.address, snapshot: trustPool.snapshot })
+    .from(trustPool)
+    .where(
+      inArray(
+        trustPool.snapshot,
+        rows.map((row) => row.snapshot)
+      )
+    )
+  return new Map(
+    pools.map((pool) => [pool.snapshot.toLowerCase(), pool.address])
+  )
+}
+
 const signerSyncFor = async (rows: InstanceRow[]) => {
   if (rows.length === 0) return new Map<string, SignerView>()
   const ids = rows.map((row) => row.id)
@@ -347,11 +367,13 @@ app.get('/', async (c) => {
       .from(instance)
       .where(where)
 
-    const [governance, signerSync, scorePrograms] = await Promise.all([
-      governanceFor(rows),
-      signerSyncFor(rows),
-      scoreProgramsFor(rows),
-    ])
+    const [governance, signerSync, scorePrograms, trustPools] =
+      await Promise.all([
+        governanceFor(rows),
+        signerSyncFor(rows),
+        scoreProgramsFor(rows),
+        trustPoolsFor(rows),
+      ])
 
     for (const row of rows) {
       if (!scorePrograms.has(row.snapshot.toLowerCase())) {
@@ -367,7 +389,8 @@ app.get('/', async (c) => {
           row,
           governance.get(row.snapshot.toLowerCase()),
           signerSync.get(row.id.toLowerCase()),
-          scorePrograms.get(row.snapshot.toLowerCase())
+          scorePrograms.get(row.snapshot.toLowerCase()),
+          trustPools.get(row.snapshot.toLowerCase())
         )
       ),
       pagination: {
@@ -497,11 +520,13 @@ app.get('/:id', async (c) => {
     if (!row) {
       return c.json({ error: 'Instance not found' }, 404)
     }
-    const [governance, signerSync, scorePrograms] = await Promise.all([
-      governanceFor([row]),
-      signerSyncFor([row]),
-      scoreProgramsFor([row]),
-    ])
+    const [governance, signerSync, scorePrograms, trustPools] =
+      await Promise.all([
+        governanceFor([row]),
+        signerSyncFor([row]),
+        scoreProgramsFor([row]),
+        trustPoolsFor([row]),
+      ])
     const scoreProgram = scorePrograms.get(row.snapshot.toLowerCase())
     if (!scoreProgram) {
       throw new ScoreProgramApiError(
@@ -513,7 +538,8 @@ app.get('/:id', async (c) => {
         row,
         governance.get(row.snapshot.toLowerCase()),
         signerSync.get(row.id.toLowerCase()),
-        scoreProgram
+        scoreProgram,
+        trustPools.get(row.snapshot.toLowerCase())
       ),
     })
   } catch (error) {

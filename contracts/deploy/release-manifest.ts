@@ -131,6 +131,14 @@ export type ReleaseManifest = {
     }
     schemaUid: Hex
   }>
+  /** TrustPools (`contracts/src/governance/TrustPool.sol`): delegatees that vote a network's
+   *  scores on an external fractional-voting governor. Standalone deploys recorded by hand; the
+   *  pool's network is its `snapshot()`, read from the chain. Optional and kept apart from
+   *  `instances`, which the subsidized operator requires to hold exactly its one network. */
+  trustPools?: Array<{
+    governor: Hex
+    pool: DeploymentRecord
+  }>
 }
 
 const ADDRESS = /^0x[0-9a-f]{40}$/i
@@ -248,6 +256,7 @@ export const validateReleaseManifest = (
       'contracts',
       'programs',
       'instances',
+      'trustPools',
     ],
     'manifest'
   )
@@ -677,6 +686,18 @@ export const validateReleaseManifest = (
       }
     }
   })
+  if (value.trustPools !== undefined) {
+    if (!Array.isArray(value.trustPools)) {
+      throw new Error('manifest.trustPools must be an array')
+    }
+    value.trustPools.forEach((trustPool, index) => {
+      const label = `manifest.trustPools[${index}]`
+      assertObject(trustPool, label)
+      assertKeys(trustPool, ['governor', 'pool'], label)
+      assertAddress(trustPool.governor, `${label}.governor`)
+      validateRecord(trustPool.pool, `${label}.pool`, true)
+    })
+  }
 
   return value as ReleaseManifest
 }
@@ -925,6 +946,11 @@ export const releaseManifestToDeploymentSummary = (
       name: instance.name,
       contracts: instance.contracts,
       schemas: [{ uid: instance.schemaUid }],
+    })),
+    trustPools: (manifest.trustPools ?? []).map((trustPool) => ({
+      address: trustPool.pool.address as Hex,
+      block: trustPool.pool.block as number,
+      governor: trustPool.governor,
     })),
   }
 }
