@@ -19,6 +19,7 @@ export type NetworkTab = {
     | 'governance'
     | 'contributions'
     | 'subnetworks'
+    | 'delegation'
     | 'rewards'
     | 'settings'
   /**
@@ -117,6 +118,15 @@ export const trustgraphsTabs = (
                 },
               ]
             : []),
+        ]
+      : []),
+    ...(network.contracts.trustPool
+      ? [
+          {
+            href: `${base}/delegation`,
+            label: 'Delegation',
+            icon: 'delegation' as const,
+          },
         ]
       : []),
     ...(network.contracts.merkleFundDistributor ||

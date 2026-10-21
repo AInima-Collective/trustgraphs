@@ -75,6 +75,8 @@ export type InstanceRow = {
     merkleFundDistributor: Hex | null
     trustgraphsParamsController: Hex | null
     merkleGovModule: Hex | null
+    /** Optional: indexers predating TrustPools omit it. */
+    trustPool?: Hex | null
     safe: {
       proxy: Hex
       signerSyncManager: Hex | null
@@ -286,6 +288,9 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
         : {}),
       ...(row.contracts.merkleGovModule
         ? { merkleGovModule: row.contracts.merkleGovModule }
+        : {}),
+      ...(row.contracts.trustPool
+        ? { trustPool: row.contracts.trustPool }
         : {}),
       ...(row.contracts.safe
         ? {
