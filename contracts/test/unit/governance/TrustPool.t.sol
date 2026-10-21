@@ -27,7 +27,12 @@ contract MockStateHistory {
     IMerkleSnapshot.MerkleState[] internal states;
 
     function record(bytes32 root, uint256 totalValue) external {
-        states.push(IMerkleSnapshot.MerkleState(block.number, block.timestamp, root, bytes32(0), "", totalValue));
+        recordAt(block.number, root, totalValue);
+    }
+
+    /// @dev File a state at an earlier (input-freeze) block, as a late proof does.
+    function recordAt(uint256 blockNumber, bytes32 root, uint256 totalValue) public {
+        states.push(IMerkleSnapshot.MerkleState(blockNumber, block.timestamp, root, bytes32(0), "", totalValue));
     }
 
     function getStateAtBlock(uint256 blockNumber) external view returns (IMerkleSnapshot.MerkleState memory) {
@@ -108,6 +113,30 @@ abstract contract TrustPoolCases is Test {
 
         uint256 w = _vote(alice, pid, 1, 600, _proof(0, 600, 300, 90, 10));
         assertEq(w, POOL_VOTES * 600 / TOTAL_SCORE);
+    }
+
+    function test_lateProofCannotReshareAProposalMidVote() public {
+        uint256 pid = _propose("late");
+        _vote(alice, pid, 1, 600, _proof(0, 600, 300, 90, 10));
+
+        // A checkpoint frozen at the snapshot block is proven after voting opened: the snapshot
+        // now reads root2, but the proposal stays on the root its first vote met.
+        snap.recordAt(governor.proposalSnapshot(pid), _root(100, 300, 90, 10), TOTAL_SCORE);
+        uint256 w = _vote(bob, pid, 0, 300, _proof(1, 600, 300, 90, 10));
+
+        assertEq(w, POOL_VOTES * 300 / TOTAL_SCORE);
+        (bytes32 root, uint256 totalValue) = pool.proposalBasis(pid);
+        assertEq(root, _root(600, 300, 90, 10));
+        assertEq(totalValue, TOTAL_SCORE);
+    }
+
+    function test_votedCarriesReason() public {
+        uint256 pid = _propose("reason");
+        bytes32[] memory proof = _proof(3, 600, 300, 90, 10);
+        vm.expectEmit(address(pool));
+        emit TrustPool.Voted(pid, dave, 1, 10, POOL_VOTES * 10 / TOTAL_SCORE, "trusted");
+        vm.prank(dave);
+        pool.vote(pid, 1, 10, proof, "trusted");
     }
 
     function test_staleScoreInexpressible() public {
