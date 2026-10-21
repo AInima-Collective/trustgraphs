@@ -3,6 +3,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 
+import { decodeFunctionResult, encodeFunctionResult } from 'viem'
+
+import { merkleSnapshotAbi } from './contract-abis'
 import { distributeArgs, quotedFee } from './funding-terms'
 
 const DIST = '0x00000000000000000000000000000000000000d1' as const
@@ -51,4 +54,28 @@ test('distribute has exactly one form, and it is the guarded one', () => {
   )
   assert.equal(forms.length, 1, 'distribute must not be overloaded')
   assert.equal(forms[0].inputs?.length, 7)
+})
+
+test('getLatestState decodes the root from the six-field MerkleState', () => {
+  // A hand-written fragment once dropped `timestamp`, so `expectedRoot` read the timestamp word.
+  const state = {
+    blockNumber: 7n,
+    timestamp: 1_700_000_000n,
+    root: ROOT,
+    ipfsHash: `0x${'22'.repeat(32)}`,
+    ipfsHashCid: 'bafy',
+    totalValue: 4200n,
+  } as const
+  const data = encodeFunctionResult({
+    abi: merkleSnapshotAbi,
+    functionName: 'getLatestState',
+    result: state,
+  })
+  const decoded = decodeFunctionResult({
+    abi: merkleSnapshotAbi,
+    functionName: 'getLatestState',
+    data,
+  })
+  assert.equal(decoded.root, ROOT)
+  assert.equal(decoded.totalValue, 4200n)
 })
