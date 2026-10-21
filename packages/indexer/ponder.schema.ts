@@ -2021,3 +2021,57 @@ export const gnosisSafe = onchainTable(
     timestampIdx: index().on(t.timestamp),
   })
 )
+
+/** A recorded TrustPool and what it reads from the chain at setup: its network and its governor. */
+export const trustPool = onchainTable(
+  'trust_pool',
+  (t) => ({
+    address: t.hex().primaryKey(),
+    snapshot: t.hex().notNull(),
+    governor: t.hex().notNull(),
+  }),
+  (t) => ({
+    snapshotIdx: index().on(t.snapshot),
+  })
+)
+
+/** `ProposalCreated` on a governor some TrustPool votes on. Status and tallies stay live reads. */
+export const trustPoolProposal = onchainTable(
+  'trust_pool_proposal',
+  (t) => ({
+    governor: t.hex().notNull(),
+    proposalId: t.bigint().notNull(),
+    proposer: t.hex().notNull(),
+    description: t.text().notNull(),
+    voteStart: t.bigint().notNull(),
+    voteEnd: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.governor, t.proposalId] }),
+    blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
+/** One member's share of a pool cast on a proposal (`TrustPool.Voted`). */
+export const trustPoolVote = onchainTable(
+  'trust_pool_vote',
+  (t) => ({
+    pool: t.hex().notNull(),
+    proposalId: t.bigint().notNull(),
+    voter: t.hex().notNull(),
+    support: t.integer().notNull(),
+    score: t.bigint().notNull(),
+    weight: t.bigint().notNull(),
+    reason: t.text().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.pool, t.proposalId, t.voter] }),
+    voterIdx: index().on(t.voter),
+  })
+)

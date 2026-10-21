@@ -184,6 +184,18 @@
           }
         }
       }
+    },
+    "trustPools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["governor", "pool"],
+        "properties": {
+          "governor": { "$ref": "#/$defs/address" },
+          "pool": { "$ref": "#/$defs/deployment" }
+        }
+      }
     }
   },
   "$defs": {

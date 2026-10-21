@@ -31,6 +31,7 @@ import {
   instanceRegistryParamsAbi,
   trustgraphsParamsControllerAbi,
 } from './abis/trustgraphsParamsController'
+import { governorAbi, trustPoolAbi } from './abis/trustPool'
 import {
   weightedPriorParamsControllerAbi,
   weightedTrustgraphsFactoryAbi,
@@ -113,6 +114,8 @@ type DeploymentSummary = {
   trustComposeFactory?: { trust_compose_factory?: string }
   contributionsFactory?: { contributions_factory?: string }
   graphLineage?: { registry?: string }
+  /** Hand-recorded TrustPools (manifest `trustPools`); each names the governor it votes on. */
+  trustPools?: { address: string; block: number; governor: string }[]
 }
 
 loadTargetEnvironment({
@@ -387,6 +390,15 @@ const GRAPH_LINEAGE_REGISTRY =
     | Hex
     | undefined) ??
   (deploymentSummary.graphLineage?.registry as Hex | undefined)
+const TRUST_POOLS = deploymentSummary.trustPools ?? []
+// A pool can only vote on proposals whose snapshot follows its deployment, so neither source needs
+// history from before the earliest pool.
+// ponytail: a proposal created up to one voting delay before the pool's deploy block is missed;
+// start the governor that much earlier if a pool is ever deployed mid-proposal.
+const TRUST_POOL_START_BLOCK =
+  TRUST_POOLS.length > 0
+    ? Math.min(...TRUST_POOLS.map((pool) => pool.block))
+    : CORE_START_BLOCK
 
 /**
  * Whether to discover trust-graph children from the factory. Discovery follows the deployment
@@ -696,6 +708,36 @@ export default createConfig({
       chain: SCHEMA_REGISTRY_ADDRESS
         ? { [CORE_CHAIN]: { address: SCHEMA_REGISTRY_ADDRESS } }
         : {},
+    },
+    trustPool: {
+      abi: trustPoolAbi,
+      startBlock: TRUST_POOL_START_BLOCK,
+      chain:
+        TRUST_POOLS.length > 0
+          ? {
+              [CORE_CHAIN]: {
+                address: TRUST_POOLS.map((pool) => pool.address as Hex),
+              },
+            }
+          : {},
+    },
+    trustPoolGovernor: {
+      abi: governorAbi,
+      startBlock: TRUST_POOL_START_BLOCK,
+      chain:
+        TRUST_POOLS.length > 0
+          ? {
+              [CORE_CHAIN]: {
+                address: [
+                  ...new Set(
+                    TRUST_POOLS.map(
+                      (pool) => pool.governor.toLowerCase() as Hex
+                    )
+                  ),
+                ],
+              },
+            }
+          : {},
     },
     graphLineageRegistry: {
       abi: graphLineageRegistryAbi,
