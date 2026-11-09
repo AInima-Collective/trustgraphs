@@ -169,6 +169,38 @@ test('manifest carries subnetwork infrastructure as an optional atomic pair', ()
   assert.equal(summary.governedFactory?.subnetwork_registry, ADDRESS_2)
 })
 
+test('manifest carries trust pools as complete records beside instances', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  const instances = manifest.instances
+  assert.deepEqual(
+    releaseManifestToDeploymentSummary(validateReleaseManifest(manifest))
+      .trustPools,
+    []
+  )
+
+  manifest.trustPools = [
+    { governor: ADDRESS, pool: { address: ADDRESS_2, block: 7, txHash: null } },
+  ]
+  assert.throws(
+    () => validateReleaseManifest(manifest),
+    /trustPools\[0\]\.pool\.txHash is required/
+  )
+  manifest.trustPools[0].pool.txHash = TX_HASH
+  manifest.trustPools[0].name = 'Gitcoin'
+  assert.throws(
+    () => validateReleaseManifest(manifest),
+    /trustPools\[0\] contains unknown key name/
+  )
+  delete manifest.trustPools[0].name
+
+  const validated = validateReleaseManifest(manifest)
+  assert.deepEqual(releaseManifestToDeploymentSummary(validated).trustPools, [
+    { address: ADDRESS_2, block: 7, governor: ADDRESS },
+  ])
+  // The operator's single tracked instance is untouched by a pool.
+  assert.deepEqual(validated.instances, instances)
+})
+
 test('manifest validator accepts, pairs, and rejects the fast factory generation', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
 

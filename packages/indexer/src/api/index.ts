@@ -17,6 +17,7 @@ import network from './network'
 import nostrWorkspace from './nostr-workspace'
 import scorePrograms from './score-programs'
 import subnetworks from './subnetworks'
+import trustPools from './trust-pools'
 import vault from './vault'
 import weightedPriors from './weighted-priors'
 
@@ -40,6 +41,7 @@ app.route('/network', network)
 app.route('/nostr-workspace', nostrWorkspace)
 app.route('/score-programs', scorePrograms)
 app.route('/subnetworks', subnetworks)
+app.route('/trust-pools', trustPools)
 app.route('/vault', vault)
 app.route('/weighted-priors', weightedPriors)
 
