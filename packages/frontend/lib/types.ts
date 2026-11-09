@@ -85,6 +85,11 @@ export type Network = {
      * the catalog merge.
      */
     merkleGovModule?: Hex
+    /**
+     * The TrustPool voting this network's scores on an external governor (manifest `trustPools`,
+     * joined to the network by snapshot in the indexer). Gates the Delegation tab.
+     */
+    trustPool?: Hex
     /** Shared infrastructure authenticated by deployment config for typed governance actions. */
     provingVault?: Hex
     contributionsFactory?: Hex
