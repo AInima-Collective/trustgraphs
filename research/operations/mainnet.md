@@ -121,7 +121,8 @@ four `REGISTRAR_ROLE` grants afterwards.
 | Link `networks.json` at startup from `DEPLOY_TARGET` instead of a build-time symlink to the Sepolia file, so one image serves both projects.                                                 | `packages/indexer/Dockerfile`, `scripts/launch-indexer.mjs` |
 | Tests updated for the third target.                                                                                                                                                          | `scripts/*.test.mjs`, `src/api/*.source.test.ts`            |
 
-Mainnet indexer settings: writer schema `trustgraph_mainnet_v1`, views schema `trust-graph`,
+Mainnet indexer settings: writer schema `trustgraph_mainnet_v2` (`v1` until the 2026-11-10 TrustPool
+release), views schema `trust-graph`,
 `PONDER_START_BLOCK_1` and `PONDER_EAS_START_BLOCK_1` both at the first deployment block (the
 canonical EAS crawl from genesis on mainnet would be about 23 million blocks in 10-block windows;
 bounding it is mandatory, as the 2026-09-10 Sepolia quota exhaustion showed), a metered primary

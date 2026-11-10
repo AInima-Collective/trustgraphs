@@ -109,7 +109,7 @@ assert.deepEqual(
       operatorState: 'us-east4-eqdc4a',
       indexer: 'us-east4-eqdc4a',
     },
-    writerSchema: 'trustgraph_mainnet_v1',
+    writerSchema: 'trustgraph_mainnet_v2',
     rpcFallbacks: [
       'https://ethereum-rpc.publicnode.com',
       'https://mainnet.gateway.tenderly.co',

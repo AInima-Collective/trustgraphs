@@ -116,8 +116,9 @@ leave `PONDER_VIEWS_SCHEMA` stable. For the Sepolia v0.1 generation (replacement
 block 11,670,854 plus the Ponder 0.17 upgrade), `trustgraph_sepolia_v7` is the writer and
 `trust-graph` remains the public views schema. Do not reuse or delete `trustgraph_sepolia_v4`, the
 writer that served the previous generation; it is the rollback source for that generation's
-claims. (`v6` was abandoned mid-backfill and holds nothing.) Mainnet starts at
-`trustgraph_mainnet_v1`.
+claims. (`v6` was abandoned mid-backfill and holds nothing.) Mainnet started at
+`trustgraph_mainnet_v1` and moved to `trustgraph_mainnet_v2` for the TrustPool tables; keep `v1` as
+the rollback source until `v2` has served a full cycle.
 
 The canonical EAS contract and Schema Registry sources start at `PONDER_EAS_START_BLOCK_<chainId>`,
 pinned to the generation's first block: 11,670,854 on Sepolia, and on mainnet the

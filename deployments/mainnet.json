@@ -165,5 +165,15 @@
         "paramsController": "0x8DAEc345ee4d2dF0882e835d7D4b8Cf4450A6F83"
       }
     }
+  ],
+  "trustPools": [
+    {
+      "governor": "0xef41CbD211076E8b1901e214Bf751d404cf06638",
+      "pool": {
+        "address": "0xd6f1378Cf4F2E34Fc2ef48D61288cC1C0d209B81",
+        "block": 26384133,
+        "txHash": "0x5b1e25f7e7d287ec5b14036e4462fd9a1f173e672a170172831e181ca44eea33"
+      }
+    }
   ]
 }
