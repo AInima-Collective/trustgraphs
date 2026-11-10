@@ -441,7 +441,9 @@ and a 0.01 ETH proving-tank prepay in the same transaction. The registry row, th
 recorded as the manifest's single instance so the subsidized operator's `single_release_instance`
 gate opens. The same change sets `deployments/operator.mainnet.toml` `[paid] recipient` to the
 mainnet submitter `0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882` (funded with 0.1 ETH, nonce 0 at
-recording), replacing the zero placeholder the loader refuses.
+recording), replacing the zero placeholder the loader refuses. On 2026-11-10 the recipient moved to
+the admin Safe `0x181c9b70FF0090DAF21bf3eba086EDBF5C230A4c`, so fees no longer accrue to a hot key;
+the submitter still receives each proof's gas refund.
 
 | Item                              | Value                                                                                       |
 | --------------------------------- | ------------------------------------------------------------------------------------------- |
