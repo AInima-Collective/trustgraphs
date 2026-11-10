@@ -25,8 +25,9 @@ single_release_instance = true
 [paid]
 enabled = true
 # The vault address is read from the finalized release manifest and checked for conflicts.
-# The public address of the separately funded mainnet submitter key (SUBMITTER_PRIVATE_KEY).
-recipient = "0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882"
+# The public address of the mainnet submitter key (SUBMITTER_PRIVATE_KEY), which therefore earns both
+# each proof's fee and its gas refund, and withdraws them with ProvingVault.withdrawCredit.
+recipient = "0xf6dF91D9f3a45FC6708F94c3C2E47dc1967445db"
 
 [cadence]
 tick_seconds = 60

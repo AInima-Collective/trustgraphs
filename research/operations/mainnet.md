@@ -441,7 +441,9 @@ and a 0.01 ETH proving-tank prepay in the same transaction. The registry row, th
 recorded as the manifest's single instance so the subsidized operator's `single_release_instance`
 gate opens. The same change sets `deployments/operator.mainnet.toml` `[paid] recipient` to the
 mainnet submitter `0xcCb147031FdE4e30dD55C583c0ab3Eff7ff64882` (funded with 0.1 ETH, nonce 0 at
-recording), replacing the zero placeholder the loader refuses.
+recording), replacing the zero placeholder the loader refuses. On 2026-11-10 the submitter key was
+replaced, and the recipient moved with it to the new submitter
+`0xf6dF91D9f3a45FC6708F94c3C2E47dc1967445db`.
 
 | Item                              | Value                                                                                       |
 | --------------------------------- | ------------------------------------------------------------------------------------------- |
