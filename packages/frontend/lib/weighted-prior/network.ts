@@ -73,6 +73,7 @@ export const weightedInstanceToNetwork = (
       ...(instance.distributor
         ? { merkleFundDistributor: instance.distributor }
         : {}),
+      ...(instance.trustPool ? { trustPool: instance.trustPool } : {}),
     },
     schemas: [
       {

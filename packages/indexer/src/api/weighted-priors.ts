@@ -10,6 +10,7 @@ import {
 } from 'ponder:schema'
 import { type Hex, isHex } from 'viem'
 
+import { trustPoolsFor } from './trust-pools'
 import {
   availabilityStatus,
   availabilityView,
@@ -32,10 +33,12 @@ const idParam = (value: string) =>
 
 const serializeInstance = (
   row: typeof weightedPriorInstance.$inferSelect,
-  governance?: GovernanceRow
+  governance?: GovernanceRow,
+  pool?: Hex
 ) => ({
   ...row,
   program: 'trust-graph-weighted',
+  trustPool: pool ?? null,
   governance: governance
     ? {
         module: governance.address,
@@ -146,15 +149,20 @@ app.get('/', async (c) => {
     )
     .limit(limit)
     .offset(offset)
-  const [totalRows, governance] = await Promise.all([
+  const [totalRows, governance, pools] = await Promise.all([
     db
       .select({ value: count(weightedPriorInstance.id) })
       .from(weightedPriorInstance),
     governanceFor(rows),
+    trustPoolsFor(rows),
   ])
   return c.json({
     instances: rows.map((row) =>
-      serializeInstance(row, governance.get(row.snapshot.toLowerCase()))
+      serializeInstance(
+        row,
+        governance.get(row.snapshot.toLowerCase()),
+        pools.get(row.snapshot.toLowerCase())
+      )
     ),
     page: { limit, offset, total: totalRows[0]?.value ?? 0 },
   })
@@ -167,11 +175,15 @@ app.get('/:instanceId', async (c) => {
     where: eq(weightedPriorInstance.id, instanceId),
   })
   if (!row) return c.json({ error: 'not found' }, 404)
-  const governance = await governanceFor([row])
+  const [governance, pools] = await Promise.all([
+    governanceFor([row]),
+    trustPoolsFor([row]),
+  ])
   return c.json({
     instance: serializeInstance(
       row,
-      governance.get(row.snapshot.toLowerCase())
+      governance.get(row.snapshot.toLowerCase()),
+      pools.get(row.snapshot.toLowerCase())
     ),
   })
 })

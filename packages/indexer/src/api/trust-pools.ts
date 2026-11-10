@@ -9,7 +9,7 @@
  * Every bigint arrives as a decimal string. Status, governor-wide tallies, quorum and voting power
  * are not indexed: the client reads them live from the governor.
  */
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import { trustPool, trustPoolProposal, trustPoolVote } from 'ponder:schema'
@@ -18,6 +18,26 @@ import { type Hex, isAddress } from 'viem'
 import { type PoolTally, tallyPoolCasts } from '../trust-pool-shared'
 
 const app = new Hono()
+
+/**
+ * The recorded TrustPool voting each network's scores, keyed by lowercase snapshot. Shared by
+ * `/instances` and `/weighted-priors`, the two catalogs a network page can come from.
+ */
+export const trustPoolsFor = async (rows: ReadonlyArray<{ snapshot: Hex }>) => {
+  if (rows.length === 0) return new Map<string, Hex>()
+  const pools = await db
+    .select({ address: trustPool.address, snapshot: trustPool.snapshot })
+    .from(trustPool)
+    .where(
+      inArray(
+        trustPool.snapshot,
+        rows.map((row) => row.snapshot)
+      )
+    )
+  return new Map(
+    pools.map((pool) => [pool.snapshot.toLowerCase(), pool.address])
+  )
+}
 
 const MAX_PROPOSALS = 200
 

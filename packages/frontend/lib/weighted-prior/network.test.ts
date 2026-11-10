@@ -113,6 +113,18 @@ assert.deepEqual(
   ['Overview', 'Governance', 'Rewards', 'Settings']
 )
 
+// A recorded TrustPool reaches the weighted network, which is what gates its Delegation tab.
+assert.equal(network.contracts.trustPool, undefined)
+const pooled = weightedInstanceToNetwork(
+  { ...instance, trustPool: hex('e', 20) },
+  []
+)
+assert.equal(pooled.contracts.trustPool, hex('e', 20))
+assert.ok(
+  trustgraphsTabs(pooled).some((tab) => tab.label === 'Delegation'),
+  'a pooled weighted network shows the Delegation tab'
+)
+
 const catalogServer = readFileSync('lib/catalog.server.ts', 'utf8')
 assert.match(catalogServer, /getWeightedNetwork/)
 assert.match(catalogServer, /every network sub-route/)
