@@ -25,9 +25,9 @@ single_release_instance = true
 [paid]
 enabled = true
 # The vault address is read from the finalized release manifest and checked for conflicts.
-# Proving fees are credited to the admin Safe, a cold 1-of-1 with no guard that withdraws them with
-# ProvingVault.withdrawCredit. The submitter key (SUBMITTER_PRIVATE_KEY) only earns gas refunds.
-recipient = "0x181c9b70FF0090DAF21bf3eba086EDBF5C230A4c"
+# The public address of the mainnet submitter key (SUBMITTER_PRIVATE_KEY), which therefore earns both
+# each proof's fee and its gas refund, and withdraws them with ProvingVault.withdrawCredit.
+recipient = "0xf6dF91D9f3a45FC6708F94c3C2E47dc1967445db"
 
 [cadence]
 tick_seconds = 60
