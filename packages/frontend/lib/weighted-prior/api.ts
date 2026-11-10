@@ -65,6 +65,8 @@ export interface WeightedApiInstanceDetail extends WeightedApiInstance {
   snapshot: Hex
   distributor: Hex | null
   distributorToken: Hex | null
+  /** The recorded TrustPool voting this network's scores, if any (the Delegation tab). */
+  trustPool?: Hex | null
   governance: {
     module: Hex
     safe: Hex

@@ -36,7 +36,6 @@ import {
   scoreProgramBinding,
   signerSyncModule,
   signerSyncRotation,
-  trustPool,
 } from 'ponder:schema'
 import { type Hex, isAddress, isHex } from 'viem'
 
@@ -46,6 +45,7 @@ import {
   ScoreProgramApiError,
   serializeScoreProgramBinding,
 } from './score-programs'
+import { trustPoolsFor } from './trust-pools'
 
 const app = new Hono()
 
@@ -257,23 +257,6 @@ const governanceFor = async (rows: InstanceRow[]) => {
       governance.merkleSnapshot.toLowerCase(),
       governance,
     ])
-  )
-}
-
-/** The recorded TrustPool voting each network's scores, keyed by snapshot like governance. */
-const trustPoolsFor = async (rows: InstanceRow[]) => {
-  if (rows.length === 0) return new Map<string, Hex>()
-  const pools = await db
-    .select({ address: trustPool.address, snapshot: trustPool.snapshot })
-    .from(trustPool)
-    .where(
-      inArray(
-        trustPool.snapshot,
-        rows.map((row) => row.snapshot)
-      )
-    )
-  return new Map(
-    pools.map((pool) => [pool.snapshot.toLowerCase(), pool.address])
   )
 }
 
