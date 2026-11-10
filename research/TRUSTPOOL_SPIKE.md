@@ -1,7 +1,15 @@
 # TrustPool Spike: Fractional Voting Client Against OZ GovernorCountingFractional
 
 **Status:** Spike complete, all questions answered affirmatively.
-**Code:** `contracts/test/spike/TrustPoolSpike.t.sol` (6 tests, all green, `forge test --match-path "contracts/test/spike/TrustPoolSpike.t.sol"`)
+**Code:** the spike harness was promoted to `contracts/src/governance/TrustPool.sol`, tested by
+`contracts/test/unit/governance/TrustPool.t.sol` (OZ harness always; the live Gitcoin Governor
+Charlie + GTC on a mainnet fork when `MAINNET_FORK_RPC_URL` is set). Production drops the stored
+`poolCap` and token custody: the pool's weight is `governor.getVotes(pool, snapshot)`, so it is
+whatever GTC holders (or Franchiser positions) delegate to the pool address. It also pins each
+proposal's basis (root and total) on its first vote: MerkleSnapshot files a root at its checkpoint's
+input-freeze block, so a checkpoint frozen before the snapshot but proven after it would otherwise
+change `getStateAtBlock(snapshot)` mid-vote (`test_lateProofCannotReshareAProposalMidVote`). The
+spike's A3 below only covers a root filed *after* the snapshot block.
 **Context:** Validates the TrustPool design (Path 2 of `research/GITCOIN_TRUSTGRAPHS_PATHS.md`):
 a pooled manager that holds program GTC, self-delegates, and casts per-delegate fractional
 votes on `GitcoinGovernorWithGuardian`, with each delegate's weight derived at vote time from

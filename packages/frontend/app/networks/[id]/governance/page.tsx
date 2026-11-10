@@ -9,6 +9,7 @@ import { useAccount } from 'wagmi'
 import { TableAddress } from '@/components/Address'
 import { ButtonLink } from '@/components/Button'
 import { Modal } from '@/components/Modal'
+import { ResultBar, StateBadge, StateTone } from '@/components/ProposalStatus'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
 import {
@@ -47,62 +48,14 @@ const statePriority = (state: number): number => {
   }
 }
 
-const StateBadge = ({ state, label }: { state: number; label: string }) => {
-  const styles =
-    state === ProposalState.Active
-      ? 'border-success/50 bg-success-soft text-success'
-      : state === ProposalState.Passed || state === ProposalState.Executed
-        ? 'border-hairline-strong bg-surface-2 text-text'
-        : state === ProposalState.Rejected
-          ? 'border-error/50 bg-error-soft text-error'
-          : 'border-border bg-muted text-muted-foreground'
-
-  return (
-    <span
-      className={`text-xs px-2 py-1 rounded-md border font-medium whitespace-nowrap ${styles}`}
-    >
-      {label}
-    </span>
-  )
-}
-
-/** One stacked bar: For (success) / Against (error) / Abstain (neutral). */
-const ResultBar = ({ core }: { core: ProposalCore }) => {
-  const total =
-    Number(core.yesVotes) + Number(core.noVotes) + Number(core.abstainVotes)
-
-  if (total === 0) {
-    return <span className="text-xs text-muted-foreground">No votes yet</span>
-  }
-
-  const pct = (v: bigint) => (Number(v) / total) * 100
-
-  return (
-    <div className="min-w-[120px] space-y-1">
-      <div
-        className="flex h-2 w-full overflow-hidden bg-surface-2"
-        role="img"
-        aria-label={`For ${pct(core.yesVotes).toFixed(0)}%, against ${pct(core.noVotes).toFixed(0)}%, abstain ${pct(core.abstainVotes).toFixed(0)}%`}
-      >
-        <div
-          className="bg-success h-2"
-          style={{ width: `${pct(core.yesVotes)}%` }}
-        />
-        <div
-          className="bg-error h-2"
-          style={{ width: `${pct(core.noVotes)}%` }}
-        />
-        <div
-          className="bg-text-subtle h-2"
-          style={{ width: `${pct(core.abstainVotes)}%` }}
-        />
-      </div>
-      <div className="text-xs text-muted-foreground tabular-nums">
-        {pct(core.yesVotes).toFixed(0)}% for
-      </div>
-    </div>
-  )
-}
+const stateTone = (state: number): StateTone =>
+  state === ProposalState.Active
+    ? 'active'
+    : state === ProposalState.Passed || state === ProposalState.Executed
+      ? 'positive'
+      : state === ProposalState.Rejected
+        ? 'negative'
+        : 'muted'
 
 function GovernancePageContent() {
   const router = useRouter()
@@ -178,7 +131,7 @@ function GovernancePageContent() {
         statePriority(row.core.state) * 1e9 - Number(row.core.id),
       render: (row) => (
         <StateBadge
-          state={row.core.state}
+          tone={stateTone(row.core.state)}
           label={getProposalStateText(row.core.state)}
         />
       ),
@@ -188,7 +141,13 @@ function GovernancePageContent() {
       header: 'RESULT',
       tooltip: 'Share of votes cast so far: for, against, abstain.',
       sortable: false,
-      render: (row) => <ResultBar core={row.core} />,
+      render: (row) => (
+        <ResultBar
+          forVotes={row.core.yesVotes}
+          against={row.core.noVotes}
+          abstain={row.core.abstainVotes}
+        />
+      ),
     },
     {
       key: 'timing',
