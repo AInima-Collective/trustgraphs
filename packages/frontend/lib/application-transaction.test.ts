@@ -8,6 +8,7 @@ import {
   ApplicationChainMismatchError,
   TransactionReplacementError,
   signApplicationTypedData,
+  suggestFees,
   writeApplicationContractAndWait,
 } from './application-transaction'
 
@@ -222,4 +223,39 @@ test('a transaction prepared for another account is rejected before submission',
   )
   assert.equal(f.writes.length, 0)
   assert.equal(f.waits.length, 0)
+})
+
+test('suggested fees follow recent blocks instead of a flat wallet tip', () => {
+  const gwei = (value: number) => BigInt(Math.round(value * 1e9))
+  // 2026-11-10 mainnet: 0.066 gwei basefee, median tips 0.002–0.46 gwei.
+  const quiet = suggestFees({
+    baseFeePerGas: [gwei(0.065), gwei(0.064), gwei(0.066)],
+    reward: [[gwei(0.002)], [gwei(0.46)], [gwei(0.02)]],
+  })
+  // The median tip (0.02) is under the floor, so the floor wins; the cap is 2 × next basefee + tip.
+  assert.deepEqual(quiet, {
+    maxPriorityFeePerGas: gwei(0.05),
+    maxFeePerGas: gwei(0.066) * 2n + gwei(0.05),
+  })
+  // A busy stretch tips the median of the recent medians.
+  const busy = suggestFees({
+    baseFeePerGas: [gwei(20), gwei(22)],
+    reward: [[gwei(1)], [gwei(3)], [gwei(2)]],
+  })
+  assert.equal(busy?.maxPriorityFeePerGas, gwei(2))
+  assert.equal(busy?.maxFeePerGas, gwei(22) * 2n + gwei(2))
+  // No history (a pre-1559 chain): nothing to suggest, the wallet prices it.
+  assert.equal(suggestFees({ baseFeePerGas: [] }), undefined)
+})
+
+test('a call that sets its own fees is sent unchanged', async () => {
+  const f = fixture()
+  await writeApplicationContractAndWait(f.config, sepolia, {
+    ...call,
+    maxFeePerGas: 7n,
+    maxPriorityFeePerGas: 3n,
+  })
+  const sent = f.writes[0] as unknown as Record<string, unknown>
+  assert.equal(sent.maxFeePerGas, 7n)
+  assert.equal(sent.maxPriorityFeePerGas, 3n)
 })

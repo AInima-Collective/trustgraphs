@@ -3,6 +3,7 @@ import {
   type SignTypedDataParameters,
   type WriteContractParameters,
   getConnection,
+  getPublicClient,
   signTypedData,
   waitForTransactionReceipt,
   writeContract,
@@ -97,6 +98,50 @@ export type ApplicationTransactionParameters = Omit<
   'value'
 > & { value?: bigint }
 
+/** Floor for the suggested tip: above what a quiet mainnet block's median transaction pays. */
+const MIN_PRIORITY_FEE = 50_000_000n // 0.05 gwei
+
+/**
+ * The fees to suggest from recent blocks' fee history: the median of their median tips (never under
+ * the floor), capped at twice the next block's basefee plus that tip. Left to price a transaction
+ * itself, a wallet can add a flat 2 gwei tip, which on a 13.4M-gas network creation was 97% of its
+ * $58 cost at a 0.065 gwei basefee. The cap only bounds the price; a transaction pays the basefee of
+ * the block it lands in.
+ */
+export const suggestFees = ({
+  baseFeePerGas,
+  reward,
+}: {
+  baseFeePerGas: readonly bigint[]
+  reward?: readonly (readonly bigint[])[]
+}) => {
+  const next = baseFeePerGas.at(-1)
+  if (next === undefined) return undefined
+  const tips = (reward ?? [])
+    .map((percentiles) => percentiles[0] ?? 0n)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  const median = tips[Math.floor(tips.length / 2)] ?? 0n
+  const maxPriorityFeePerGas =
+    median > MIN_PRIORITY_FEE ? median : MIN_PRIORITY_FEE
+  return {
+    maxPriorityFeePerGas,
+    maxFeePerGas: next * 2n + maxPriorityFeePerGas,
+  }
+}
+
+const suggestedFees = async (config: Config, chainId: number) => {
+  try {
+    const history = await getPublicClient(config, { chainId })?.getFeeHistory({
+      blockCount: 5,
+      rewardPercentiles: [50],
+    })
+    return history ? suggestFees(history) : undefined
+  } catch {
+    // No EIP-1559 history on this chain, or an RPC hiccup: the wallet prices it as before.
+    return undefined
+  }
+}
+
 /** Pin the wallet, account, execution chain, and receipt chain for the whole operation. */
 export const writeApplicationContractAndWait = async (
   config: Config,
@@ -116,7 +161,12 @@ export const writeApplicationContractAndWait = async (
     chain,
     typeof parameters.account === 'string' ? parameters.account : undefined
   )
+  const priced =
+    ('maxFeePerGas' in parameters && parameters.maxFeePerGas !== undefined) ||
+    ('gasPrice' in parameters && parameters.gasPrice !== undefined)
+  const fees = priced ? undefined : await suggestedFees(config, chain.id)
   let hash = await writeContract(config, {
+    ...fees,
     ...parameters,
     ...connection,
     chainId: chain.id,
