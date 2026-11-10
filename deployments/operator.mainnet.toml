@@ -40,8 +40,11 @@ max_concurrent = 1
 max_per_instance = 1
 
 [gas]
-# Proofs wait out a fee spike rather than buying a submit at the top of one.
-max_basefee_gwei = 30
+# Proofs wait out a fee spike rather than buying a submit at the top of one. Every send is signed
+# at twice this cap, and the node refuses it unless the submitter holds gas limit × that fee: a
+# 1.5M-gas proof submit needs 0.009 ETH at 3 gwei (it needed 0.09 at 30). Mainnet basefee has run
+# well under 1 gwei since launch; raise this if roots start waiting out normal fees.
+max_basefee_gwei = 3
 priority_fee_gwei = 0.1
 replacement_after_s = 300
 simulate_before_send = true
