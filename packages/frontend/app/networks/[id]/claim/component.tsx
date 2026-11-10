@@ -23,7 +23,10 @@ import {
   useDistributionRewards,
 } from '@/hooks/useDistributionRewards'
 import { useTokenMetadata } from '@/hooks/useTokenMetadata'
-import { merkleFundDistributorAbi } from '@/lib/contract-abis'
+import {
+  merkleFundDistributorAbi,
+  merkleSnapshotAbi,
+} from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import {
   contractReadState,
@@ -34,7 +37,6 @@ import {
 import {
   distributeArgs as buildDistributeArgs,
   fundingTermsAbi,
-  latestMerkleStateAbi,
   quotedFee,
 } from '@/lib/funding-terms'
 import { contributionsTabs } from '@/lib/network-nav'
@@ -144,7 +146,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
       {
         address: snapshot,
         chainId: targetChainId,
-        abi: latestMerkleStateAbi,
+        abi: merkleSnapshotAbi,
         functionName: 'getLatestState',
       },
     ],

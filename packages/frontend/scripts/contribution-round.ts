@@ -48,7 +48,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { foundry } from 'viem/chains'
 
 import { SEED_NETWORKS, easAddress } from '../lib/config'
-import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
+import {
+  easAbi,
+  merkleFundDistributorAbi,
+  merkleSnapshotAbi,
+} from '../lib/contract-abis'
 import {
   fetchContributionsPayout,
   fetchContributionsRound,
@@ -61,7 +65,6 @@ import {
 import {
   distributeArgs as buildDistributeArgs,
   fundingTermsAbi,
-  latestMerkleStateAbi,
 } from '../lib/funding-terms'
 import { SchemaManager, registerSchemas } from '../lib/schemas'
 import type { ContributionsNetwork, Network } from '../lib/types'
@@ -524,7 +527,7 @@ const main = async () => {
           }),
           publicClient.readContract({
             address: snapshot,
-            abi: latestMerkleStateAbi,
+            abi: merkleSnapshotAbi,
             functionName: 'getLatestState',
           }),
         ])) as [bigint, bigint, Hex, { totalValue: bigint }]

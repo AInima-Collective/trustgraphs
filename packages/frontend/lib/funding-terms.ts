@@ -33,27 +33,6 @@ export const fundingTermsAbi = [
   },
 ] as const
 
-export const latestMerkleStateAbi = [
-  {
-    type: 'function',
-    name: 'getLatestState',
-    inputs: [],
-    outputs: [
-      {
-        type: 'tuple',
-        components: [
-          { name: 'blockNumber', type: 'uint256' },
-          { name: 'root', type: 'bytes32' },
-          { name: 'ipfsHash', type: 'bytes32' },
-          { name: 'ipfsHashCid', type: 'string' },
-          { name: 'totalValue', type: 'uint256' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-] as const
-
 export type FundingTerms = {
   token: Hex
   amount: bigint
