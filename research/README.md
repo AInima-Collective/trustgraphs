@@ -5,6 +5,8 @@ why the shipped architecture looks the way it does. It is not the primary operat
 current setup and runbooks live in [`docs/`](../docs/).
 
 - Top-level topic documents capture accepted designs or active investigations.
+- [Design patterns for attestations, reputation, and private identity](./ATTESTATIONS_REPUTATION_PRIVATE_IDENTITY.md)
+  is a discussion proposal on membership vouches, interpretation, authority, and private identity continuity.
 - Topic directories contain executable references, fixtures, simulations, and benchmark results.
 - [`DEVIATIONS.md`](./DEVIATIONS.md) records intentional differences between accepted designs and
   implementation.
