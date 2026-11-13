@@ -20,16 +20,17 @@ vouch history, and recomputes reputation and allocation together.
 
 ## Programs, consumers, and input extensions
 
-| Component | Role | Input and result |
-| --- | --- | --- |
-| [Trust graph](../build/trust-graph.md) | Scoring program | EAS vouches → Ethereum-address scores |
-| [Weighted prior](../build/weighted-prior.md) | Scoring program | Explicit prior + EAS vouches → Ethereum-address scores |
-| [Contributions](../build/contributions.md) | Allocation program | Standard parent vouch history + contribution records → funding allocations |
-| [Hypercerts](../build/hypercerts.md) | Scoring program | Anchored AT Protocol records → identity and address scores |
-| [Nostr workspace](../build/nostr-workspace.md) | Scoring program | Anchored signed workspace events → scores |
-| [Score composition](../build/composition.md) | Composition program | Accepted source score sets + allocation policy → composed allocation |
-| [Signer sync](../build/signer-sync.md) | Selection program and Safe module | Standard vouch history + direct-vote activity + Safe state → owner set |
-| [Off-chain EAS](../build/offchain-attestations.md) | Optional trust-graph input lane | Signed EAS records + anchored retained history → additional vouch edges |
+| Component                                            | Role                              | Input and result                                                                            |
+| ---------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------- |
+| [Trust graph](../build/trust-graph.md)               | Scoring program                   | EAS vouches → Ethereum-address scores                                                       |
+| [Weighted prior](../build/weighted-prior.md)         | Scoring program                   | Explicit prior + EAS vouches → Ethereum-address scores                                      |
+| [Mutual recognition](../build/mutual-recognition.md) | Scoring program                   | Explicit prior + reciprocated EAS vouches (min of each direction) → Ethereum-address scores |
+| [Contributions](../build/contributions.md)           | Allocation program                | Standard parent vouch history + contribution records → funding allocations                  |
+| [Hypercerts](../build/hypercerts.md)                 | Scoring program                   | Anchored AT Protocol records → identity and address scores                                  |
+| [Nostr workspace](../build/nostr-workspace.md)       | Scoring program                   | Anchored signed workspace events → scores                                                   |
+| [Score composition](../build/composition.md)         | Composition program               | Accepted source score sets + allocation policy → composed allocation                        |
+| [Signer sync](../build/signer-sync.md)               | Selection program and Safe module | Standard vouch history + direct-vote activity + Safe state → owner set                      |
+| [Off-chain EAS](../build/offchain-attestations.md)   | Optional trust-graph input lane   | Signed EAS records + anchored retained history → additional vouch edges                     |
 
 Support is not identical across these rows:
 

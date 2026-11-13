@@ -5,6 +5,7 @@ pub mod atproto_conformance;
 pub mod composition;
 pub mod contributions;
 pub mod hypercerts;
+pub mod mutual;
 pub mod nostr_workspace;
 pub mod signer;
 pub mod trust_graph;
@@ -23,5 +24,6 @@ pub fn all() -> Vec<(&'static str, sp1_sdk::Elf)> {
         ("contributions", contributions::elf()),
         ("hypercerts", hypercerts::elf()),
         ("nostr-workspace", nostr_workspace::elf()),
+        ("trust-graph-mutual", mutual::elf()),
     ]
 }

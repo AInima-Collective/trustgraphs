@@ -16,6 +16,7 @@
 //!                                                         the contributions program (fetch needs
 //!                                                         `--features fetch`)
 //!   trustgraph-prover trust-graph-weighted {vkey|paramshash|execute|prove}
+//!   trustgraph-prover trust-graph-mutual {vkey|paramshash|execute|prove}
 //!   trustgraph-prover trust-compose {vkey|paramshash|execute|prove}
 //!   trustgraph-prover manifest [--commit SHA] [--tag vX.Y.Z]
 //!                                                         every program's ELF sha256 + vkey, JSON
@@ -50,6 +51,12 @@ enum Program {
     Weighted {
         #[command(subcommand)]
         cmd: programs::weighted::Command,
+    },
+    /// Mutual-recognition trust-graph root producer (reciprocated-vouch gated transitions).
+    #[command(name = "trust-graph-mutual")]
+    Mutual {
+        #[command(subcommand)]
+        cmd: programs::mutual::Command,
     },
     /// Normalized final-distribution composition over captured complete mixed
     /// standard/weighted source outputs (closed compatibility class).
@@ -153,6 +160,7 @@ fn main() -> Result<()> {
     match cli.program {
         Program::Trustgraphs { cmd } => programs::trust_graph::run(cmd),
         Program::Weighted { cmd } => programs::weighted::run(cmd),
+        Program::Mutual { cmd } => programs::mutual::run(cmd),
         Program::Composition { cmd } => programs::composition::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),

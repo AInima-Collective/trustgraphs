@@ -1,0 +1,21 @@
+[package]
+name = "mutual-recognition-core"
+description = "Canonical mutual-recognition trust-graph manifest, scoring, and journal encodings"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+alloy-primitives = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+serde_bytes = "0.11"
+zk-core = { path = "../zk-core" }
+
+[dev-dependencies]
+hex = { workspace = true }
+serde_json = { workspace = true }

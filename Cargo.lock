@@ -2011,6 +2011,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mutual-recognition-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "hex",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "zk-core",
+]
+
+[[package]]
 name = "nostr-envelope"
 version = "0.9.3"
 dependencies = [
