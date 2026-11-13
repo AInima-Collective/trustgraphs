@@ -28,7 +28,7 @@ MODE=dirs
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 cd "$ROOT"
 
-GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program zk/nostr-program/program"
+GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/mutual-program zk/composition-program zk/nostr-program/program"
 TARGET="riscv64im-succinct-zkvm-elf/release"
 case "${TRUSTGRAPH_GUEST_BUILD:-docker}" in
   docker) BUILD_PREFIX=docker/ ;;

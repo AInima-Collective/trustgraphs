@@ -7,6 +7,7 @@ const GUESTS: &[&str] = &[
     "../program",
     "../trust-graph-program",
     "../weighted-program",
+    "../mutual-program",
     "../composition-program",
     "../nostr-program/program",
 ];
