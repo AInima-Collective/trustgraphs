@@ -71,7 +71,7 @@ RESOLVER=$(jq -r .resolver tests/e2e/deploy.json)
 SCHEMA=$(jq -r .schema_uid tests/e2e/deploy.json)
 SNAPSHOT=$(jq -r .snapshot tests/e2e/deploy.json)
 PARAMS_HASH=$(jq -r .params_hash tests/e2e/deploy.json)
-CHAIN_ID=$(cast chain-id --rpc-url "$RPC")
+export CHAIN_ID=$(cast chain-id --rpc-url "$RPC")
 echo "   EAS=$EAS"
 echo "   RESOLVER=$RESOLVER"
 echo "   SCHEMA=$SCHEMA"
@@ -396,7 +396,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     --constructor-args "$HC_GATEWAY" "$HC_VKEY" | jq -r .deployedTo)
   HC_SNAPSHOT=$(forge create contracts/src/merkle/MerkleSnapshot.sol:MerkleSnapshot \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
-    --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_EMPTY_ACC" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
+    --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_EMPTY_ACC" "$DEPLOYER" "$DEPLOYER" "" | jq -r .deployedTo)
   cast send "$HC_SNAPSHOT" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   cast send "$HC_REGISTRY" "bindSnapshot(address)" "$HC_SNAPSHOT" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   # Bind the lane-1 seam to this snapshot: on a lane-2-only instance lane 1 is constant (0, 0), so
@@ -465,7 +465,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
   HC_TWIN=$(forge create contracts/src/merkle/MerkleSnapshot.sol:MerkleSnapshot \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
-    --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_TWIN_ACC" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
+    --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_TWIN_ACC" "$DEPLOYER" "$DEPLOYER" "" | jq -r .deployedTo)
   cast send "$HC_TWIN" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   cast send "$HC_TWIN_ACC" "bindSnapshot(address)" "$HC_TWIN" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   cast send "$HC_TWIN" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
