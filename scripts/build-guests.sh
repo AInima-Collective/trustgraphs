@@ -34,7 +34,7 @@ if [ "${SP1_DOCKER_IMAGE:-$PINNED_IMAGE}" != "$PINNED_IMAGE" ]; then
 fi
 export SP1_DOCKER_IMAGE="$PINNED_IMAGE"
 
-GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/composition-program zk/nostr-program/program"
+GUESTS="zk/program zk/trust-graph-program zk/weighted-program zk/mutual-program zk/composition-program zk/nostr-program/program"
 
 command -v cargo-prove >/dev/null 2>&1 || {
   echo "✗ cargo-prove not found. The guests build with the SP1 \`succinct\` toolchain:" >&2

@@ -42,6 +42,7 @@ jobs:
             zk/program -> target
             zk/trust-graph-program -> target
             zk/weighted-program -> target
+            zk/mutual-program -> target
             zk/composition-program -> target
             zk/nostr-program -> target
 
@@ -82,6 +83,7 @@ jobs:
           [
             trust-graph,
             trust-graph-weighted,
+            trust-graph-mutual,
             trust-compose,
             signer,
             hypercerts,

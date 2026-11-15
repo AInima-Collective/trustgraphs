@@ -96,6 +96,7 @@ export const DOCS_SECTIONS: DocSection[] = [
         items: [
           { slug: 'build/trust-graph', label: 'Trust graph' },
           { slug: 'build/weighted-prior', label: 'Weighted prior' },
+          { slug: 'build/mutual-recognition', label: 'Mutual recognition' },
           { slug: 'build/signer-sync', label: 'Signer sync' },
           { slug: 'build/hypercerts', label: 'Hypercerts' },
           { slug: 'build/nostr-workspace', label: 'Nostr workspace' },

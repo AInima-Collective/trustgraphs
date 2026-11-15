@@ -7,6 +7,7 @@ import { type Hex, keccak256, stringToHex } from 'viem'
 export const SCORE_PROGRAM_IDS = {
   'trust-graph': keccak256(stringToHex('trust-graph')),
   'trust-graph-weighted': keccak256(stringToHex('trust-graph-weighted')),
+  'trust-graph-mutual': keccak256(stringToHex('trust-graph-mutual')),
   contributions: keccak256(stringToHex('contributions')),
   hypercerts: keccak256(stringToHex('hypercerts')),
   'trust-compose': keccak256(stringToHex('trust-compose')),
@@ -25,6 +26,9 @@ export const SCORE_OUTPUT_DOMAIN_IDS = {
   ),
   'weighted-trust-graph-account-v1': keccak256(
     stringToHex('trustgraphs.output.weighted-trust-graph-account.v1')
+  ),
+  'mutual-trust-graph-account-v1': keccak256(
+    stringToHex('trustgraphs.output.mutual-trust-graph-account.v1')
   ),
   'contributions-recipient-v1': keccak256(
     stringToHex('trustgraphs.output.contributions-recipient.v1')
@@ -123,6 +127,13 @@ export const SCORE_KEY_DOMAINS: readonly ScoreKeyDomainDefinition[] = [
   {
     name: 'weighted-trust-graph-account-v1',
     id: SCORE_OUTPUT_DOMAIN_IDS['weighted-trust-graph-account-v1'],
+    keyEncoding: 'eip155-address',
+    tables: ['offchain.merkle_entry'],
+    apis: ['merkle'],
+  },
+  {
+    name: 'mutual-trust-graph-account-v1',
+    id: SCORE_OUTPUT_DOMAIN_IDS['mutual-trust-graph-account-v1'],
     keyEncoding: 'eip155-address',
     tables: ['offchain.merkle_entry'],
     apis: ['merkle'],
@@ -259,6 +270,14 @@ export const SCORE_PROGRAMS: readonly ScoreProgramDefinition[] = [
   definition(
     'trust-graph-weighted',
     'weighted-trust-graph-account-v1',
+    'eip155-address',
+    'address-merkle',
+    ['offchain.merkle_metadata', 'offchain.merkle_entry'],
+    ['merkle']
+  ),
+  definition(
+    'trust-graph-mutual',
+    'mutual-trust-graph-account-v1',
     'eip155-address',
     'address-merkle',
     ['offchain.merkle_metadata', 'offchain.merkle_entry'],
